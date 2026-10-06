@@ -38,9 +38,15 @@ struct VetoRegistry {
 
 // Converts an ASCII string to lowercase for robust pattern matching
 fn veto_string_to_lower(s: string) -> string {
-    if (s == 0.0) { return ""; }
+    if (s == 0.0) {
+        let res = calloc(1.0, 1.0);
+        return res;
+    }
     let len = strlen(s);
-    if (len == 0.0) { return ""; }
+    if (len == 0.0) {
+        let res = calloc(1.0, 1.0);
+        return res;
+    }
     let res = calloc(len + 1.0, 1.0);
     var i = 0.0;
     while (i < len) {

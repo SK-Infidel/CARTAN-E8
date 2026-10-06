@@ -43,8 +43,8 @@ fn math_cosh(x: float) -> float { return cosh(x); }
 fn math_tanh(x: float) -> float { return tanh(x); }
 fn math_floor(x: float) -> float { return floor(x); }
 fn math_ceil(x: float) -> float { return ceil(x); }
-fn math_mod_val(x: float, y: float) -> float { if (y == 0.0) { return 0.0; } return fmod(x, y); }
-fn math_mod(x: float, y: float) -> float { if (y == 0.0) { return 0.0; } return fmod(x, y); }
+fn math_mod_val(x: float, y: float) -> float { if (y == 0.0) { return 0.0; } let rem = fmod(x, y); if (rem < 0.0 && y > 0.0) { return rem + y; } return rem; }
+fn math_mod(x: float, y: float) -> float { if (y == 0.0) { return 0.0; } let rem = fmod(x, y); if (rem < 0.0 && y > 0.0) { return rem + y; } return rem; }
 fn math_hypot(x: float, y: float) -> float { return sqrt(x * x + y * y); }
 fn math_clamp(val: float, min_val: float, max_val: float) -> float {
     if (val < min_val) { return min_val; }

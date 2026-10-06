@@ -836,6 +836,9 @@ fn cartan_tensor_train_step(hidden_ptr: ptr, target_tok_id: float, learning_rate
     if (target_idx >= vocab_cols) {
         target_idx = math_mod_val(target_idx, vocab_cols);
     }
+    if (target_idx < 0.0 || target_idx >= vocab_cols) {
+        return 0.0;
+    }
 
     var lr = learning_rate;
 

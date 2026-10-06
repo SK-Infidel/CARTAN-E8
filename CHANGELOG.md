@@ -4,6 +4,27 @@ All notable changes to the CARTAN programming language, self-hosting compiler (`
 
 In accordance with User Rule 3 and project standards, GeoMind cognitive model releases are tracked independently in [`Projects/geomind/CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/CHANGELOG.md).
 
+## [8.504.0] - 2026-10-06 (Sprint 548: Autonomous Tool Domain, Online Cross-Entropy SFT & Cognitive Thought Reasoning)
+
+### Completed & Validated
+- **Autonomous Tool Execution & Thought Reasoning (`[ISSUE-407]`)**:
+  - Overhauled [`geomind_chat_requires_tool_definitions`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl) across 11 grouped semantic intent categories.
+  - Routed tool turns to NSES Domain 11 (`TOOLS_AND_ACTIONS`) with refusal token suppression (`3805.0` and `236840.0`).
+  - Added Step 0 `<tool_call:` teacher forcing with 96-token bounded decode conditioning and fallback path/command extraction.
+  - Enhanced [`geomind_chat_resolve_path`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl) for multi-directory resolution (`..\`, `../`, `bin/`, `Projects/geomind/`, `src/`, `tools/`).
+  - Added `-think`, `--think`, `-thoughts`, `--thoughts`, `-stream`, `--stream` CLI flags and `/think` toggle with Pass 1 reasoning and Pass 2 model thoughts.
+  - Implemented continuous online SFT backpropagation (`cartan_tensor_train_step`) and Hebbian reinforcement on every successful tool trajectory.
+  - Full details tracked in [`Projects/geomind/CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/CHANGELOG.md).
+- **Heap Corruption Fixes & Stability Hardening (`[ISSUE-408]`)**:
+  - Fixed `STATUS_HEAP_CORRUPTION` (`0xC0000374`) in [`src/std/veto_gate.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/veto_gate.cl): `veto_string_to_lower` now dynamically allocates memory even on empty or null strings, preventing illegal calls to `free("")` on `.rdata`.
+  - Fixed non-negative remainder in [`src/std/math.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/math.cl) (`math_mod_val`, `math_mod`) and added bounds checking to [`src/std/hebbian.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/hebbian.cl) and [`Projects/geomind/train.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/train.cl) to eliminate negative vector indexing.
+  - Synchronized KV cache capacity at chat startup via `cartan_kv_cache_set_capacity(8192.0)` in [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl).
+  - Implemented anti-shortcut SFT reward gating: backpropagation and Hebbian reinforcement now strictly require `status="ok"` and $\ge 32$ post-tool substantive explanation tokens, preventing rewarding abrupt termination.
+  - Added multi-turn contextual path fallback to `g_last_tool_file_path` for follow-up turns.
+- **Empirical Regression Verification**:
+  - Target 88 (`test_jit_context_and_minimal_prefill.car`): ALL 5 GATES PASSED.
+  - 16 affected compiler suite targets verified 100% green via [`tools/run_affected_tests.ps1`](file:///C:/Users/rich-/source/repos/CARTAN/tools/run_affected_tests.ps1).
+
 ## [8.503.0] - 2026-10-06 (Sprint 547: CARTAN Unified Algebraic Taxonomy: Pillar 4 Abstract, Jordan, Tropical, Boolean & Universal Algebras)
 
 ### Completed & Validated

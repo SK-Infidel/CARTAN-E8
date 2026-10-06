@@ -44,6 +44,7 @@ fn hebbian_update_edge(edge_weights: ptr, edge_timestamps: ptr, edge_idx: float,
 
 // In-place reinforcement of a single edge weight
 fn hebbian_reinforce_edge(edge_weights: ptr, edge_timestamps: ptr, edge_idx: float, delta_w: float, max_w: float, current_ts: float) -> float {
+    if (edge_weights == 0.0 || edge_timestamps == 0.0 || edge_idx < 0.0) { return 0.0; }
     let cur_w = collections_list_get(edge_weights, edge_idx);
     let new_w = hebbian_strengthen_weight(cur_w, delta_w, max_w);
     hebbian_update_edge(edge_weights, edge_timestamps, edge_idx, new_w, current_ts);

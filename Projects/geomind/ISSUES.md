@@ -3717,9 +3717,33 @@ Core CARTAN programming language, compiler, runtime, and general-purpose standar
 - **Severity**: Critical (Model Integrity & Deployment Usability)
 - **Component**: `Projects/geomind/chat.cl`, `Projects/geomind/train.cl`, `Projects/geomind/streams.cl`, `Projects/geomind/geomind_app.cl`, `tools/`
 - **Description**: When executing `geomind.exe` from inside the `bin/` directory or an arbitrary working directory, relative path resolvers failed to locate `geomind_grafted_multimodal.bin`, `geomind_vocab_scripts.bin`, `geomind_stream_masks.bin`, `cognitive_memory.db`, and `wordnet_slangnet_dag.txt`. Due to silent fallbacks, the model defaulted to uninitialized Freudenthal manifold weights with unmasked vocabulary, producing gibberish special control tokens (`<unused28><tool|><unused35>...`) on user prompts and failing biometric identity verification.
-- **Resolution (Post-Sprint 541)**:
-  1. Overhauled `geomind_chat_resolve_path`, `geomind_resolve_path`, and `geomind_resolve_stream_path` to support multi-level relative navigation (`Projects/geomind/`, `../Projects/geomind/`, `../../Projects/geomind/`).
-  2. Normalized all legacy `test/geomind/` hardcoded path literals across `chat.cl`, `train.cl`, `streams.cl`, and `geomind_app.cl` to canonical `Projects/geomind/`.
-  3. Normalized developer utilities in `tools/` to emit and consume `Projects/geomind/trainingdata/`.
-  4. Recompiled `bin/geomind.exe` and verified 100% fluent inference and biometric authentication from both root and `bin/`.
+---
+
+## [ISSUE-407] [FIXED] Autonomous Tool Execution, Domain 11 Routing & Thought Reasoning
+
+- **Severity**: High (Cognitive Capabilities & Tool Autonomy)
+- **Component**: `Projects/geomind/chat.cl`, `Projects/geomind/main.car`
+- **Description**: Model was refusing tool commands or outputting simulated tool calls.
+- **Resolution (Sprint 548)**:
+  1. Expanded `geomind_chat_requires_tool_definitions` to 11 grouped semantic categories.
+  2. Routed tool calls through NSES Domain 11 (`TOOLS_AND_ACTIONS`) with token suppression on refusal tokens `3805.0` (`'[]'`) and `236840.0` (`'['`).
+  3. Added Pass 1 reasoning and Pass 2 internal thoughts with `/think` CLI toggles.
+
+---
+
+## [ISSUE-408] [FIXED] Abnormal Termination (0xC0000374 / 0xC0000005) on Large File Inspection & SFT Reward Shortcut Gaming
+
+- **Severity**: Critical (Heap Corruption & Training Integrity)
+- **Component**: `src/std/veto_gate.cl`, `src/std/math.cl`, `src/std/hebbian.cl`, `Projects/geomind/chat.cl`, `Projects/geomind/train.cl`
+- **Description**: 
+  1. `veto_string_to_lower` returned static `""` on empty strings; callers freed it via `free(low_p)`, corrupting Windows NT heap structures (`STATUS_HEAP_CORRUPTION 0xC0000374`).
+  2. `fmod` in `math_mod_val` returned negative indices on negative values, causing out-of-bounds array access.
+  3. KV cache capacity was not initialized to `g_chat_context_limit` (8192) at chat boot, causing memory overflow during large context decoding.
+  4. Online SFT rewarded any interaction where a tool call ran, even if the model errored out or quit immediately without explaining anything.
+- **Resolution**:
+  1. Made `veto_string_to_lower` allocate dynamic buffers on empty/null strings.
+  2. Wrapped `math_mod_val` and `math_mod` to return strictly non-negative values for positive moduli; added bounds checking in `cartan_hebbian_step_token` and `cartan_tensor_train_step`.
+  3. Synchronized KV cache capacity at boot via `geomind_chat_set_context_limit(g_chat_context_limit)`.
+  4. Gated SFT backpropagation: strictly requires `status="ok"` and $\ge 32$ post-tool substantive explanation tokens.
+  5. Added `g_last_tool_file_path` fallback for multi-turn conversational queries like "what else is in that file?".
 

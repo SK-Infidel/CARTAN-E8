@@ -4,6 +4,32 @@ This changelog records the complete development history, cognitive architecture 
 
 Core CARTAN programming language, compiler, runtime, and general-purpose standard library releases are tracked in the root [`CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/CHANGELOG.md).
 
+## [1.0.3] - 2026-10-06 (Sprint 548: Autonomous Neuro-Symbolic Tool Calling, Online SFT Backpropagation & Thought Transparency)
+
+### Completed & Validated
+- **Autonomous Tool Calling & NSES Domain 11 (`[ISSUE-407]`)**:
+  - Overhauled [`geomind_chat_requires_tool_definitions`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl) across 11 grouped semantic categories (files, directories, git, build, terminal commands, web, OCR, extensions, code inspection).
+  - Routed tool intent turns to NSES Domain 11 (`TOOLS_AND_ACTIONS`) and suppressed refusal tokens (`3805.0` for `'[]'` and `236840.0` for `'['`) with $-10000.0$ logit penalties.
+  - Implemented Step 0 teacher forcing priming `<tool_call:` with bounded tool response decode conditioning (96 tokens).
+  - Implemented fallback path/command extraction (`geomind_extract_path_from_prompt` and `geomind_extract_command_from_prompt`) supporting relative paths like `..\main.car` and bare filenames.
+  - Enhanced [`geomind_chat_resolve_path`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl) to recursively resolve `..\`, `../`, `bin/`, `Projects/geomind/`, `src/`, and `tools/`.
+- **Cognitive Thought Transparency & Streaming CLI Options**:
+  - Added `/think` / `t` interactive toggle and `-think` / `--think` / `-thoughts` / `--thoughts` CLI flags in [`Projects/geomind/main.car`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/main.car).
+  - Added formatted Pass 1 dynamic reasoning pass (tokens, active identity, WordNet/SlangNet taxonomy, LCA distance, E8 Lie projection, Continuous Hopfield energy/resonance, Sasaki TM brainstem routing, Shannon entropy).
+  - Added Pass 2 internal model reasoning extraction and display in [`geomind_sanitize_output_for_display`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl).
+  - Added `-stream` / `--stream` CLI flags for live fluid token flow.
+- **Continuous Online SFT Backward Pass**:
+  - Implemented [`geomind_chat_apply_tool_learning`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl) executing genuine cross-entropy gradient steps (`cartan_tensor_train_step`) and Hebbian plasticity (`cartan_hebbian_step_token`) on every successful tool execution trajectory.
+- **Heap Corruption Fixes & Stability Hardening (`[ISSUE-408]`)**:
+  - Eliminated `0xC0000374` / `0xC0000005` abnormal terminations by fixing `veto_string_to_lower` memory allocation for empty/null strings in [`src/std/veto_gate.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/veto_gate.cl).
+  - Fixed mathematical modulo non-negativity in [`src/std/math.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/math.cl) and bounded cortical vocabulary indices in [`src/std/hebbian.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/hebbian.cl) and [`Projects/geomind/train.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/train.cl).
+  - Synchronized KV cache capacity at chat startup via `cartan_kv_cache_set_capacity(8192.0)` and bound rolling context thresholds dynamically.
+  - Implemented anti-shortcut SFT reward gating: backpropagation and Hebbian reinforcement now require both `status="ok"` and $\ge 32$ post-tool substantive explanation tokens, preventing rewarding premature stopping.
+  - Added multi-turn contextual path fallback to `g_last_tool_file_path` for follow-up questions like "what else is in that file?".
+- **Empirical Regression & Canaries**:
+  - Target 88 (`test_jit_context_and_minimal_prefill.car`): ALL 5 GATES PASSED (Gate 1 minimal preamble 24 tokens $\le 30.0$; Gate 5 prefill 85.8% drop).
+  - 16 affected compiler suite targets verified 100% green via [`tools/run_affected_tests.ps1`](file:///C:/Users/rich-/source/repos/CARTAN/tools/run_affected_tests.ps1).
+
 ## [1.0.2] - 2026-10-06 (Post-Sprint 541 Path Hardening: Canonical Path Realignment & Multi-Directory Asset Resolution)
 
 ### Completed & Validated

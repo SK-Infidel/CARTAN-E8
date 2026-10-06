@@ -239,6 +239,9 @@ fn cartan_hebbian_step_token(hidden_ptr: ptr, tok_id: float, neuromodulator: flo
     if (target_idx < 0.0 || target_idx >= g_cortical_vocab) {
         target_idx = math_mod_val(target_idx, g_cortical_vocab);
     }
+    if (target_idx < 0.0 || target_idx >= g_cortical_vocab) {
+        return 0.0;
+    }
 
     var m = neuromodulator;
     if (m == 0.0) { m = 1.0; }

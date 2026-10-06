@@ -634,6 +634,7 @@ fn geomind_chat_interactive_loop(image_arg: string, audio_arg: string, tokens_ar
             printf("  /stream, s              Toggle output mode between BUFFERED and STREAMING\n");
             printf("  /color, c               Toggle ANSI terminal color styling (default: enabled)\n");
             printf("  /anim, a                Toggle dynamic in-place ASCII animations (default: enabled)\n");
+            printf("  /tools                  Toggle autonomous tool calling (on-demand vs always-active)\n");
             printf("  /whoami                 Display active interlocutor profile and verification status\n");
             printf("  /register-face [user]   Capture camera frame and enroll biometric face map in Domain 10\n");
             printf("  /verify-face            Re-scan webcam and authenticate interlocutor identity\n");
@@ -738,6 +739,16 @@ fn geomind_chat_interactive_loop(image_arg: string, audio_arg: string, tokens_ar
             } else {
                 geomind_chat_set_buffered_output(1.0);
                 printf("  [GeoMind Interface] Output Mode: BUFFERED (Clean response on completion, /stream or 's' to toggle)\n\n");
+            }
+            cartan_flush(0.0);
+        } else if (cartan_string_eq(line, "/tools") == 1.0) {
+            let cur_tp = geomind_chat_get_tools_persistent();
+            if (cur_tp == 1.0) {
+                geomind_chat_set_tools_persistent(0.0);
+                printf("  [GeoMind Tools] Autonomous Tool Calling: ON-DEMAND INTENT GATING (/tools to toggle)\n\n");
+            } else {
+                geomind_chat_set_tools_persistent(1.0);
+                printf("  %s[GeoMind Tools] Autonomous Tool Calling: ALWAYS ACTIVE (Persistent across all turns)%s\n\n", geomind_col_green(), geomind_col_reset());
             }
             cartan_flush(0.0);
         } else if (cartan_string_eq(line, "/color") == 1.0 || cartan_string_eq(line, "c") == 1.0) {
@@ -900,6 +911,20 @@ fn geomind_run_chat_mode(arg_count: float, no_priming: float) -> float {
     let user_cli = get_cli_param("-user", arg_count);
     if (cartan_string_length(user_cli) > 0.0) {
         geomind_chat_set_active_user(user_cli, 1.0);
+    }
+
+    let think_flag = get_cli_flag_present("-think", arg_count) +
+                     get_cli_flag_present("--think", arg_count) +
+                     get_cli_flag_present("-thoughts", arg_count) +
+                     get_cli_flag_present("--thoughts", arg_count);
+    if (think_flag > 0.0) {
+        geomind_chat_set_show_thinking(1.0);
+    }
+
+    let stream_flag = get_cli_flag_present("-stream", arg_count) +
+                      get_cli_flag_present("--stream", arg_count);
+    if (stream_flag > 0.0) {
+        geomind_chat_set_buffered_output(0.0);
     }
 
     if (cartan_string_length(prompt_arg) == 0.0 && arg_count >= 3.0) {
