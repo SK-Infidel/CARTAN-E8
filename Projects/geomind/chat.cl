@@ -2999,6 +2999,16 @@ fn geomind_chat_capture_face_frame() -> ptr {
 fn geomind_chat_register_face(user_id: string) -> float {
     let db = geomind_chat_get_db();
     if (db == 0.0) { return 0.0; }
+    var clean_user = user_id;
+    if (cartan_string_length(clean_user) == 0.0 ||
+        cartan_string_contains(clean_user, "[user]") == 1.0 ||
+        cartan_string_contains(clean_user, "<user>") == 1.0 ||
+        cartan_string_contains(clean_user, "Capture camera") == 1.0) {
+        clean_user = "User:Rick";
+    }
+    if (cartan_string_starts_with(clean_user, "User:") == 0.0) {
+        clean_user = cartan_string_concat("User:", clean_user);
+    }
     var emb = g_active_face_embedding;
     if (emb == 0.0) {
         emb = geomind_chat_capture_face_frame();
@@ -3008,24 +3018,24 @@ fn geomind_chat_register_face(user_id: string) -> float {
         return 0.0;
     }
     let csv = vision_serialize_vector_csv(emb, 320.0);
-    let ok = sqlite_vec_save_user_face_embedding(db, user_id, csv);
+    let ok = sqlite_vec_save_user_face_embedding(db, clean_user, csv);
     if (ok == 1.0) {
-        sqlite_vec_set_user_attr(db, user_id, "face_registered", "1");
-        if (cartan_string_eq(user_id, "User:Rick") == 1.0) {
-            sqlite_vec_set_user_attr(db, user_id, "first_name", "Richard");
-            sqlite_vec_set_user_attr(db, user_id, "surname", "Weber");
-            sqlite_vec_set_user_attr(db, user_id, "preferred_name", "Rick");
-            sqlite_vec_set_user_attr(db, user_id, "nicknames", "Rich");
-            sqlite_vec_set_user_attr(db, user_id, "role", "Creator & Architect");
-            sqlite_vec_set_user_attr(db, user_id, "relationship", "Father / Primary Creator");
-            sqlite_vec_set_user_attr(db, user_id, "permission_tier", "root");
+        sqlite_vec_set_user_attr(db, clean_user, "face_registered", "1");
+        if (cartan_string_eq(clean_user, "User:Rick") == 1.0) {
+            sqlite_vec_set_user_attr(db, clean_user, "first_name", "Richard");
+            sqlite_vec_set_user_attr(db, clean_user, "surname", "Weber");
+            sqlite_vec_set_user_attr(db, clean_user, "preferred_name", "Rick");
+            sqlite_vec_set_user_attr(db, clean_user, "nicknames", "Rich");
+            sqlite_vec_set_user_attr(db, clean_user, "role", "Creator & Architect");
+            sqlite_vec_set_user_attr(db, clean_user, "relationship", "Father / Primary Creator");
+            sqlite_vec_set_user_attr(db, clean_user, "permission_tier", "root");
         }
-        printf("[GeoMind Biometrics] Successfully enrolled face map for '%s' in Domain 10 (USERS_AND_RELATIONSHIPS).\n\n", user_id);
-        g_active_user_id = user_id;
+        printf("[GeoMind Biometrics] Successfully enrolled face map for '%s' in Domain 10 (USERS_AND_RELATIONSHIPS).\n\n", clean_user);
+        g_active_user_id = clean_user;
         g_active_user_verified = 1.0;
         g_pending_guest_face = 0.0;
     } else {
-        printf("[GeoMind Biometrics] Error: Failed to save face map for '%s'.\n\n", user_id);
+        printf("[GeoMind Biometrics] Error: Failed to save face map for '%s'.\n\n", clean_user);
     }
     return ok;
 }
@@ -3056,7 +3066,10 @@ fn geomind_chat_startup_biometric_scan(db: ptr) -> float {
         while (sqlite_vec_step(stmt) == 100.0) {
             let u_id = cartan_sqlite_column_text(stmt, 0.0);
             let u_csv = sqlite_vec_get_user_face_embedding(db, u_id);
-            if (cartan_string_length(u_csv) > 0.0) {
+            if (cartan_string_length(u_csv) > 0.0 &&
+                cartan_string_starts_with(u_id, "User:[") == 0.0 &&
+                cartan_string_starts_with(u_id, "User:<") == 0.0 &&
+                cartan_string_length(u_id) <= 32.0) {
                 let u_emb = vision_deserialize_vector_csv(u_csv, 320.0);
                 let sim = vision_cosine_similarity(live_emb, u_emb, 320.0);
                 free(u_emb);

@@ -671,7 +671,15 @@ fn geomind_chat_interactive_loop(image_arg: string, audio_arg: string, tokens_ar
         } else if (cartan_string_starts_with(line, "/register-face") == 1.0) {
             var target_user = "User:Rick";
             if (len > 15.0) {
-                target_user = cartan_string_substring(line, 15.0, len);
+                let raw_arg = cartan_string_substring(line, 15.0, len);
+                let trimmed = cartan_string_trim(raw_arg);
+                if (cartan_string_length(trimmed) > 0.0 &&
+                    cartan_string_starts_with(trimmed, "[") == 0.0 &&
+                    cartan_string_starts_with(trimmed, "<") == 0.0 &&
+                    cartan_string_contains(trimmed, "Capture camera") == 0.0 &&
+                    cartan_string_length(trimmed) <= 32.0) {
+                    target_user = trimmed;
+                }
             }
             if (cartan_string_starts_with(target_user, "User:") == 0.0) {
                 target_user = cartan_string_concat("User:", target_user);
@@ -681,8 +689,21 @@ fn geomind_chat_interactive_loop(image_arg: string, audio_arg: string, tokens_ar
         } else if (cartan_string_eq(line, "/verify-face") == 1.0) {
             geomind_chat_verify_face();
             cartan_flush(0.0);
-        } else if (cartan_string_starts_with(line, "/switch-user ") == 1.0) {
-            let u_id = cartan_string_substring(line, 13.0, len);
+        } else if (cartan_string_starts_with(line, "/switch-user") == 1.0) {
+            var u_id = "User:Rick";
+            if (len > 13.0) {
+                let raw_arg = cartan_string_substring(line, 13.0, len);
+                let trimmed = cartan_string_trim(raw_arg);
+                if (cartan_string_length(trimmed) > 0.0 &&
+                    cartan_string_starts_with(trimmed, "<") == 0.0 &&
+                    cartan_string_starts_with(trimmed, "[") == 0.0 &&
+                    cartan_string_length(trimmed) <= 32.0) {
+                    u_id = trimmed;
+                }
+            }
+            if (cartan_string_starts_with(u_id, "User:") == 0.0) {
+                u_id = cartan_string_concat("User:", u_id);
+            }
             geomind_chat_switch_user(u_id);
             cartan_flush(0.0);
         } else if (cartan_string_eq(line, "/clear") == 1.0 || cartan_string_eq(line, "/reset") == 1.0 || cartan_string_eq(line, "/new") == 1.0) {
