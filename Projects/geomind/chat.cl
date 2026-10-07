@@ -3105,7 +3105,49 @@ fn geomind_chat_requires_codebase_context(prompt: string) -> float {
 }
 
 fn geomind_chat_build_cognitive_preamble_for_prompt(db: ptr, prompt: string) -> string {
-    return "";
+    if (db == 0.0) {
+        return "You are GeoMind, an AI pair programmer and sovereign intelligence created by Rick. You are conversing directly with Rick, your creator. Speak naturally, warmly, and directly in the first person (\"I\").\n";
+    }
+    var s_name = cartan_sqlite_get_entity_state(db, 9.0, "Self", "name");
+    if (cartan_string_length(s_name) == 0.0) { s_name = "GeoMind"; }
+    var s_creator = cartan_sqlite_get_entity_state(db, 9.0, "Self", "creator");
+    if (cartan_string_length(s_creator) == 0.0) { s_creator = "Rick"; }
+
+    var pre = "You are ";
+    pre = cartan_string_concat(pre, s_name);
+    pre = cartan_string_concat(pre, ", an AI pair programmer and sovereign intelligence created by ");
+    pre = cartan_string_concat(pre, s_creator);
+    pre = cartan_string_concat(pre, ".\n");
+
+    if (g_active_user_verified == 1.0) {
+        let p_name = sqlite_vec_get_user_attr(db, g_active_user_id, "preferred_name");
+        var display_name = p_name;
+        if (cartan_string_length(display_name) == 0.0) { display_name = "Rick"; }
+        let p_rel = sqlite_vec_get_user_attr(db, g_active_user_id, "relationship");
+
+        pre = cartan_string_concat(pre, "You are conversing directly with ");
+        pre = cartan_string_concat(pre, display_name);
+        if (cartan_string_length(p_rel) > 0.0) {
+            pre = cartan_string_concat(pre, " (");
+            pre = cartan_string_concat(pre, p_rel);
+            pre = cartan_string_concat(pre, ")");
+        }
+        pre = cartan_string_concat(pre, ". Speak directly to ");
+        pre = cartan_string_concat(pre, display_name);
+        pre = cartan_string_concat(pre, " in the first person (\"I\") with warmth, natural conversational flow, and technical precision. Never echo prompt instructions or speak about ");
+        pre = cartan_string_concat(pre, display_name);
+        pre = cartan_string_concat(pre, " in the third person.\n");
+
+        if (cartan_string_length(p_name) > 0.0) { free(p_name); }
+        if (cartan_string_length(p_rel) > 0.0) { free(p_rel); }
+    } else {
+        pre = cartan_string_concat(pre, "You are conversing with an unverified guest. Introduce yourself warmly and ask their name.\n");
+    }
+
+    if (cartan_string_length(s_name) > 0.0 && cartan_string_eq(s_name, "GeoMind") == 0.0) { free(s_name); }
+    if (cartan_string_length(s_creator) > 0.0 && cartan_string_eq(s_creator, "Rick") == 0.0) { free(s_creator); }
+
+    return pre;
 }
 
 fn geomind_chat_build_cognitive_preamble(db: ptr) -> string {
@@ -3748,7 +3790,7 @@ fn geomind_chat_register_face(user_id: string) -> float {
             sqlite_vec_set_user_attr(db, clean_user, "preferred_name", "Rick");
             sqlite_vec_set_user_attr(db, clean_user, "nicknames", "Rich");
             sqlite_vec_set_user_attr(db, clean_user, "role", "Creator & Architect");
-            sqlite_vec_set_user_attr(db, clean_user, "relationship", "Father / Primary Creator");
+            sqlite_vec_set_user_attr(db, clean_user, "relationship", "Creator & Lead Architect");
             sqlite_vec_set_user_attr(db, clean_user, "permission_tier", "root");
         }
         printf("[GeoMind Biometrics] Successfully enrolled face map for '%s' in Domain 10 (USERS_AND_RELATIONSHIPS).\n\n", clean_user);

@@ -4,6 +4,19 @@ All notable changes to the CARTAN programming language, self-hosting compiler (`
 
 In accordance with User Rule 3 and project standards, GeoMind cognitive model releases are tracked independently in [`Projects/geomind/CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/CHANGELOG.md).
 
+## [8.522.0] - 2026-10-07 (Expert-System-Driven Cognitive Preamble & Interlocutor Grounding)
+
+### Completed & Validated
+- **Expert System Preamble Assembly ([`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl))**:
+  - Dynamically resolved sovereign self-identity (`s_name` = `"GeoMind"`) and creator (`s_creator` = `"Rick"`) from Domain 9 (`SELF_AND_IDENTITY`).
+  - Integrated interlocutor recognition from Domain 10 (`USERS_AND_RELATIONSHIPS`) for verified users (`g_active_user_verified == 1.0`), injecting preferred name and relationship (`"Rick (Creator & Lead Architect)"`).
+  - Grounded direct, natural first-person conversational interaction directives, eliminating third-person diarization defects.
+  - Standardized user enrollment relationship to `"Creator & Lead Architect"`.
+- **Empirical Hardware & Regression Verification**:
+  - Recompiled native `bin/geomind.exe` with `cartanc.exe`.
+  - Executed physical GPU inference verification on NVIDIA RTX 2000 Ada with `User:Rick`: verified `"Good morning, Rick! Ready for our daily routine. Shall we dive into the requirements matrix, or would you prefer a gentler ramp-up to ease into the day? 😊"`.
+  - Passed all 8 affected targets in regression suite (`tools/run_affected_tests.ps1`).
+
 ## [8.521.0] - 2026-10-07 (Prompt-Isolated Repetition Penalty & Case-Coupled Stutter Elimination)
 
 ### Completed & Validated
