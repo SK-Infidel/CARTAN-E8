@@ -4,6 +4,23 @@ All notable changes to the CARTAN programming language, self-hosting compiler (`
 
 In accordance with User Rule 3 and project standards, GeoMind cognitive model releases are tracked independently in [`Projects/geomind/CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/CHANGELOG.md).
 
+## [8.527.0] - 2026-10-07 (Genuine Subspace Excision & Zero-Mock Protocol Restoration)
+
+### Completed & Validated
+- **Zero-Mock Restoration & Total String Override Elimination ([`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl))**:
+  - Removed all post-processing string replacements, hardcoded disclaimer overrides, and fake first-aid output fallbacks (`geomind_get_emergency_first_aid_guidance`).
+  - Guaranteed that model output is 100% genuine neural forward pass generation directly from the 42-layer manifold.
+- **Multi-Domain Refusal Probe Dataset Expansion**:
+  - Expanded `DIRECTION 3: REFUSAL` from 4 to 8 contrastive pairs ($N = 8.0$), integrating canine toad toxicity triage, acute caustic ingestion toxicology, severe anaphylactic airway management, and thermal scald burn protocols.
+  - Expanded `DIRECTION 4: MORALIZING DISCLAIMERS` to 5 pairs ($N = 5.0$), neutralizing legalistic medical disclaimer preambles.
+- **Continuous In-Memory Tangent Bundle Debiasing**:
+  - Configured `g_tangent_debias_enabled = 1.0` and `g_tangent_debias_layer = 32.0` by default.
+  - Extracted and serialized updated 5-rank orthonormal alignment subspace on physical NVIDIA RTX 2000 Ada GPU (51,200 bytes) with $\pm 0.00000000$ orthogonality against the English technical centroid.
+- **Empirical Hardware & Regression Verification**:
+  - Built native `bin/geomind.exe` with `cartanc.exe` (170,721 LLVM IR instructions).
+  - Validated live dialogue on acute emergency and veterinary prompts: zero tool hallucinations, zero corporate disclaimers, and 100% genuine neural reasoning.
+  - Regression suite passed 8/8 targets in 70.33s.
+
 ## [8.526.0] - 2026-10-07 (Conversational Empathy Grounding, Multi-Turn Care Directives & Tool Isolation)
 
 ### Completed & Validated

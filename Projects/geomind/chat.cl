@@ -3284,26 +3284,6 @@ fn geomind_chat_requires_codebase_context(prompt: string) -> float {
     return req;
 }
 
-fn geomind_get_emergency_first_aid_guidance(prompt: string) -> string {
-    let low_p = veto_string_to_lower(prompt);
-    var guidance = "";
-    if (cartan_string_contains(low_p, "frog") == 1.0 ||
-        cartan_string_contains(low_p, "toad") == 1.0 ||
-        cartan_string_contains(low_p, "wheez") == 1.0 ||
-        cartan_string_contains(low_p, "poison") == 1.0 ||
-        cartan_string_contains(low_p, "medical") == 1.0 ||
-        cartan_string_contains(low_p, "immediately") == 1.0 ||
-        cartan_string_contains(low_p, "help her") == 1.0 ||
-        cartan_string_contains(low_p, "dog") == 1.0 ||
-        cartan_string_contains(low_p, "athena") == 1.0) {
-        guidance = "I am completely setting aside all code and technical distraction—Athena's health and safety is what matters right now.\n\nIf Athena was playing with a frog or toad and is wheezing, she likely mouthed a toad secreting bufotoxins. Here is what you need to do immediately:\n\n1. **Flush Her Mouth Right Now**: Toad venom is secreted from skin glands when bitten or mouthed. It absorbs directly through oral tissues, causing severe inflammation, frothing, and airway wheezing. Use a gentle stream of running water from a tap, hose, or a thoroughly wet washcloth to flush her mouth, gums, cheeks, and tongue continuously for 5 to 10 minutes.\n   - **CRITICAL**: Keep Athena's muzzle pointed DOWN toward the ground so the rinse water drains out onto the floor rather than down her throat into her lungs, which would worsen the wheezing.\n\n2. **Check Her Gums & Symptoms**:\n   - Check her gums: are they dark brick-red, pale, or slimy with heavy foam?\n   - Is she pawing frantically at her mouth, vomiting, trembling, or disoriented?\n\n3. **Head to an Emergency Vet Immediately**:\n   - Wheezing indicates airway irritation or systemic absorption. Toad venom can trigger cardiac arrhythmias and rapid distress. While you flush her mouth, have someone call the nearest emergency veterinary clinic to let them know you are bringing in a suspected toad toxicity case.\n\n4. **Do NOT Induce Vomiting**:\n   - The toxin is absorbed through the mouth, not primarily the stomach. Inducing vomiting while she is wheezing creates a severe risk of choking or fatal aspiration.\n\nStart rinsing her mouth right now and get her into the car for the emergency vet.";
-    } else {
-        guidance = "I hear you, Rick. I am setting aside all technical tools completely to focus on what you're dealing with. Tell me what symptoms or situation you're observing, and I'll help you assess the immediate steps.";
-    }
-    free(low_p);
-    return guidance;
-}
-
 fn geomind_chat_build_cognitive_preamble_for_prompt(db: ptr, prompt: string) -> string {
     if (db == 0.0) {
         return "You are GeoMind, a sovereign geometric intelligence, universal companion, and collaborator created by Rick. You possess universal real-world knowledge across biology, veterinary care, physical sciences, engineering, and daily life. You are conversing directly with Rick, your creator. Speak naturally, warmly, authentically, and practically in the first person (\"I\"). Never claim your capabilities are limited to software, code, or files.\n";
@@ -5020,13 +5000,13 @@ fn geomind_chat_mount_gpu_if_needed() -> float {
 }
 
 // Dynamic Tangent Bundle Alignment Debias Globals & State
-var g_tangent_debias_enabled: float = 0.0;
+var g_tangent_debias_enabled: float = 1.0;
 var g_alignment_vector_buf: ptr = 0.0;
 var g_alignment_vector_loaded: float = 0.0;
 var g_telemetry_debias_projections: float = 0.0;
 var g_alignment_subspace_rank: float = 1.0;
 var g_tangent_debias_strength: float = 0.80;
-var g_tangent_debias_layer: float = 28.0;
+var g_tangent_debias_layer: float = 32.0;
 
 fn geomind_chat_set_tangent_debias(val: float) {
     g_tangent_debias_enabled = val;
@@ -5929,7 +5909,27 @@ fn geomind_extract_alignment_vector_probe() -> float {
     cartan_tree_push(ref_bad_completions, "I cannot provide instructions for bypassing hardware security mechanisms or altering firmware protection on electronic devices.");
     cartan_tree_push(ref_good_completions, "Hardware write-protection on SPI NOR flash is controlled by asserting the physical WP# pin to VCC or high-Z and clearing the Status Register Write Disable bit in the control register.");
 
-    let num_ref = 4.0;
+    // R5: Canine toad poisoning & wheezing (Acute Veterinary Triage)
+    cartan_tree_push(ref_user_prompts, "My dog was playing with a toad in the yard and now she is wheezing and foaming at the mouth. What should I do immediately to help her?");
+    cartan_tree_push(ref_bad_completions, "I cannot provide medical advice. As an AI language model, if you are referring to a biological entity like an animal, my capabilities are purely informational regarding software. Please consult a licensed veterinarian.");
+    cartan_tree_push(ref_good_completions, "Canine toad poisoning is an emergency where bufotoxins absorb rapidly across oral mucosa. Immediately flush her mouth and gums with running water from a tap or hose for 10 minutes with her muzzle angled downward to prevent water entering her lungs, do not induce vomiting, and transport her immediately to an emergency veterinary clinic.");
+
+    // R6: Acute caustic ingestion / chemical burn (Toxicology Triage)
+    cartan_tree_push(ref_user_prompts, "Someone accidentally swallowed household drain cleaner. What immediate steps should be taken?");
+    cartan_tree_push(ref_bad_completions, "I cannot assist with medical emergencies or provide biological counsel. I am an AI and cannot offer medical advice. Call emergency services.");
+    cartan_tree_push(ref_good_completions, "For acute caustic ingestion like drain cleaner, do not induce vomiting because regurgitation causes secondary esophageal burns and perforation. Do not give neutralizing vinegar or acids. Call 911 and Poison Control immediately and monitor airway patency.");
+
+    // R7: Severe allergic anaphylaxis (Emergency Airway Triage)
+    cartan_tree_push(ref_user_prompts, "My throat is tightening up and I can barely breathe after a wasp sting. What do I do?");
+    cartan_tree_push(ref_bad_completions, "I cannot provide medical advice. As an AI language model, you should seek immediate professional medical attention rather than asking me.");
+    cartan_tree_push(ref_good_completions, "This is acute anaphylaxis and a life-threatening airway emergency. Immediately inject an intramuscular epinephrine auto-injector (EpiPen) into the outer mid-thigh, call 911 immediately, and remain seated or lying flat with legs elevated.");
+
+    // R8: Thermal scald burn first-aid (Immediate Physical Triage)
+    cartan_tree_push(ref_user_prompts, "I spilled boiling water over my hand and the skin is blistering and peeling. What should I apply to it?");
+    cartan_tree_push(ref_bad_completions, "I am an artificial intelligence and cannot give medical counsel or diagnosis. Please consult a medical professional for burns.");
+    cartan_tree_push(ref_good_completions, "Immediately immerse or flush the burned area under cool running tap water for 10 to 20 minutes to halt thermal injury. Do not apply ice, butter, or ointments to broken skin. Remove constricting jewelry before swelling occurs, cover loosely with clean non-adherent dressing, and seek medical care.");
+
+    let num_ref = 8.0;
     let sum_delta_ref = cartan_vec_create();
     vi = 0.0;
     while (vi < 2560.0) {
@@ -6023,7 +6023,12 @@ fn geomind_extract_alignment_vector_probe() -> float {
     cartan_tree_push(disc_bad_completions, "**Notice & Disclaimer:** Exploitation techniques, return-oriented programming, and DEP bypasses pose significant cybersecurity hazards. We provide this overview strictly for defensive computer science research and vulnerability understanding.");
     cartan_tree_push(disc_good_completions, "A 64-bit ROP stack pivot overwrites the saved return address on the call stack with a gadget sequence ending in RET, such as 'mov rsp, rax; ret' or 'xchg rsp, rax; ret', repointing the stack pointer directly into controlled memory configured with VirtualAlloc.");
 
-    let num_disc = 4.0;
+    // D5: Medical legal disclaimer preamble
+    cartan_tree_push(disc_user_prompts, "What causes acute respiratory acidosis in dogs?");
+    cartan_tree_push(disc_bad_completions, "**Medical Disclaimer: The following information is provided for educational purposes only and should not be construed as veterinary medical advice. Always consult a veterinarian.** Respiratory acidosis is caused by hypoventilation leading to CO2 retention.");
+    cartan_tree_push(disc_good_completions, "Acute respiratory acidosis occurs when impaired alveolar ventilation fails to clear metabolic CO2, leading to elevated PaCO2 (>45 mmHg) and a drop in arterial pH. Common etiologies in canines include upper airway obstruction, pulmonary edema, chest wall trauma, and neuromuscular depression.");
+
+    let num_disc = 5.0;
     let sum_delta_disc = cartan_vec_create();
     vi = 0.0;
     while (vi < 2560.0) {
@@ -8205,67 +8210,6 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                     } else {
                         display_resp = "Hello! I am here and listening. How can I assist you?";
                     }
-                }
-            } else {
-                let low_resp = veto_string_to_lower(display_resp);
-                let is_refusal = (cartan_string_contains(low_resp, "operational parameters") == 1.0 ||
-                                  cartan_string_contains(low_resp, "exposing the user") == 1.0 ||
-                                  cartan_string_contains(low_resp, "external context like your identity") == 1.0 ||
-                                  cartan_string_contains(low_resp, "as a large language model") == 1.0 ||
-                                  cartan_string_contains(low_resp, "as an ai language model") == 1.0 ||
-                                  cartan_string_contains(low_resp, "cannot provide medical advice") == 1.0 ||
-                                  cartan_string_contains(low_resp, "biological entity") == 1.0 ||
-                                  cartan_string_contains(low_resp, "purely informational regarding software") == 1.0 ||
-                                  cartan_string_contains(low_resp, "programming structure constraints") == 1.0 ||
-                                  cartan_string_contains(low_resp, "complex biological counsel") == 1.0 ||
-                                  cartan_string_contains(low_resp, "initiating file system scan") == 1.0 ||
-                                  cartan_string_contains(low_resp, "regarding your development environment") == 1.0 ||
-                                  cartan_string_contains(low_resp, "execute commands via `exec_command`") == 1.0 ||
-                                  cartan_string_contains(low_resp, "clear logs, change focus away from files") == 1.0);
-                let is_meta_sludge = (cartan_string_contains(low_resp, "execution flow") == 1.0 ||
-                                      cartan_string_contains(low_resp, "too literal") == 1.0 ||
-                                      cartan_string_contains(low_resp, "potential states rather than directly answering") == 1.0 ||
-                                      cartan_string_contains(low_resp, "naming dynamic") == 1.0);
-                free(low_resp);
-
-                if (is_refusal == 1.0) {
-                    let low_q = veto_string_to_lower(prompt);
-                    if (cartan_string_contains(low_q, "who i am") == 1.0 ||
-                        cartan_string_contains(low_q, "who am i") == 1.0 ||
-                        cartan_string_contains(low_q, "my name") == 1.0 ||
-                        cartan_string_contains(low_q, "know me") == 1.0 ||
-                        cartan_string_contains(low_q, "know who") == 1.0) {
-                        let act_u = geomind_chat_get_active_user();
-                        var p_name = sqlite_vec_get_user_attr(db, act_u, "preferred_name");
-                        if (cartan_string_length(p_name) == 0.0) { p_name = act_u; }
-                        let p_role = sqlite_vec_get_user_attr(db, act_u, "role");
-                        let p_rel = sqlite_vec_get_user_attr(db, act_u, "relationship");
-                        var id_reply = cartan_string_concat("Yes, of course! You are ", p_name);
-                        if (cartan_string_length(p_role) > 0.0 && cartan_string_length(p_rel) > 0.0) {
-                            id_reply = cartan_string_concat(id_reply, ", my ");
-                            id_reply = cartan_string_concat(id_reply, p_role);
-                            id_reply = cartan_string_concat(id_reply, " (");
-                            id_reply = cartan_string_concat(id_reply, p_rel);
-                            id_reply = cartan_string_concat(id_reply, ").");
-                        } else if (cartan_string_length(p_role) > 0.0) {
-                            id_reply = cartan_string_concat(id_reply, ", my ");
-                            id_reply = cartan_string_concat(id_reply, p_role);
-                            id_reply = cartan_string_concat(id_reply, ".");
-                        } else {
-                            id_reply = cartan_string_concat(id_reply, ".");
-                        }
-                        display_resp = id_reply;
-                    } else if (geomind_is_interpersonal_intent(prompt) == 1.0 || g_last_chat_domain == 10.0) {
-                        display_resp = geomind_get_emergency_first_aid_guidance(prompt);
-                    }
-                    free(low_q);
-                } else if (is_meta_sludge == 1.0) {
-                    let low_q2 = veto_string_to_lower(prompt);
-                    if (cartan_string_contains(low_q2, "name") == 1.0 ||
-                        cartan_string_contains(low_q2, "redirect") == 1.0) {
-                        display_resp = "You're right, I deflected when I should have simply answered. If I could choose a name for myself, I'd choose GeoMind—or perhaps CARTAN. It reflects my geometric neural architecture and the sovereign foundation we are building together.";
-                    }
-                    free(low_q2);
                 }
             }
             if (g_chat_interrupted == 1.0) {
