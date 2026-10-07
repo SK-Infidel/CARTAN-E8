@@ -43,7 +43,17 @@ def build_vocab_scripts(
     for s, idx in vocab.items():
         if idx >= vocab_size:
             continue
-        if idx in control_ids:
+        is_control = (
+            idx <= 106
+            or s.startswith("<unused")
+            or s.startswith("<|")
+            or s.endswith("|>")
+            or s.startswith("<tool")
+            or s.startswith("<turn")
+            or s.startswith("<channel")
+            or idx in control_ids
+        )
+        if is_control:
             scripts_table[idx] = 255
             counts[255] += 1
             continue

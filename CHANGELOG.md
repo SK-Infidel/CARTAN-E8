@@ -4,6 +4,20 @@ All notable changes to the CARTAN programming language, self-hosting compiler (`
 
 In accordance with User Rule 3 and project standards, GeoMind cognitive model releases are tracked independently in [`Projects/geomind/CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/CHANGELOG.md).
 
+## [8.517.0] - 2026-10-07 (Protocol Control Token Lockdown & Mindfulness Attractor Suppression)
+
+### Completed & Validated
+- **Comprehensive Protocol Control Token Classification ([`tools/build_gemma_vocab_scripts.py`](file:///C:/Users/rich-/source/repos/CARTAN/tools/build_gemma_vocab_scripts.py))**:
+  - Reclassified all 6,255 special protocol and control tokens (tokens `<= 106`, `<unused...>`, `<|...`, `...|>`, `<tool...`, `<turn...`, `<channel...`) into Category 255 (Control tokens).
+  - Regenerated `Projects/geomind/trainingdata/Checkpoints/geomind_vocab_scripts.bin`, guaranteeing that special delimiters like `<|tool>`, `<tool|>`, `<|tool_call>`, `<|channel>` are masked out from the active vocabulary mask on GPU and CPU.
+- **Protocol Leak Stripping & Decode Sampling Hard-Masking ([`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl))**:
+  - Extended `geomind_clean_display_output` to strip leaked `<tool|>`, `<|tool>`, `<|channel>`, and `<channel|>` tags from the display buffer.
+  - Hard-masked (to -10,000.0) tokens 46 (`<|tool>`), 47 (`<tool|>`), 48 (`<|tool_call>`), 49 (`<tool_call|>`), 50 (`<|tool_response>`), 51 (`<tool_response|>`), 52 (`<|"|>`), 98 (`<|think|>`), 100 (`<|channel>`), and 101 (`<channel|>`) during general decode sampling.
+  - Added Step 0 logit discipline penalties to suppress tool/channel triggers at prompt onset.
+- **Unsolicited Mindfulness & Wellness Coaching Suppression ([`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl))**:
+  - Added Section 6 to `geomind_apply_corporate_attractor_suppression` applying a -7.0 logit penalty across mindfulness, meditation, breathing exercises, and wellness lecturing tokens (`mindful`, `mindfulness`, `meditation`, `meditate`, `grounding`, `breathe`, `wellness`).
+  - Eliminates patronizing corporate wellness/meditation counseling when responding to routine morning greetings and daily planning prompts.
+
 ## [8.516.0] - 2026-10-07 (Emoji Restoration & Terminal Indicator Separation)
 
 ### Completed & Validated

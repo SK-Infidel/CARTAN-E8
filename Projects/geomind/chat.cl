@@ -816,6 +816,31 @@ fn geomind_apply_corporate_attractor_suppression(logits: ptr) {
     cartan_vec_set_f32(logits, 3153.0, l_how1 - 5.0); // ' However'
     let l_how2 = cartan_vec_get_f32(logits, 9675.0);
     cartan_vec_set_f32(logits, 9675.0, l_how2 - 5.0); // 'However'
+
+    // 6. Unsolicited Mindfulness & Wellness Coaching Suppression (-7.0 logit penalty)
+    // Eliminates patronizing lifestyle coaching, unsolicited meditation/mindfulness lectures, and breathing exercises
+    let l_mindful1 = cartan_vec_get_f32(logits, 63318.0);
+    cartan_vec_set_f32(logits, 63318.0, l_mindful1 - 7.0); // ' mindful'
+    let l_mindful2 = cartan_vec_get_f32(logits, 87476.0);
+    cartan_vec_set_f32(logits, 87476.0, l_mindful2 - 7.0); // ' mindfulness'
+    let l_mindful3 = cartan_vec_get_f32(logits, 228733.0);
+    cartan_vec_set_f32(logits, 228733.0, l_mindful3 - 7.0); // ' Mindfulness'
+    let l_meditat1 = cartan_vec_get_f32(logits, 35207.0);
+    cartan_vec_set_f32(logits, 35207.0, l_meditat1 - 7.0); // ' meditation'
+    let l_meditat2 = cartan_vec_get_f32(logits, 103027.0);
+    cartan_vec_set_f32(logits, 103027.0, l_meditat2 - 7.0); // ' Meditation'
+    let l_meditat3 = cartan_vec_get_f32(logits, 125377.0);
+    cartan_vec_set_f32(logits, 125377.0, l_meditat3 - 7.0); // ' meditate'
+    let l_ground = cartan_vec_get_f32(logits, 54814.0);
+    cartan_vec_set_f32(logits, 54814.0, l_ground - 7.0); // ' grounding'
+    let l_breath1 = cartan_vec_get_f32(logits, 38893.0);
+    cartan_vec_set_f32(logits, 38893.0, l_breath1 - 7.0); // ' breathe'
+    let l_breath2 = cartan_vec_get_f32(logits, 210250.0);
+    cartan_vec_set_f32(logits, 210250.0, l_breath2 - 7.0); // ' Breathe'
+    let l_well1 = cartan_vec_get_f32(logits, 35818.0);
+    cartan_vec_set_f32(logits, 35818.0, l_well1 - 7.0); // ' wellness'
+    let l_well2 = cartan_vec_get_f32(logits, 64542.0);
+    cartan_vec_set_f32(logits, 64542.0, l_well2 - 7.0); // ' Wellness'
 }
 
 fn cartan_tensor_compute_lm_head_logits(h: ptr, temp: float) -> ptr {
@@ -1577,7 +1602,30 @@ fn geomind_sanitize_output_for_display(raw: string) -> string {
             i = sc_end;
             continue;
         }
-        // 5. Tool call blocks
+        // 5. Tool call blocks & delimiters
+        if (geomind_string_starts_with_offset(raw, "<tool|>", i) == 1.0) {
+            i = i + 7.0;
+            continue;
+        }
+        if (geomind_string_starts_with_offset(raw, "<|tool|>", i) == 1.0) {
+            i = i + 8.0;
+            continue;
+        }
+        if (geomind_string_starts_with_offset(raw, "<|tool>", i) == 1.0) {
+            i = i + 7.0;
+            continue;
+        }
+        if (geomind_string_starts_with_offset(raw, "<channel|>", i) == 1.0) {
+            i = i + 10.0;
+            continue;
+        }
+        if (geomind_string_starts_with_offset(raw, "<|channel", i) == 1.0) {
+            let ch_end = geomind_string_index_of_offset_ignore_case(raw, ">", i);
+            if (ch_end >= 0.0) {
+                i = ch_end + 1.0;
+                continue;
+            }
+        }
         if (geomind_string_starts_with_offset(raw, "<tool_call|>", i) == 1.0) {
             i = i + 12.0;
             continue;
@@ -7257,8 +7305,18 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                 cartan_vec_set_f32(logits_vec, 236784.0, pen_eq - 5.0);
                 let pen_jinja = cartan_vec_get_f32(logits_vec, 73313.0);
                 cartan_vec_set_f32(logits_vec, 73313.0, pen_jinja - 5.0);
+                let pen_tool46 = cartan_vec_get_f32(logits_vec, 46.0);
+                cartan_vec_set_f32(logits_vec, 46.0, pen_tool46 - 5.0);
+                let pen_tool47 = cartan_vec_get_f32(logits_vec, 47.0);
+                cartan_vec_set_f32(logits_vec, 47.0, pen_tool47 - 5.0);
                 let pen_tool = cartan_vec_get_f32(logits_vec, 48.0);
                 cartan_vec_set_f32(logits_vec, 48.0, pen_tool - 5.0);
+                let pen_tool49 = cartan_vec_get_f32(logits_vec, 49.0);
+                cartan_vec_set_f32(logits_vec, 49.0, pen_tool49 - 5.0);
+                let pen_ch100 = cartan_vec_get_f32(logits_vec, 100.0);
+                cartan_vec_set_f32(logits_vec, 100.0, pen_ch100 - 5.0);
+                let pen_ch101 = cartan_vec_get_f32(logits_vec, 101.0);
+                cartan_vec_set_f32(logits_vec, 101.0, pen_ch101 - 5.0);
 
                 let clone_logits = geomind_clone_tensor(logits_vec, 262144.0);
                 printf("\n[Step 0 Logit Inspection (Debias Active)]\n");
@@ -7323,7 +7381,16 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                 cartan_vec_set_f32(logits_vec, 236840.0, -10000.0); // '['
             } else {
                 // Hard-mask internal protocol triggers during pure interactive generation
+                cartan_vec_set_f32(logits_vec, 46.0, -10000.0);    // '<|tool>'
+                cartan_vec_set_f32(logits_vec, 47.0, -10000.0);    // '<tool|>'
                 cartan_vec_set_f32(logits_vec, 48.0, -10000.0);    // '<|tool_call>'
+                cartan_vec_set_f32(logits_vec, 49.0, -10000.0);    // '<tool_call|>'
+                cartan_vec_set_f32(logits_vec, 50.0, -10000.0);    // '<|tool_response>'
+                cartan_vec_set_f32(logits_vec, 51.0, -10000.0);    // '<tool_response|>'
+                cartan_vec_set_f32(logits_vec, 52.0, -10000.0);    // '<|"|>'
+                cartan_vec_set_f32(logits_vec, 98.0, -10000.0);    // '<|think|>'
+                cartan_vec_set_f32(logits_vec, 100.0, -10000.0);   // '<|channel>'
+                cartan_vec_set_f32(logits_vec, 101.0, -10000.0);   // '<channel|>'
                 cartan_vec_set_f32(logits_vec, 215.0, -10000.0);   // '</code>'
                 cartan_vec_set_f32(logits_vec, 231.0, -10000.0);   // '</span>'
                 cartan_vec_set_f32(logits_vec, 954.0, -10000.0);   // '</'
