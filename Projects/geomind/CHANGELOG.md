@@ -4,6 +4,25 @@ This changelog records the complete development history, cognitive architecture 
 
 Core CARTAN programming language, compiler, runtime, and general-purpose standard library releases are tracked in the root [`CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/CHANGELOG.md).
 
+## [1.0.22] - 2026-10-07 (Autonomous Tool Path Aliasing, Resident Schema & Full Ingestion Pipeline)
+
+### Completed & Validated
+- **Repository Path Aliasing ([`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl))**:
+  - Automatically stripped leading `../`, `..\\`, `./`, and `.\\` when resolving repository paths (`Projects/`, `src/`, `tools/`, `test/`, `bin/`), mapping `../Projects/Geomind/` directly to `Projects/geomind/`.
+  - Canonicalized case and file aliases (`Geomind` $\rightarrow$ `geomind`, `Main.car` $\rightarrow$ `main.car`, `Chat.car` $\rightarrow$ `chat.cl`).
+  - Utilized resolved paths in tool call primers to emit canonical target paths.
+- **Intent Filter Refinement & Permanent Tool Residency**:
+  - Restricted `"how "` inquiry guard to theoretical questions (`"how to "`, `"how do "`, `"how can "`), preserving tool execution for action directives (`"how about"`, `"code review"`, `"review"`, `"take a look"`).
+  - Kept tool schemas permanently resident (`g_chat_tools_persistent = 1.0` and `geomind_chat_requires_tool_definitions() -> 1.0`).
+- **Full Tool Response Ingestion & Turn Guard**:
+  - Eliminated hardcoded 96-token limit in `max_resp_ingest`, allowing up to 512 tokens so complete tool outputs and `</tool_response>` tags enter the KV cache without truncation.
+  - Hard-masked turn-end/EOS tokens and filtered `pre_sampled_tok` during `post_tool_min_tokens` (+48 tokens), preventing premature turn aborts.
+- **Universal Subword Boundary Guard**:
+  - Implemented `geomind_ensure_subword_spacing` to enforce word boundaries and prevent token mastication (`targettingantly`, `we'taphysical`).
+- **Empirical Hardware & Regression Verification**:
+  - Built `bin/geomind.exe` with `cartanc.exe`. Tested prompt on NVIDIA RTX 2000 Ada; confirmed autonomous file reading of `Projects/geomind/main.car` with substantive synthesis.
+  - Regression suite: **8/8 passed** in 64.36s (`tools/run_affected_tests.ps1`).
+
 ## [1.0.21] - 2026-10-07 (Expert-System-Driven Cognitive Preamble & Interlocutor Grounding)
 
 ### Completed & Validated

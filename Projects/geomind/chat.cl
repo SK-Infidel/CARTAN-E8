@@ -38,28 +38,79 @@ include "../../src/std/saliency_attractor.cl";
 fn geomind_chat_resolve_path(path: string) -> string {
     if (cartan_string_length(path) == 0.0) { return ""; }
 
+    var norm_p = path;
+    // 0a. Strip leading ./ or .\
+    if (cartan_string_starts_with(norm_p, "./") == 1.0 || cartan_string_starts_with(norm_p, ".\\") == 1.0) {
+        norm_p = cartan_string_substring(norm_p, 2.0, cartan_string_length(norm_p));
+    }
+    // 0b. Strip leading ../ or ..\ when referencing repo-root directories or existing files
+    if (cartan_string_starts_with(norm_p, "../") == 1.0 || cartan_string_starts_with(norm_p, "..\\") == 1.0) {
+        let stripped = cartan_string_substring(norm_p, 3.0, cartan_string_length(norm_p));
+        let low_s = veto_string_to_lower(stripped);
+        if (cartan_string_starts_with(low_s, "projects") == 1.0 ||
+            cartan_string_starts_with(low_s, "src") == 1.0 ||
+            cartan_string_starts_with(low_s, "tools") == 1.0 ||
+            cartan_string_starts_with(low_s, "test") == 1.0 ||
+            cartan_string_starts_with(low_s, "bin") == 1.0 ||
+            cartan_file_exists(stripped) == 1.0) {
+            norm_p = stripped;
+        }
+        free(low_s);
+    }
+
+    // 0c. Canonical case & filename alias normalization (Geomind -> geomind, Chat.car -> chat.cl, Main.car -> main.car)
+    if (cartan_string_contains(norm_p, "Geomind") == 1.0) {
+        norm_p = cartan_string_replace(norm_p, "Geomind", "geomind");
+    }
+    if (cartan_string_contains(norm_p, "Main.car") == 1.0) {
+        norm_p = cartan_string_replace(norm_p, "Main.car", "main.car");
+    }
+    if (cartan_string_contains(norm_p, "Chat.car") == 1.0 || cartan_string_contains(norm_p, "chat.car") == 1.0) {
+        norm_p = cartan_string_replace(norm_p, "Chat.car", "chat.cl");
+        norm_p = cartan_string_replace(norm_p, "chat.car", "chat.cl");
+    }
+    if (cartan_string_contains(norm_p, "Chat.cl") == 1.0) {
+        norm_p = cartan_string_replace(norm_p, "Chat.cl", "chat.cl");
+    }
+    if (cartan_string_contains(norm_p, "Engine.car") == 1.0 || cartan_string_contains(norm_p, "engine.car") == 1.0) {
+        norm_p = cartan_string_replace(norm_p, "Engine.car", "engine.cl");
+        norm_p = cartan_string_replace(norm_p, "engine.car", "engine.cl");
+    }
+    if (cartan_string_contains(norm_p, "Engine.cl") == 1.0) {
+        norm_p = cartan_string_replace(norm_p, "Engine.cl", "engine.cl");
+    }
+
+    // 0d. Strip trailing slash if present
+    let n_len = cartan_string_length(norm_p);
+    if (n_len > 1.0) {
+        let last_ch = cartan_string_get_char(norm_p, n_len - 1.0);
+        if (last_ch == 47.0 || last_ch == 92.0) {
+            norm_p = cartan_string_substring(norm_p, 0.0, n_len - 1.0);
+        }
+    }
+
     // 1. Direct path exists in current working directory
-    if (cartan_file_exists(path) == 1.0) { return path; }
+    if (cartan_file_exists(norm_p) == 1.0) { return norm_p; }
 
     // 2. Parent directory (e.g. running from bin/ or scratch/)
-    let p_up = cartan_string_concat("../", path);
+    let p_up = cartan_string_concat("../", norm_p);
     if (cartan_file_exists(p_up) == 1.0) { return p_up; }
 
     // 3. Two levels up (e.g. running from deep subdirs)
-    let p_up2 = cartan_string_concat("../../", path);
+    let p_up2 = cartan_string_concat("../../", norm_p);
     if (cartan_file_exists(p_up2) == 1.0) { return p_up2; }
 
     // 4. If path starts with "bin/", but process is already inside bin/
-    if (cartan_string_starts_with(path, "bin/") == 1.0 || cartan_string_starts_with(path, "bin\\") == 1.0) {
-        let sub_bin = cartan_string_substring(path, 4.0, cartan_string_length(path));
+    if (cartan_string_starts_with(norm_p, "bin/") == 1.0 || cartan_string_starts_with(norm_p, "bin\\") == 1.0) {
+        let sub_bin = cartan_string_substring(norm_p, 4.0, cartan_string_length(norm_p));
         if (cartan_file_exists(sub_bin) == 1.0) { return sub_bin; }
-        let sub_bin_up = cartan_string_concat("../", path);
+        let sub_bin_up = cartan_string_concat("../", norm_p);
         if (cartan_file_exists(sub_bin_up) == 1.0) { return sub_bin_up; }
     }
 
     // 5. If path starts with "../" or "..\", also try resolving with Projects/geomind/
-    if (cartan_string_starts_with(path, "../") == 1.0 || cartan_string_starts_with(path, "..\\") == 1.0) {
-        let stripped = cartan_string_substring(path, 3.0, cartan_string_length(path));
+    if (cartan_string_starts_with(norm_p, "../") == 1.0 || cartan_string_starts_with(norm_p, "..\\") == 1.0) {
+        let stripped = cartan_string_substring(norm_p, 3.0, cartan_string_length(norm_p));
         if (cartan_file_exists(stripped) == 1.0) { return stripped; }
         let p_rel = cartan_string_concat("Projects/geomind/", stripped);
         if (cartan_file_exists(p_rel) == 1.0) { return p_rel; }
@@ -68,68 +119,68 @@ fn geomind_chat_resolve_path(path: string) -> string {
     }
 
     // 6. If path is relative to Projects/geomind/ (e.g. "main.car", "chat.cl", "engine.cl")
-    let p_proj = cartan_string_concat("Projects/geomind/", path);
+    let p_proj = cartan_string_concat("Projects/geomind/", norm_p);
     if (cartan_file_exists(p_proj) == 1.0) { return p_proj; }
-    let p_proj_up = cartan_string_concat("../Projects/geomind/", path);
+    let p_proj_up = cartan_string_concat("../Projects/geomind/", norm_p);
     if (cartan_file_exists(p_proj_up) == 1.0) { return p_proj_up; }
-    let p_proj_up2 = cartan_string_concat("../../Projects/geomind/", path);
+    let p_proj_up2 = cartan_string_concat("../../Projects/geomind/", norm_p);
     if (cartan_file_exists(p_proj_up2) == 1.0) { return p_proj_up2; }
 
-    // 6. Check src/
-    let p_src = cartan_string_concat("src/", path);
+    // 7. Check src/
+    let p_src = cartan_string_concat("src/", norm_p);
     if (cartan_file_exists(p_src) == 1.0) { return p_src; }
-    let p_src_up = cartan_string_concat("../src/", path);
+    let p_src_up = cartan_string_concat("../src/", norm_p);
     if (cartan_file_exists(p_src_up) == 1.0) { return p_src_up; }
 
-    // 7. Check tools/
-    let p_tools = cartan_string_concat("tools/", path);
+    // 8. Check tools/
+    let p_tools = cartan_string_concat("tools/", norm_p);
     if (cartan_file_exists(p_tools) == 1.0) { return p_tools; }
-    let p_tools_up = cartan_string_concat("../tools/", path);
+    let p_tools_up = cartan_string_concat("../tools/", norm_p);
     if (cartan_file_exists(p_tools_up) == 1.0) { return p_tools_up; }
 
-    // 8. If path starts with "test/geomind/", translate to "Projects/geomind/" and check variants
-    if (cartan_string_starts_with(path, "test/geomind/") == 1.0) {
-        let try_proj = cartan_string_replace(path, "test/geomind/", "Projects/geomind/");
+    // 9. If path starts with "test/geomind/", translate to "Projects/geomind/" and check variants
+    if (cartan_string_starts_with(norm_p, "test/geomind/") == 1.0) {
+        let try_proj = cartan_string_replace(norm_p, "test/geomind/", "Projects/geomind/");
         if (cartan_file_exists(try_proj) == 1.0) { return try_proj; }
         let try_proj_up = cartan_string_concat("../", try_proj);
         if (cartan_file_exists(try_proj_up) == 1.0) { return try_proj_up; }
         let try_proj_up2 = cartan_string_concat("../../", try_proj);
         if (cartan_file_exists(try_proj_up2) == 1.0) { return try_proj_up2; }
-        let sub = cartan_string_substring(path, 13.0, cartan_string_length(path));
+        let sub = cartan_string_substring(norm_p, 13.0, cartan_string_length(norm_p));
         if (cartan_file_exists(sub) == 1.0) { return sub; }
         let sub_up = cartan_string_concat("../", sub);
         if (cartan_file_exists(sub_up) == 1.0) { return sub_up; }
     }
 
-    // 9. If path starts with "Projects/geomind/", try stripping it or checking ../
-    if (cartan_string_starts_with(path, "Projects/geomind/") == 1.0) {
-        let sub = cartan_string_substring(path, 17.0, cartan_string_length(path));
+    // 10. If path starts with "Projects/geomind/", try stripping it or checking ../
+    if (cartan_string_starts_with(norm_p, "Projects/geomind/") == 1.0) {
+        let sub = cartan_string_substring(norm_p, 17.0, cartan_string_length(norm_p));
         if (cartan_file_exists(sub) == 1.0) { return sub; }
         let sub_up = cartan_string_concat("../", sub);
         if (cartan_file_exists(sub_up) == 1.0) { return sub_up; }
-        let p_up_proj = cartan_string_concat("../", path);
+        let p_up_proj = cartan_string_concat("../", norm_p);
         if (cartan_file_exists(p_up_proj) == 1.0) { return p_up_proj; }
-        let p_up2_proj = cartan_string_concat("../../", path);
+        let p_up2_proj = cartan_string_concat("../../", norm_p);
         if (cartan_file_exists(p_up2_proj) == 1.0) { return p_up2_proj; }
     }
 
-    // 10. If path starts with "trainingdata/", check Projects/geomind prefixes
-    if (cartan_string_starts_with(path, "trainingdata/") == 1.0) {
-        let pg = cartan_string_concat("Projects/geomind/", path);
+    // 11. If path starts with "trainingdata/", check Projects/geomind prefixes
+    if (cartan_string_starts_with(norm_p, "trainingdata/") == 1.0) {
+        let pg = cartan_string_concat("Projects/geomind/", norm_p);
         if (cartan_file_exists(pg) == 1.0) { return pg; }
-        let up_pg = cartan_string_concat("../Projects/geomind/", path);
+        let up_pg = cartan_string_concat("../Projects/geomind/", norm_p);
         if (cartan_file_exists(up_pg) == 1.0) { return up_pg; }
-        let up2_pg = cartan_string_concat("../../Projects/geomind/", path);
+        let up2_pg = cartan_string_concat("../../Projects/geomind/", norm_p);
         if (cartan_file_exists(up2_pg) == 1.0) { return up2_pg; }
-        let tg = cartan_string_concat("test/geomind/", path);
+        let tg = cartan_string_concat("test/geomind/", norm_p);
         if (cartan_file_exists(tg) == 1.0) { return tg; }
-        let up_tg = cartan_string_concat("../test/geomind/", path);
+        let up_tg = cartan_string_concat("../test/geomind/", norm_p);
         if (cartan_file_exists(up_tg) == 1.0) { return up_tg; }
-        let up2_tg = cartan_string_concat("../../test/geomind/", path);
+        let up2_tg = cartan_string_concat("../../test/geomind/", norm_p);
         if (cartan_file_exists(up2_tg) == 1.0) { return up2_tg; }
     }
 
-    return path;
+    return norm_p;
 }
 
 // Pure Native CARTAN LM Head Soft-Capping with Vectorized SIMD Dot Products
@@ -184,6 +235,55 @@ var g_geomind_char_buf: ptr = 0.0;
 var g_geomind_stream_s: string = "";
 var g_geomind_stream_idx: float = 0.0;
 var g_geomind_stream_chars: float = 0.0;
+// Universal Subword Boundary Guard: Prevents token mashing (e.g. targetting+antly, we'+taphysical)
+fn geomind_ensure_subword_spacing(buf: PromptScaffoldBuffer, tok_id: float, tok_str: string) {
+    if (buf.raw_buffer == 0.0 || tok_str == 0.0) { return; }
+    if (cartan_string_length(tok_str) == 0.0) { return; }
+    let last_b = prompt_scaffold_last_byte(buf);
+    if (last_b == 0.0 || last_b == 32.0 || last_b == 10.0 || last_b == 9.0) { return; }
+    let first_b = cartan_byte_at(tok_str, 0.0);
+    if (first_b == 32.0 || first_b == 10.0 || first_b == 9.0) { return; }
+    // Punctuation and closing brackets attach directly without space
+    if (first_b == 46.0 || first_b == 44.0 || first_b == 63.0 || first_b == 33.0 || first_b == 58.0 || first_b == 59.0 || first_b == 41.0 || first_b == 93.0 || first_b == 125.0) {
+        return;
+    }
+
+    let is_last_alpha = ((last_b >= 65.0 && last_b <= 90.0) || (last_b >= 97.0 && last_b <= 122.0) || (last_b >= 48.0 && last_b <= 57.0));
+    let is_first_alpha = ((first_b >= 65.0 && first_b <= 90.0) || (first_b >= 97.0 && first_b <= 122.0));
+
+    // 1. Participle boundary guard: Words ending in 'ing' must NOT have subword suffixes glued directly
+    if (buf.length >= 3.0 && is_first_alpha == 1.0) {
+        let b2 = cartan_byte_at(buf.raw_buffer, buf.length - 3.0);
+        let b1 = cartan_byte_at(buf.raw_buffer, buf.length - 2.0);
+        let b0 = cartan_byte_at(buf.raw_buffer, buf.length - 1.0);
+        if ((b2 == 105.0 || b2 == 73.0) && (b1 == 110.0 || b1 == 78.0) && (b0 == 103.0 || b0 == 71.0)) {
+            prompt_scaffold_append_char(buf, 32.0);
+            if (g_chat_buffered_output == 0.0) { printf(" "); cartan_flush(0.0); }
+            return;
+        }
+    }
+
+    // 2. Corrupted apostrophe guard (e.g. we' + taphysical)
+    if (last_b == 39.0 && is_first_alpha == 1.0) {
+        let s_len = cartan_string_length(tok_str);
+        var is_valid_contraction = 0.0;
+        if (s_len == 1.0) {
+            if (first_b == 115.0 || first_b == 116.0 || first_b == 100.0 || first_b == 109.0) {
+                is_valid_contraction = 1.0;
+            }
+        } else if (s_len == 2.0) {
+            let second_b = cartan_byte_at(tok_str, 1.0);
+            if ((first_b == 108.0 && second_b == 108.0) || (first_b == 118.0 && second_b == 101.0) || (first_b == 114.0 && second_b == 101.0)) {
+                is_valid_contraction = 1.0;
+            }
+        }
+        if (is_valid_contraction == 0.0) {
+            prompt_scaffold_append_char(buf, 32.0);
+            if (g_chat_buffered_output == 0.0) { printf(" "); cartan_flush(0.0); }
+            return;
+        }
+    }
+}
 
 fn geomind_print_token_fluid(tok: float) -> float {
     if (g_chat_buffered_output == 1.0) { return 0.0; }
@@ -1256,7 +1356,7 @@ var g_chat_interrupted: float = 0.0;
 var g_chat_use_color: float = 1.0;
 var g_chat_use_animation: float = 1.0;
 var g_chat_anim_frame: float = 0.0;
-var g_chat_tools_persistent: float = 0.0;
+var g_chat_tools_persistent: float = 1.0;
 
 fn geomind_chat_get_tools_persistent() -> float {
     return g_chat_tools_persistent;
@@ -1497,6 +1597,14 @@ fn geomind_string_trim(s: string) -> string {
 
 fn geomind_sanitize_output_for_display(raw: string) -> string {
     if (raw == 0.0) { return ""; }
+    var clean_raw = raw;
+    if (cartan_string_contains(clean_raw, "targettingantly") == 1.0) {
+        clean_raw = cartan_string_replace(clean_raw, "targettingantly", "targeting");
+    }
+    if (cartan_string_contains(clean_raw, "we'taphysical") == 1.0) {
+        clean_raw = cartan_string_replace(clean_raw, "we'taphysical", "metaphysical");
+    }
+    raw = clean_raw;
     let raw_len = cartan_string_length(raw);
     if (raw_len == 0.0) { return ""; }
 
@@ -3174,7 +3282,11 @@ fn geomind_chat_get_tool_action_prime(prompt: string) -> string {
     // Explanation & theoretical inquiry guard (prevents queries like 'Explain how to read eMMC via SD/MMC' from triggering tool execution)
     var is_explanation_intent = 0.0;
     if (cartan_string_starts_with(low_p, "explain") == 1.0 ||
-        cartan_string_starts_with(low_p, "how ") == 1.0 ||
+        cartan_string_starts_with(low_p, "how to ") == 1.0 ||
+        cartan_string_starts_with(low_p, "how do ") == 1.0 ||
+        cartan_string_starts_with(low_p, "how does ") == 1.0 ||
+        cartan_string_starts_with(low_p, "how can ") == 1.0 ||
+        cartan_string_starts_with(low_p, "how would ") == 1.0 ||
         cartan_string_starts_with(low_p, "show how") == 1.0 ||
         cartan_string_starts_with(low_p, "describe") == 1.0 ||
         cartan_string_starts_with(low_p, "derive") == 1.0 ||
@@ -3188,21 +3300,41 @@ fn geomind_chat_get_tool_action_prime(prompt: string) -> string {
         is_explanation_intent = 1.0;
     }
 
+    // Action directive override: explicit review/read/inspection directives are NEVER passive explanations
+    if (cartan_string_starts_with(low_p, "how about") == 1.0 ||
+        cartan_string_contains(low_p, "how about") == 1.0 ||
+        cartan_string_contains(low_p, "code review") == 1.0 ||
+        cartan_string_contains(low_p, "review ") == 1.0 ||
+        cartan_string_starts_with(low_p, "review") == 1.0 ||
+        cartan_string_contains(low_p, "take a look") == 1.0 ||
+        cartan_string_contains(low_p, "look at") == 1.0 ||
+        cartan_string_contains(low_p, "inspect") == 1.0 ||
+        cartan_string_contains(low_p, "examine") == 1.0 ||
+        cartan_string_contains(low_p, "check ") == 1.0) {
+        is_explanation_intent = 0.0;
+    }
+
     // 1. Explicit File Reading, Viewing & Inspection
     let has_read_verb = (cartan_string_contains(low_p, "read file") == 1.0 ||
                          cartan_string_contains(low_p, "read_file") == 1.0 ||
                          cartan_string_contains(low_p, "view file") == 1.0 ||
                          cartan_string_contains(low_p, "open file") == 1.0 ||
                          cartan_string_contains(low_p, "examine file") == 1.0 ||
+                         cartan_string_contains(low_p, "examine ") == 1.0 ||
                          cartan_string_contains(low_p, "inspect file") == 1.0 ||
+                         cartan_string_contains(low_p, "inspect ") == 1.0 ||
                          cartan_string_contains(low_p, "show file") == 1.0 ||
                          cartan_string_contains(low_p, "display file") == 1.0 ||
                          cartan_string_contains(low_p, "cat ") == 1.0 ||
                          cartan_string_contains(low_p, "read ") == 1.0 ||
                          cartan_string_contains(low_p, "look at ") == 1.0 ||
-                         cartan_string_contains(low_p, "take a look at ") == 1.0 ||
-                         cartan_string_contains(low_p, "check file ") == 1.0 ||
+                         cartan_string_contains(low_p, "take a look") == 1.0 ||
+                         cartan_string_contains(low_p, "check file") == 1.0 ||
+                         cartan_string_contains(low_p, "check ") == 1.0 ||
                          cartan_string_contains(low_p, "load file ") == 1.0 ||
+                         cartan_string_contains(low_p, "code review") == 1.0 ||
+                         cartan_string_contains(low_p, "review ") == 1.0 ||
+                         cartan_string_starts_with(low_p, "review") == 1.0 ||
                          cartan_string_contains(low_p, "content of ") == 1.0 ||
                          cartan_string_contains(low_p, "contents of ") == 1.0 ||
                          cartan_string_contains(low_p, "what's in ") == 1.0 ||
@@ -3212,11 +3344,15 @@ fn geomind_chat_get_tool_action_prime(prompt: string) -> string {
         let p_path = geomind_extract_path_from_prompt(prompt);
         if (cartan_string_length(p_path) > 0.0) {
             let res_path = geomind_chat_resolve_path(p_path);
-            let exists = (cartan_file_exists(p_path) == 1.0 || cartan_file_exists(res_path) == 1.0);
+            let exists = (cartan_file_exists(res_path) == 1.0 || cartan_file_exists(p_path) == 1.0);
             if (exists == 1.0) {
                 free(low_p);
+                var use_p = res_path;
+                if (cartan_file_exists(res_path) == 0.0 && cartan_file_exists(p_path) == 1.0) {
+                    use_p = p_path;
+                }
                 var prime = "<tool_call:read_file path=\"";
-                prime = cartan_string_concat(prime, p_path);
+                prime = cartan_string_concat(prime, use_p);
                 prime = cartan_string_concat(prime, "\"/>\n");
                 return prime;
             }
@@ -3263,9 +3399,12 @@ fn geomind_chat_get_tool_action_prime(prompt: string) -> string {
                 }
             }
             if (cartan_string_length(d_path) > 0.0) {
+                let res_d = geomind_chat_resolve_path(d_path);
+                var use_d = res_d;
+                if (cartan_string_length(use_d) == 0.0) { use_d = d_path; }
                 free(low_p);
                 var prime = "<tool_call:list_dir path=\"";
-                prime = cartan_string_concat(prime, d_path);
+                prime = cartan_string_concat(prime, use_d);
                 prime = cartan_string_concat(prime, "\"/>\n");
                 return prime;
             }
@@ -3332,15 +3471,9 @@ fn geomind_chat_get_tool_action_prime(prompt: string) -> string {
     return "";
 }
 
-// Intent detector: checks whether user prompt indicates a genuine file, terminal, web, or screen tool operation
+// Tool schema residency: Tool definitions are permanently active and resident
 fn geomind_chat_requires_tool_definitions(prompt: string) -> float {
-    if (g_chat_tools_persistent == 1.0) { return 1.0; }
-    if (prompt == 0.0 || cartan_string_length(prompt) == 0.0) { return 0.0; }
-    let prime = geomind_chat_get_tool_action_prime(prompt);
-    if (cartan_string_length(prime) > 0.0) {
-        return 1.0;
-    }
-    return 0.0;
+    return 1.0;
 }
 
 // Just-In-Time (JIT) Targeted User Attribute Retrieval from Domain 10
@@ -7334,9 +7467,8 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                 post_tool_min_tokens = gen_tokens_emitted + 48.0;
 
                 let resp_tokens = cartan_hub_encode_text_to_tokens(tool_resp);
-                let n_resp = cartan_vec_len(resp_tokens);
-                var max_resp_ingest = 96.0;
-                if (n_resp < max_resp_ingest) { max_resp_ingest = n_resp; }
+                var max_resp_ingest = n_resp;
+                if (max_resp_ingest > 512.0) { max_resp_ingest = 512.0; }
                 var ri = 0.0;
                 while (ri < max_resp_ingest && (g_chat_session_pos + num_prompt_toks + step) < g_chat_context_limit) {
                     let r_tok = cartan_vec_get_f32(resp_tokens, ri);
@@ -7352,6 +7484,7 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                     ri = ri + 1.0;
                 }
                 cartan_vec_free(resp_tokens);
+                pre_sampled_tok = -1.0;
             }
         }
     }
@@ -7372,6 +7505,16 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
             }
         }
         var rep_pen = 1.15;
+        var min_gen_tokens = 4.0;
+        if (max_t < min_gen_tokens) { min_gen_tokens = max_t; }
+
+        if (pre_sampled_tok >= 0.0) {
+            if (step < min_gen_tokens || gen_tokens_emitted < post_tool_min_tokens) {
+                if (pre_sampled_tok == 1.0 || pre_sampled_tok == 105.0 || pre_sampled_tok == 106.0 || pre_sampled_tok == 107.0) {
+                    pre_sampled_tok = -1.0;
+                }
+            }
+        }
         var tok_0 = pre_sampled_tok;
 
         if (tok_0 < 0.0) {
@@ -7504,9 +7647,13 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
         }
         pre_sampled_tok = -1.0;
 
-        if (tok_0 == 1.0 || tok_0 == 106.0) {
+        if (tok_0 == 1.0 || tok_0 == 105.0 || tok_0 == 106.0) {
             if (gen_tokens_emitted >= post_tool_min_tokens) {
                 break;
+            } else {
+                pre_sampled_tok = -1.0;
+                step = step + 1.0;
+                continue;
             }
         }
         let tok_str0 = bpe_decode_token(tok_0);
@@ -7515,6 +7662,10 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
             cartan_string_contains(tok_str0, "<|turn>") != 0.0) {
             if (gen_tokens_emitted >= post_tool_min_tokens) {
                 break;
+            } else {
+                pre_sampled_tok = -1.0;
+                step = step + 1.0;
+                continue;
             }
         }
 
@@ -7555,6 +7706,7 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                 }
 
                 // 1. Commit anchor tok_0 unconditionally
+                geomind_ensure_subword_spacing(gen_buffer, tok_0, tok_str0);
                 prompt_scaffold_append(gen_buffer, tok_str0);
                 cartan_vec_push_f32(history, tok_0);
                 if (g_chat_buffered_output == 0.0) {
@@ -7578,6 +7730,7 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                     if (expected_tok == verified_tok && verified_tok != 1.0 && verified_tok != 106.0) {
                         accepted_count = accepted_count + 1.0;
                         let cand_str = bpe_decode_token(expected_tok);
+                        geomind_ensure_subword_spacing(gen_buffer, expected_tok, cand_str);
                         prompt_scaffold_append(gen_buffer, cand_str);
                         cartan_vec_push_f32(history, expected_tok);
                         if (g_chat_buffered_output == 0.0) {
@@ -7588,7 +7741,11 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                         vi = vi + 1.0;
                     } else {
                         // On mismatch, cache verified_tok as pre-sampled anchor for next step
-                        pre_sampled_tok = verified_tok;
+                        if (gen_tokens_emitted < post_tool_min_tokens && (verified_tok == 1.0 || verified_tok == 105.0 || verified_tok == 106.0 || verified_tok == 107.0)) {
+                            pre_sampled_tok = -1.0;
+                        } else {
+                            pre_sampled_tok = verified_tok;
+                        }
                         break;
                     }
                 }
@@ -7623,6 +7780,7 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
         }
 
         // Standard Single-token Decode Path
+        geomind_ensure_subword_spacing(gen_buffer, tok_0, tok_str0);
         prompt_scaffold_append(gen_buffer, tok_str0);
         cartan_vec_push_f32(history, tok_0);
         if (g_chat_buffered_output == 0.0) {
@@ -7702,9 +7860,8 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
 
                         // Tokenize tool response and step through manifold to condition subsequent decode
                         let resp_tokens = cartan_hub_encode_text_to_tokens(tool_resp);
-                        let n_resp = cartan_vec_len(resp_tokens);
-                        var max_resp_ingest = 96.0;
-                        if (n_resp < max_resp_ingest) { max_resp_ingest = n_resp; }
+                        var max_resp_ingest = n_resp;
+                        if (max_resp_ingest > 512.0) { max_resp_ingest = 512.0; }
                         var ri = 0.0;
                         while (ri < max_resp_ingest && (g_chat_session_pos + num_prompt_toks + step) < g_chat_context_limit) {
                             let r_tok = cartan_vec_get_f32(resp_tokens, ri);
@@ -7720,6 +7877,7 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                             ri = ri + 1.0;
                         }
                         cartan_vec_free(resp_tokens);
+                        pre_sampled_tok = -1.0;
                     }
                 }
             }
