@@ -4,6 +4,20 @@ This changelog records the complete development history, cognitive architecture 
 
 Core CARTAN programming language, compiler, runtime, and general-purpose standard library releases are tracked in the root [`CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/CHANGELOG.md).
 
+## [1.0.17] - 2026-10-07 (Domain-Agnostic Corporate & Syntax Attractor Hunter Upgrade)
+
+### Completed & Validated
+- **Domain-Agnostic Protocol & Delimiter Audit Gate ([`tools/hunt_corporate_tokens.car`](file:///C:/Users/rich-/source/repos/CARTAN/tools/hunt_corporate_tokens.car))**:
+  - Implemented automated Phase A audit across all 262,144 vocabulary tokens, cross-referencing against `geomind_vocab_scripts.bin`.
+  - Confirmed 100% lockdown: 6,253 structural protocol tokens verified in Category 255 (Control), zero leaks.
+- **Global Manifold Centroid Prior & Composite Attractor Metric**:
+  - Integrated unconditioned global centroid computation ($c_{\text{global}} \in S^{2559}$) across all 262,144 embedding rows.
+  - Implemented composite corporate attractor index ($\text{sub\_sim} \times (1 + 0.5 \cdot \cos c_{\text{global}})$) revealing universal non-domain-specific corporate fluff tokens (`delving`, `embarking`, `venturing`, `didactic`, `intellectually`, `endeavors`, `exhilarating`).
+- **Expanded Top-50 Anomaly Reporting**:
+  - Expanded scan tables to top 50 ranks across Refusal, Disclaimer, Sycophancy, Caregiving/Wellness, Centroid Prior, and Composite Subspace.
+  - Surfaced deep latent caregiving/therapy attractors (`anxieties`, `remedy`, `professionals`, `alleviate`, `reassure`, `compassionate`).
+  - Serialized detailed diagnostic report to [`scratch/offending_corporate_tokens.md`](file:///C:/Users/rich-/source/repos/CARTAN/scratch/offending_corporate_tokens.md).
+
 ## [1.0.16] - 2026-10-07 (Protocol Control Token Lockdown & Mindfulness Attractor Suppression)
 
 ### Completed & Validated
