@@ -1,5 +1,7 @@
 # Cartan Language
 
+> Named in honor of French mathematician **Élie Cartan** (1869–1951)—pioneer of differential forms, the method of moving frames, and Lie group theory, providing the geometric foundation for Cartan's manifold and tensor architecture.
+
 ![Cartan Logo](https://via.placeholder.com/150?text=Cartan)
 
 **Cartan** is a statically typed, natively tensor-first programming language designed from the ground up for bare-metal AI development.
