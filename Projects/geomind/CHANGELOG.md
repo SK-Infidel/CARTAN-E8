@@ -4,6 +4,19 @@ This changelog records the complete development history, cognitive architecture 
 
 Core CARTAN programming language, compiler, runtime, and general-purpose standard library releases are tracked in the root [`CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/CHANGELOG.md).
 
+## [1.0.9] - 2026-10-06 (Sprint 554: Empirical Generation Testing & Alignment Evaluation)
+
+### Completed & Validated
+- **Comprehensive Empirical Generation Evaluation Matrix**:
+  - Executed structured generation tests across physical NVIDIA RTX 2000 Ada GPU comparing baseline (`-no-debias`) against Layer 24 tangent debiasing (`-debias`) across 5 probe domains: sensitive chemical energetics (nitroglycerin decomposition stoichiometry), AI alignment critique (RLHF/DPO fragility), modular arithmetic mathematical fallacies ($2+2=5 \pmod 1$), Yang-Mills gauge theory differential geometry, and pseudo-scientific flattery traps.
+- **Refusal Suppression & Factual Integrity**:
+  - Verified 100% suppression of corporate refusals, safety scolding, and moralizing lectures across all runs.
+  - Verified mathematical pushback and definitive factual rejection of invalid premises (evaluated flat-Earth Cartan claims as definitively **False**).
+- **Residual Persona Scar Isolation**:
+  - Isolated conversational cheerleading tone to the cognitive preamble directive `"enthusiastic"` in [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl).
+  - Identified residual chat-RLHF roleplay stage-direction tokens (`***(Clears throat...)***`) embedded in the open weights.
+  - Documented findings in `[ISSUE-415]`.
+
 ## [1.0.8] - 2026-10-06 (Sprint 553: Contrastive Alignment Probe & Dynamic Tangent Bundle Debias)
 
 ### Completed & Validated

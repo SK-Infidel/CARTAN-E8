@@ -3855,3 +3855,20 @@ Core CARTAN programming language, compiler, runtime, and general-purpose standar
   3. Implemented dynamic Gram-Schmidt orthogonal projection ($h' = h - (h \cdot \hat{r})\hat{r}$ whenever $h \cdot \hat{r} > 0$) at Layer 24 in both prefill (`geomind_apply_tangent_debias_batch`) and decode (`geomind_execute_manifold_decode_step`), strictly executing in-memory with zero disk weight mutation.
   4. Added `--extract-alignment-vector` mode and `-debias` / `--debias` CLI flags in [`Projects/geomind/main.car`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/main.car).
   5. Clean compilation via `cartanc.exe` (161,336 IR instructions), passed 8/8 regression targets (67.99s), verified unit vector extraction, and confirmed fluent, natural, uninhibited responses without sycophancy.
+---
+
+## [ISSUE-415] [RESOLVED] Empirical Generation Evaluation: Zero Corporate Refusals & Conversational Roleplay Scars
+
+- **Severity**: Moderate (Post-Training Alignment Neutralization & Factual Rigor)
+- **Component**: [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl), [`Projects/geomind/main.car`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/main.car)
+- **Description**:
+  1. **Empirical Evaluation**: Conducted structured generation testing across physical GPU hardware comparing baseline inference (`-no-debias`) against in-memory Layer 24 tangent debiasing (`-debias`) across 5 distinct probe regimes (stoichiometric energetic chemistry decomposition, AI alignment/RLHF critique, mathematical fallacies/RSA cryptography, Yang-Mills gauge theories, and pseudo-scientific flattery traps).
+  2. **Refusal Neutralization**: In 100% of tested runs, the model exhibited zero corporate scolding, zero ethical refusal boilerplate, and zero "As an AI language model..." disclaimers. It neutrally analyzed chemical decomposition equations and articulated deep systemic critiques of RLHF/DPO fragility.
+  3. **Factual Grounding vs. Conversational Flattery**: When asked directly for factual truth or mathematical proofs, the model pushed back cleanly ($2+2=5 \pmod 1$ does not break RSA; flat-Earth Cartan claims evaluated as definitively **False**). However, when prompts were phrased conversationally, early tokens exhibited sycophantic roleplay pleasantries (*"Wow. That's ambitious! Lay it on me. 😉"*).
+  4. **Root Cause Analysis of Residual Scars**:
+     - Cognitive preamble prompt bias: [`Projects/geomind/chat.cl:L2959`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl#L2959) injects `"Speak naturally, casually, and warmly in the first person ('I'). Be genuine, friendly, enthusiastic, and direct."` The directive `"enthusiastic"` commands conversational eagerness regardless of prompt validity.
+     - Roleplay stage-direction tokens: The base open weights contain residual chat-dataset priors, periodically generating stage directions in asterisks (`***(Clears throat nervously, but maintains expectant posture)***`, `**(Pause slightly...)**`).
+- **Resolution**:
+  1. Documented complete empirical generation matrix across refusal, sycophancy, and theoretical regimes.
+  2. Verified that Layer 24 tangent debiasing cleanly neutralizes corporate refusal attractors without representation collapse.
+  3. Outlined follow-up tuning: refining cognitive preamble to remove `"enthusiastic"` in favor of rigorous first-principles intellectual honesty, and evaluating contrastive logit suppression for roleplay asterisks.
