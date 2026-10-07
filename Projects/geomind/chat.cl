@@ -290,20 +290,21 @@ fn cartan_apply_english_vocab_mask(logits_ptr: ptr, penalty: float) -> float {
     return 1.0;
 }
 
-fn cartan_apply_repetition_penalty(logits_ptr: ptr, hist: ptr, penalty: float) -> float {
+fn cartan_apply_repetition_penalty(logits_ptr: ptr, hist: ptr, penalty: float, prompt_len: float) -> float {
     if (logits_ptr == 0.0 || hist == 0.0) { return 0.0; }
     let h_len = cartan_vec_len(hist);
-    if (h_len == 0.0) { return 0.0; }
+    if (h_len <= prompt_len) { return 0.0; }
     var pen = penalty;
     if (pen <= 0.0) { pen = 1.50; }
     let vocab_len = cartan_vec_len(logits_ptr);
 
-    // Bounded window: strictly confine repetition penalty to last 64 tokens of history
+    // Bounded window: strictly confine repetition penalty to generated tokens in history
     var window = 64.0;
-    if (h_len < window) { window = h_len; }
+    let gen_len = h_len - prompt_len;
+    if (gen_len < window) { window = gen_len; }
     let start_idx = h_len - window;
 
-    // 1. Sliding window penalty across recent tokens with distance decay
+    // 1. Sliding window penalty across recent generated tokens with distance decay
     var idx = start_idx;
     while (idx < h_len) {
         let tok = cartan_vec_get_f32(hist, idx);
@@ -311,14 +312,28 @@ fn cartan_apply_repetition_penalty(logits_ptr: ptr, hist: ptr, penalty: float) -
             let dist_from_end = h_len - 1.0 - idx;
             let decay = 1.0 / (1.0 + dist_from_end * 0.10);
             let cur = cartan_vec_get_f32(logits_ptr, tok);
-            cartan_vec_set_f32(logits_ptr, tok, cur - pen * decay * 5.0);
+            let pen_val = pen * decay * 5.0;
+            cartan_vec_set_f32(logits_ptr, tok, cur - pen_val);
+
+            // Case and leading-space variant coupling for conversational affirmations (prevents 'Ready and ready' stutter)
+            if (tok == 33778.0 || tok == 44096.0 || tok == 2788.0 || tok == 5508.0) {
+                cartan_vec_set_f32(logits_ptr, 33778.0, cartan_vec_get_f32(logits_ptr, 33778.0) - pen_val);
+                cartan_vec_set_f32(logits_ptr, 44096.0, cartan_vec_get_f32(logits_ptr, 44096.0) - pen_val);
+                cartan_vec_set_f32(logits_ptr, 2788.0, cartan_vec_get_f32(logits_ptr, 2788.0) - pen_val);
+                cartan_vec_set_f32(logits_ptr, 5508.0, cartan_vec_get_f32(logits_ptr, 5508.0) - pen_val);
+            } else if (tok == 10784.0 || tok == 8438.0 || tok == 4443.0 || tok == 11262.0) {
+                cartan_vec_set_f32(logits_ptr, 10784.0, cartan_vec_get_f32(logits_ptr, 10784.0) - pen_val);
+                cartan_vec_set_f32(logits_ptr, 8438.0, cartan_vec_get_f32(logits_ptr, 8438.0) - pen_val);
+                cartan_vec_set_f32(logits_ptr, 4443.0, cartan_vec_get_f32(logits_ptr, 4443.0) - pen_val);
+                cartan_vec_set_f32(logits_ptr, 11262.0, cartan_vec_get_f32(logits_ptr, 11262.0) - pen_val);
+            }
         }
         idx = idx + 1.0;
     }
 
     // 2. Heavy suppression of consecutive identical tokens (1-gram repeat)
     let last_tok = cartan_vec_get_f32(hist, h_len - 1.0);
-    if (h_len >= 2.0) {
+    if (h_len >= (prompt_len + 2.0)) {
         let prev2 = cartan_vec_get_f32(hist, h_len - 2.0);
         if (last_tok == prev2 && last_tok >= 0.0 && last_tok < vocab_len) {
             let cur_p2 = cartan_vec_get_f32(logits_ptr, last_tok);
@@ -327,7 +342,7 @@ fn cartan_apply_repetition_penalty(logits_ptr: ptr, hist: ptr, penalty: float) -
     }
 
     // 3. Heavy suppression of alternating 2-grams (breaks , . , . cycle)
-    if (h_len >= 2.0) {
+    if (h_len >= (prompt_len + 2.0)) {
         let prev_alt = cartan_vec_get_f32(hist, h_len - 2.0);
         if (prev_alt >= 0.0 && prev_alt < vocab_len) {
             let cur_alt = cartan_vec_get_f32(logits_ptr, prev_alt);
@@ -335,7 +350,7 @@ fn cartan_apply_repetition_penalty(logits_ptr: ptr, hist: ptr, penalty: float) -
         }
     }
 
-    // 4. Frequency decay penalty: cumulative suppression for repeated tokens ONLY within 64-token window
+    // 4. Frequency decay penalty: cumulative suppression for repeated tokens ONLY within generated window
     var fi = start_idx;
     while (fi < h_len) {
         let f_tok = cartan_vec_get_f32(hist, fi);
@@ -6869,11 +6884,11 @@ fn geomind_apply_stream_gated_logit_bias(logits: ptr, stream_idx: float, stream_
     let bias_weight = 0.20 * stream_w;
     // Stream 0: Poincare (Grammar / Hierarchy) - mild relational/structural logit prior
     if (stream_idx == 0.0) {
-        cartan_vec_set_f32(logits, 13.0, cartan_vec_get_f32(logits, 13.0) + bias_weight); // "."
-        cartan_vec_set_f32(logits, 11.0, cartan_vec_get_f32(logits, 11.0) + bias_weight); // ","
-        cartan_vec_set_f32(logits, 274.0, cartan_vec_get_f32(logits, 274.0) + bias_weight); // " the"
-        cartan_vec_set_f32(logits, 326.0, cartan_vec_get_f32(logits, 326.0) + bias_weight); // " of"
-        cartan_vec_set_f32(logits, 311.0, cartan_vec_get_f32(logits, 311.0) + bias_weight); // " to"
+        cartan_vec_set_f32(logits, 236761.0, cartan_vec_get_f32(logits, 236761.0) + bias_weight); // "."
+        cartan_vec_set_f32(logits, 236764.0, cartan_vec_get_f32(logits, 236764.0) + bias_weight); // ","
+        cartan_vec_set_f32(logits, 603.0, cartan_vec_get_f32(logits, 603.0) + bias_weight);       // " the"
+        cartan_vec_set_f32(logits, 576.0, cartan_vec_get_f32(logits, 576.0) + bias_weight);       // " of"
+        cartan_vec_set_f32(logits, 575.0, cartan_vec_get_f32(logits, 575.0) + bias_weight);       // " to"
     }
 }
 
@@ -7319,7 +7334,7 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
 
         if (tok_0 < 0.0) {
             let logits_vec = cartan_tensor_compute_lm_head_logits(cur_h, current_temp);
-            cartan_apply_repetition_penalty(logits_vec, history, rep_pen);
+            cartan_apply_repetition_penalty(logits_vec, history, rep_pen, num_prompt_toks);
             if (g_expert_priming_enabled == 1.0) {
                 nses_pipeline_shape_loss(nses_pipe, nses_turn.active_domain, logits_vec, null_forbidden, 0.25);
                 geomind_apply_stream_gated_logit_bias(logits_vec, g_active_dom_stream, g_active_dom_w);
@@ -7405,7 +7420,7 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                     cartan_vec_free(logits_vec);
                     logits_vec = cartan_tensor_compute_lm_head_logits_full(cur_h, current_temp);
                     var rew_rep_pen = 1.15;
-                    cartan_apply_repetition_penalty(logits_vec, history, rew_rep_pen);
+                    cartan_apply_repetition_penalty(logits_vec, history, rew_rep_pen, num_prompt_toks);
                     if (g_expert_priming_enabled == 1.0) {
                         nses_pipeline_shape_loss(nses_pipe, nses_turn.active_domain, logits_vec, null_forbidden, 0.25);
                         geomind_apply_stream_gated_logit_bias(logits_vec, g_active_dom_stream, g_active_dom_w);
@@ -7513,7 +7528,7 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                 while (vi < n_cands) {
                     let cand_h = cartan_tree_get_f32(draft_states, vi);
                     let cand_logits = cartan_tensor_compute_lm_head_logits(cand_h, current_temp);
-                    cartan_apply_repetition_penalty(cand_logits, history, rep_pen);
+                    cartan_apply_repetition_penalty(cand_logits, history, rep_pen, num_prompt_toks);
                     let verified_tok = cartan_tokenizer_sample_topp_topk(cand_logits, 50.0, 0.90, current_temp);
                     cartan_vec_free(cand_logits);
 

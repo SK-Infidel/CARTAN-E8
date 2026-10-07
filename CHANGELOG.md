@@ -4,6 +4,21 @@ All notable changes to the CARTAN programming language, self-hosting compiler (`
 
 In accordance with User Rule 3 and project standards, GeoMind cognitive model releases are tracked independently in [`Projects/geomind/CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/CHANGELOG.md).
 
+## [8.521.0] - 2026-10-07 (Prompt-Isolated Repetition Penalty & Case-Coupled Stutter Elimination)
+
+### Completed & Validated
+- **Prompt-Isolated Repetition Penalty ([`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl))**:
+  - Confined `cartan_apply_repetition_penalty` strictly to assistant-generated tokens ($idx \ge \text{prompt\_len}$), preventing false $-5.75$ logit suppression on user prompt words.
+  - Guarded 1-gram consecutive and alternating 2-gram repeat checks to require $h_{\text{len}} \ge \text{prompt\_len} + 2.0$, preventing artificial collisions against prompt endings.
+- **Case and Leading-Space Token Coupling**:
+  - Coupled conversational affirmative tokens (`Ready` / ` ready`, `Yes` / ` yes`) so generating any casing/spacing variant penalizes all corresponding variants simultaneously, eliminating case-switching evasion and repetitive stutter (`**Ready and ready...**`).
+- **Gemma 2 Token ID Restoration**:
+  - Corrected Stream 0 Poincare grammar logit bias in `geomind_apply_stream_gated_logit_bias` to authentic Gemma 2 token IDs (`.`, `,`, ` the`, ` of`, ` to`).
+- **Empirical Hardware & Regression Verification**:
+  - Recompiled native `bin/geomind.exe` with `cartanc.exe`.
+  - Executed physical GPU inference verification on NVIDIA RTX 2000 Ada: verified clean response `"Good morning! Ready to dive into our productive day whenever you are. ☀️"` (0 stutter, 0 nonsensical phrasing).
+  - Passed all 8 affected targets in regression suite (`tools/run_affected_tests.ps1`).
+
 ## [8.520.0] - 2026-10-07 (Calibrated Attractor Debiasing & Zero-Aversion Normalization)
 
 ### Completed & Validated
