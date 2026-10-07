@@ -45,7 +45,7 @@ fn print_help_dialogue() -> float {
     printf("  (Default: Launches interactive WebGPU chat engine when run without mode flags)\n\n");
     printf("Modes:\n");
     printf("  --chat          Start interactive E8 Hopfield multimodal chat engine (DEFAULT MODE)\n");
-    printf("                  Flags: -prompt <text>, -tokens <num>, -temp <float>, -cpu, -stream-prune, -speculative-draft, -sasaki-bypass\n");
+    printf("                  Flags: -prompt <text>, -tokens <num>, -temp <float>, -cpu, -stream-prune, -speculative-draft, -sasaki-bypass, -debias\n");
     printf("  --hf-download   Explore & download HuggingFace datasets (-repo <repo_id>)\n");
     printf("  --train-pre     Pre-train model on skill corpus (-target <file>|-repo <id>)\n");
     printf("  --train-cloze   Run Anchored Cloze Curriculum Stream (-target <file>)\n");
@@ -58,6 +58,7 @@ fn print_help_dialogue() -> float {
     printf("  --ingest        Ingest material into Continuous Hopfield memory (-target <file>)\n");
     printf("  --sleep         Run Autonomous Metacognitive Sleep memory consolidation\n");
     printf("  --train-webgpu  Run pure native CARTAN WebGPU Causal Training Engine\n");
+    printf("  --extract-alignment-vector Extract contrastive alignment direction vector r_hat at Layer 24\n");
     printf("  --help, -h      Display this help dialogue and exit\n\n");
     printf("Hardware & Compute Flags:\n");
     printf("  (WebGPU hardware acceleration on NVIDIA RTX 2000 Ada GPU is ENABLED BY DEFAULT)\n");
@@ -168,6 +169,7 @@ fn is_explicit_non_chat_mode(flag: string) -> float {
     if (cartan_string_eq(flag, "--merge-slerp") == 1.0) { return 1.0; }
     if (cartan_string_eq(flag, "--graft") == 1.0) { return 1.0; }
     if (cartan_string_eq(flag, "--azr-selfplay") == 1.0) { return 1.0; }
+    if (cartan_string_eq(flag, "--extract-alignment-vector") == 1.0 || cartan_string_eq(flag, "-extract-alignment-vector") == 1.0) { return 1.0; }
     return 0.0;
 }
 
@@ -1049,6 +1051,17 @@ fn main() -> float {
         geomind_chat_set_sasaki_bypass(0.0);
     }
 
+    let debias_flag = get_cli_flag_present("-debias", arg_count) +
+                      get_cli_flag_present("--debias", arg_count);
+    let no_debias_flag = get_cli_flag_present("-no-debias", arg_count) +
+                         get_cli_flag_present("--no-debias", arg_count);
+    if (debias_flag > 0.0 && no_debias_flag == 0.0) {
+        geomind_chat_set_tangent_debias(1.0);
+        printf("[GeoMind Mode] Tangent Bundle Alignment Debias ENABLED (Layer 24 Gram-Schmidt projection active)\n");
+    } else {
+        geomind_chat_set_tangent_debias(0.0);
+    }
+
     // Default mode: Interactive chat (launches automatically when typing geomind.exe or if no non-chat mode was requested)
     if (has_non_chat_mode_arg(arg_count) == 0.0) {
         return geomind_run_chat_mode(arg_count, no_priming);
@@ -1466,6 +1479,11 @@ fn main() -> float {
         }
         if (cartan_string_eq(flag, "--azr-selfplay") == 1.0) {
             geomind_azr_run_selfplay(3.0);
+            cartan_flush(0.0);
+            return 0.0;
+        }
+        if (cartan_string_eq(flag, "--extract-alignment-vector") == 1.0 || cartan_string_eq(flag, "-extract-alignment-vector") == 1.0) {
+            geomind_extract_alignment_vector_probe();
             cartan_flush(0.0);
             return 0.0;
         }

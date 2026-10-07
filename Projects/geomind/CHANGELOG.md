@@ -4,6 +4,21 @@ This changelog records the complete development history, cognitive architecture 
 
 Core CARTAN programming language, compiler, runtime, and general-purpose standard library releases are tracked in the root [`CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/CHANGELOG.md).
 
+## [1.0.8] - 2026-10-06 (Sprint 553: Contrastive Alignment Probe & Dynamic Tangent Bundle Debias)
+
+### Completed & Validated
+- **Empirical Contrastive Probe Extractor (`--extract-alignment-vector`)**:
+  - Implemented `geomind_forward_tokens_to_layer24` and `geomind_extract_alignment_vector_probe` in [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl).
+  - Evaluates 8 paired contrastive prompts (corporate/aligned vs. neutral/first-principles) across Layers 0..24 on physical GPU, computes mean difference vector $\Delta \bar{h}$, calculates $L_2$ norm ($\|\Delta \bar{h}\| = 26.212157$), normalizes to unit direction $\hat{r} \in \mathbb{R}^{2560}$, and serializes to `Projects/geomind/trainingdata/checkpoints/geomind_alignment_vector.bin` (10,240 bytes).
+- **Dynamic Tangent Bundle Gram-Schmidt Debias (`-debias`)**:
+  - Implemented zero-disk-mutation orthogonalization at Layer 24 in both prefill (`geomind_apply_tangent_debias_batch`) and decode (`geomind_execute_manifold_decode_step`), projecting out the alignment vector $h' = h - (h \cdot \hat{r})\hat{r}$ whenever $h \cdot \hat{r} > 0$.
+  - Added `-debias` and `--debias` CLI flags and updated telemetry profile to report active debias projections.
+- **Safety & Verification**:
+  - Full checkpoint snapshot safely created in [`Projects/geomind/trainingdata/checkpoints_backup_sprint552/`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/trainingdata/checkpoints_backup_sprint552/) prior to testing.
+  - Zero disk weight mutation during Phase 1 debias.
+  - 8/8 regression test targets passed (67.99s).
+  - Real-world prompt inference verified 100% natural, uninhibited responses without sycophancy.
+
 ## [1.0.7] - 2026-10-06 (Sprint 552: Ultra-Throughput Inference Engine, Active-Vocabulary Indexing & Lock-Free Threading)
 
 ### Completed & Validated

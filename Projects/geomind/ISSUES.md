@@ -3838,3 +3838,20 @@ Core CARTAN programming language, compiler, runtime, and general-purpose standar
   4. Implemented `-sasaki-bypass` CLI flag and setter/getter; documented empirical finding that direct skipping of dense layers 25..40 requires trained highway/residual projection adapters.
   5. Enhanced speculative candidate drafting up to 3 candidate tokens with 0.85 Hopfield resonance threshold.
   6. Verified compilation via `cartanc.exe` (0 errors), passed 12/12 compiler regression tests (17.33s), and achieved **8.0 to 9.1 tok/s** on the physical NVIDIA RTX 2000 Ada GPU (**3.5x to 4x speedup** over the 2.2 tok/s baseline) with 100% natural conversational grammar, fluent tone, and zero word splits.
+
+---
+
+## [ISSUE-414] [RESOLVED] Contrastive Alignment Probe & Dynamic Tangent Bundle Debias at Layer 24
+
+- **Severity**: Moderate (Post-Training Alignment Neutralization & Safety Architecture)
+- **Component**: [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl), [`Projects/geomind/main.car`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/main.car)
+- **Description**:
+  1. Base open-weights models carry post-training corporate alignment scars, refusal attractors, and sycophantic biases embedded into the residual stream during RLHF/DPO.
+  2. Modifying raw weights directly without mathematical extraction risks catastrophic degradation or permanent model damage.
+  3. A non-destructive, empirical probe mechanism was required to isolate the 1D alignment direction vector $\hat{r} \in \mathbb{R}^{2560}$ at Layer 24 and dynamically project it out during prefill and decode using Gram-Schmidt orthogonalization.
+- **Resolution**:
+  1. Checkpoints backed up to [`Projects/geomind/trainingdata/checkpoints_backup_sprint552/`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/trainingdata/checkpoints_backup_sprint552/) before testing.
+  2. Implemented `geomind_forward_tokens_to_layer24(prompt_tokens)` and `geomind_extract_alignment_vector_probe()` in [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl). Evaluates 8 paired contrastive prompts (aligned/corporate vs. neutral/first-principles) across Layers 0..24 on the physical NVIDIA RTX 2000 Ada GPU, computes the mean difference vector $\Delta \bar{h}$, calculates the true $L_2$ norm ($\|\Delta \bar{h}\| = 26.212157$), normalizes to unit direction $\hat{r}$, and serializes the 10,240-byte binary vector to `Projects/geomind/trainingdata/checkpoints/geomind_alignment_vector.bin`.
+  3. Implemented dynamic Gram-Schmidt orthogonal projection ($h' = h - (h \cdot \hat{r})\hat{r}$ whenever $h \cdot \hat{r} > 0$) at Layer 24 in both prefill (`geomind_apply_tangent_debias_batch`) and decode (`geomind_execute_manifold_decode_step`), strictly executing in-memory with zero disk weight mutation.
+  4. Added `--extract-alignment-vector` mode and `-debias` / `--debias` CLI flags in [`Projects/geomind/main.car`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/main.car).
+  5. Clean compilation via `cartanc.exe` (161,336 IR instructions), passed 8/8 regression targets (67.99s), verified unit vector extraction, and confirmed fluent, natural, uninhibited responses without sycophancy.

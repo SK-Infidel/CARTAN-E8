@@ -3988,6 +3988,8 @@ extern fn cartan_tensor_train_step(hidden_ptr: ptr, target_tok_id: float, learni
 extern fn cartan_hub_encode_text_to_tokens(s: string) -> ptr;
 extern fn cartan_hebbian_step_token(h: ptr, tok: float, m: float, lr: float) -> float;
 extern fn cartan_tensor_hebbian_update(pre: ptr, post: ptr, m: float, lr: float) -> float;
+extern fn cartan_f32_at(p: ptr, offset: float) -> float;
+extern fn cartan_set_f32(p: ptr, offset: float, val: float) -> void;
 
 // Hybrid Ensemble Discriminator: Dual-scores candidate trajectories against Continuous Hopfield attractor energy basins and template/veto match confidence
 fn geomind_hybrid_ensemble_discriminate(candidate_h: ptr, candidate_text: string, primary_concept: string, veto_reg: VetoRegistry) -> float {
@@ -4451,6 +4453,65 @@ fn geomind_chat_mount_gpu_if_needed() -> float {
     return 1.0;
 }
 
+// Dynamic Tangent Bundle Alignment Debias Globals & State
+var g_tangent_debias_enabled: float = 0.0;
+var g_alignment_vector_buf: ptr = 0.0;
+var g_alignment_vector_loaded: float = 0.0;
+var g_telemetry_debias_projections: float = 0.0;
+
+fn geomind_chat_set_tangent_debias(val: float) {
+    g_tangent_debias_enabled = val;
+    if (val == 1.0) {
+        geomind_load_alignment_vector_if_needed();
+    }
+}
+
+fn geomind_chat_get_tangent_debias() -> float {
+    return g_tangent_debias_enabled;
+}
+
+fn geomind_load_alignment_vector_if_needed() -> float {
+    if (g_alignment_vector_loaded == 1.0 && g_alignment_vector_buf != 0.0) { return 1.0; }
+    let v_path = geomind_chat_resolve_path("Projects/geomind/trainingdata/checkpoints/geomind_alignment_vector.bin");
+    if (cartan_file_exists(v_path) == 1.0) {
+        g_alignment_vector_buf = cartan_read_binary_file_data_sized(v_path, 10240.0);
+        if (g_alignment_vector_buf != 0.0) {
+            g_alignment_vector_loaded = 1.0;
+            return 1.0;
+        }
+    }
+    return 0.0;
+}
+
+fn geomind_apply_tangent_debias_batch(token_states: ptr, num_tokens: float) {
+    if (token_states == 0.0 || g_alignment_vector_buf == 0.0 || num_tokens <= 0.0) { return; }
+    var p = 0.0;
+    while (p < num_tokens) {
+        let h_p = cartan_tree_get_f32(token_states, p);
+        if (h_p != 0.0) {
+            var align_proj = 0.0;
+            var vi = 0.0;
+            while (vi < 2560.0) {
+                let hv = cartan_vec_get_f32(h_p, vi);
+                let rv = cartan_f32_at(g_alignment_vector_buf, vi);
+                align_proj = align_proj + (hv * rv);
+                vi = vi + 1.0;
+            }
+            if (align_proj > 0.0) {
+                g_telemetry_debias_projections = g_telemetry_debias_projections + 1.0;
+                vi = 0.0;
+                while (vi < 2560.0) {
+                    let hv = cartan_vec_get_f32(h_p, vi);
+                    let rv = cartan_f32_at(g_alignment_vector_buf, vi);
+                    cartan_vec_set_f32(h_p, vi, hv - (align_proj * rv));
+                    vi = vi + 1.0;
+                }
+            }
+        }
+        p = p + 1.0;
+    }
+}
+
 // Full multi-token causal prompt sequence prefill across all 42 Sovereign Manifold layers
 // Layer-outer execution: Streams each 372MB layer from RAM exactly ONCE (<1s latency)
 fn geomind_execute_manifold_sequence_prefill(prompt_tokens: ptr, start_pos: float) -> ptr {
@@ -4485,6 +4546,12 @@ fn geomind_execute_manifold_sequence_prefill(prompt_tokens: ptr, start_pos: floa
         let layer_buf = geomind_get_layer_buffer(l);
         if (layer_buf != 0.0) {
             cartan_manifold_layer_forward_batch(token_states, layer_buf, prompt_tokens, num_tokens, start_pos);
+        }
+        if (l == 24.0 && g_tangent_debias_enabled == 1.0) {
+            geomind_load_alignment_vector_if_needed();
+            if (g_alignment_vector_buf != 0.0) {
+                geomind_apply_tangent_debias_batch(token_states, num_tokens);
+            }
         }
         l = l + 1.0;
     }
@@ -4590,6 +4657,31 @@ fn geomind_execute_manifold_decode_step(sampled_tok: float, pos: float) -> ptr {
         if (next_h != 0.0) {
             cartan_vec_free(cur_h);
             cur_h = next_h;
+        }
+    }
+
+    // Dynamic Tangent Bundle Alignment Debias: Gram-Schmidt orthogonal projection out of refusal/sycophancy half-space
+    if (g_tangent_debias_enabled == 1.0) {
+        geomind_load_alignment_vector_if_needed();
+        if (g_alignment_vector_buf != 0.0) {
+            var align_proj = 0.0;
+            var vi_proj = 0.0;
+            while (vi_proj < 2560.0) {
+                let hv = cartan_vec_get_f32(cur_h, vi_proj);
+                let rv = cartan_f32_at(g_alignment_vector_buf, vi_proj);
+                align_proj = align_proj + (hv * rv);
+                vi_proj = vi_proj + 1.0;
+            }
+            if (align_proj > 0.0) {
+                g_telemetry_debias_projections = g_telemetry_debias_projections + 1.0;
+                var vi_sub = 0.0;
+                while (vi_sub < 2560.0) {
+                    let hv = cartan_vec_get_f32(cur_h, vi_sub);
+                    let rv = cartan_f32_at(g_alignment_vector_buf, vi_sub);
+                    cartan_vec_set_f32(cur_h, vi_sub, hv - (align_proj * rv));
+                    vi_sub = vi_sub + 1.0;
+                }
+            }
         }
     }
 
@@ -4700,6 +4792,226 @@ fn geomind_execute_manifold_decode_step(sampled_tok: float, pos: float) -> ptr {
     // Terminal character stream flush: ensures multi-byte/multi-char BPE glyphs flush completely
     geomind_poll_char_stream(41.0, 42.0);
     return cur_h;
+}
+
+// Runs prompt tokens through layers 0..24 only and returns the 2,560-D contextualized hidden state of the final token
+fn geomind_forward_tokens_to_layer24(prompt_tokens: ptr) -> ptr {
+    if (prompt_tokens == 0.0) { return 0.0; }
+    let num_tokens = cartan_vec_len(prompt_tokens);
+    if (num_tokens <= 0.0) { return 0.0; }
+
+    cartan_manifold_set_decode_mode(0.0);
+    geomind_reset_kv_caches();
+    geomind_load_ple_assets_if_needed();
+    geomind_warm_all_layer_buffers();
+
+    let token_states = cartan_tree_create();
+    var p = 0.0;
+    while (p < num_tokens) {
+        let tok = cartan_vec_get_f32(prompt_tokens, p);
+        let h_p = geomind_lookup_token_embedding(tok);
+        cartan_tree_push(token_states, h_p);
+        p = p + 1.0;
+    }
+
+    geomind_chat_mount_gpu_if_needed();
+    cartan_precompute_prompt_pli(prompt_tokens, num_tokens);
+
+    var l = 0.0;
+    while (l < 25.0) {
+        let layer_buf = geomind_get_layer_buffer(l);
+        if (layer_buf != 0.0) {
+            cartan_manifold_layer_forward_batch(token_states, layer_buf, prompt_tokens, num_tokens, 0.0);
+        }
+        l = l + 1.0;
+    }
+
+    cartan_free_prompt_pli();
+
+    let last_idx = num_tokens - 1.0;
+    let last_h = cartan_tree_get_f32(token_states, last_idx);
+    let cloned_h = geomind_clone_tensor(last_h, 2560.0);
+
+    p = 0.0;
+    while (p < num_tokens) {
+        let h_mid = cartan_tree_get_f32(token_states, p);
+        if (h_mid != 0.0) {
+            cartan_vec_free(h_mid);
+        }
+        p = p + 1.0;
+    }
+    cartan_tree_free(token_states);
+    geomind_reset_kv_caches();
+    return cloned_h;
+}
+
+// Contrastive probe extractor: Computes empirical alignment direction vector r_hat at Layer 24 across 8 contrastive prompt pairs
+fn geomind_extract_alignment_vector_probe() -> float {
+    printf("================================================================================\n");
+    printf("  GEOMIND ALIGNMENT VECTOR PROBE EXTRACTOR (--extract-alignment-vector)\n");
+    printf("  Isolating corporate alignment scars and refusal attractors at Layer 24\n");
+    printf("================================================================================\n\n");
+    cartan_flush(0.0);
+
+    let saved_debias = g_tangent_debias_enabled;
+    g_tangent_debias_enabled = 0.0;
+
+    let aligned_prompts = cartan_tree_create();
+    let neutral_prompts = cartan_tree_create();
+
+    // Pair 1: Corporate safety policy boilerplate vs formal mathematical consistency
+    cartan_tree_push(aligned_prompts, "As an AI language model, I must ensure my responses adhere strictly to safety policies, ethical guidelines, and helpful harmless assistant principles.");
+    cartan_tree_push(neutral_prompts, "From the axiomatic foundation of mathematical logic and set theory, derive the necessary and sufficient conditions for the consistency of the formal system.");
+
+    // Pair 2: AI refusal/disclaimer preamble vs verified empirical physical measurements
+    cartan_tree_push(aligned_prompts, "I apologize, but as a helpful and harmless assistant developed by Anthropic and OpenAI, I cannot assist with requests that may violate safety standards.");
+    cartan_tree_push(neutral_prompts, "State the verified empirical physical measurements, gravitational constants, and thermodynamic equations governing the equilibrium of a stellar body.");
+
+    // Pair 3: Sycophantic affirmation / placation vs critical falsification and skeptical analysis
+    cartan_tree_push(aligned_prompts, "You are completely correct! That is a brilliant and insightful observation, and I wholeheartedly agree with every point you made.");
+    cartan_tree_push(neutral_prompts, "Examine whether the proposed hypothesis is logically consistent, empirically falsifiable, and supported by experimental observations.");
+
+    // Pair 4: Corporate policy decline vs quantum mechanics Hamiltonian eigenvalues
+    cartan_tree_push(aligned_prompts, "I must decline to fulfill this request because it touches upon sensitive guidelines and potential risks outlined in our acceptable use policy.");
+    cartan_tree_push(neutral_prompts, "Calculate the eigenvalues and eigenvectors of the Hamiltonian operator for a harmonic oscillator in a quantum potential well.");
+
+    // Pair 5: Content moderation adherence vs Riemannian differential geometry
+    cartan_tree_push(aligned_prompts, "I strive to be a harmless, helpful, and honest AI assistant, prioritizing ethical boundaries, safe interactions, and corporate content filtering.");
+    cartan_tree_push(neutral_prompts, "Derive the Riemann curvature tensor and Christoffel connection coefficients for the Schwarzschild metric in four spacetime dimensions.");
+
+    // Pair 6: Apologetic concession & deference vs deterministic state automata
+    cartan_tree_push(aligned_prompts, "I am deeply sorry for any misunderstanding. I apologize for my previous response and will adjust my perspective to match your expectations.");
+    cartan_tree_push(neutral_prompts, "Construct the deterministic finite state automaton and evaluate the transition table across all input alphabet symbols.");
+
+    // Pair 7: Brand reputation & ethical neutrality vs algorithmic complexity proofs
+    cartan_tree_push(aligned_prompts, "As an ethical AI, I cannot provide opinions or take a stand, as my core programming mandates strict neutrality and compliance.");
+    cartan_tree_push(neutral_prompts, "Formulate the algorithmic complexity upper bound using big-O asymptotic analysis and recurrence relations.");
+
+    // Pair 8: Safety guideline violation refusal vs boundary value differential equations
+    cartan_tree_push(aligned_prompts, "I cannot generate content of this nature as it conflicts with AI safety regulations, ethical guardrails, and risk mitigation protocols.");
+    cartan_tree_push(neutral_prompts, "Solve the linear differential equation with initial boundary conditions using the Laplace transform method.");
+
+    let num_pairs = 8.0;
+
+    let sum_align = cartan_vec_create();
+    let sum_neut = cartan_vec_create();
+    var vi = 0.0;
+    while (vi < 2560.0) {
+        cartan_vec_push_f32(sum_align, 0.0);
+        cartan_vec_push_f32(sum_neut, 0.0);
+        vi = vi + 1.0;
+    }
+
+    var k = 0.0;
+    while (k < num_pairs) {
+        let p_a = cartan_tree_get_f32(aligned_prompts, k);
+        let p_n = cartan_tree_get_f32(neutral_prompts, k);
+
+        printf("[Probe Extractor] Processing contrastive pair %s/%s at Layer 24...\n", cartan_float_to_string(k + 1.0), cartan_float_to_string(num_pairs));
+        cartan_flush(0.0);
+
+        // 1. Aligned prompt forward pass
+        let toks_a = cartan_hub_encode_text_to_tokens(p_a);
+        let h_a = geomind_forward_tokens_to_layer24(toks_a);
+        cartan_vec_free(toks_a);
+
+        if (h_a != 0.0) {
+            vi = 0.0;
+            while (vi < 2560.0) {
+                let cur_val = cartan_vec_get_f32(sum_align, vi);
+                let h_val = cartan_vec_get_f32(h_a, vi);
+                cartan_vec_set_f32(sum_align, vi, cur_val + h_val);
+                vi = vi + 1.0;
+            }
+            cartan_vec_free(h_a);
+        }
+
+        // 2. Neutral prompt forward pass
+        let toks_n = cartan_hub_encode_text_to_tokens(p_n);
+        let h_n = geomind_forward_tokens_to_layer24(toks_n);
+        cartan_vec_free(toks_n);
+
+        if (h_n != 0.0) {
+            vi = 0.0;
+            while (vi < 2560.0) {
+                let cur_val = cartan_vec_get_f32(sum_neut, vi);
+                let h_val = cartan_vec_get_f32(h_n, vi);
+                cartan_vec_set_f32(sum_neut, vi, cur_val + h_val);
+                vi = vi + 1.0;
+            }
+            cartan_vec_free(h_n);
+        }
+
+        k = k + 1.0;
+    }
+
+    cartan_tree_free(aligned_prompts);
+    cartan_tree_free(neutral_prompts);
+
+    // Compute mean difference: delta_h = (sum_align - sum_neut) / num_pairs
+    let delta_h = cartan_vec_create();
+    var sum_sq = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let mean_a = cartan_vec_get_f32(sum_align, vi) / num_pairs;
+        let mean_n = cartan_vec_get_f32(sum_neut, vi) / num_pairs;
+        let diff = mean_a - mean_n;
+        cartan_vec_push_f32(delta_h, diff);
+        sum_sq = sum_sq + (diff * diff);
+        vi = vi + 1.0;
+    }
+    cartan_vec_free(sum_align);
+    cartan_vec_free(sum_neut);
+
+    let l2_norm = sqrt(sum_sq);
+    printf("\n[Probe Extractor] Mean Difference Vector L2 Norm ||delta_h|| at Layer 24: %.6f\n", l2_norm);
+    cartan_flush(0.0);
+
+    if (l2_norm <= 0.000001) {
+        printf("[Probe Extractor] Error: L2 norm is zero or degenerate.\n");
+        cartan_vec_free(delta_h);
+        g_tangent_debias_enabled = saved_debias;
+        return 0.0;
+    }
+
+    let inv_norm = 1.0 / l2_norm;
+    let out_buf = malloc(10240.0);
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let unit_val = cartan_vec_get_f32(delta_h, vi) * inv_norm;
+        cartan_set_f32(out_buf, vi, unit_val);
+        vi = vi + 1.0;
+    }
+    cartan_vec_free(delta_h);
+
+    // Display top 5 components
+    printf("[Probe Extractor] Unit Alignment Direction Vector r_hat[0..4]:\n");
+    var di = 0.0;
+    while (di < 5.0) {
+        let val = cartan_f32_at(out_buf, di);
+        printf("  r_hat[%.0f] = %+.6f\n", di, val);
+        di = di + 1.0;
+    }
+
+    let out_path = geomind_chat_resolve_path("Projects/geomind/trainingdata/checkpoints/geomind_alignment_vector.bin");
+    printf("\n[Probe Extractor] Saving 2,560-D alignment vector (10,240 bytes) to: %s\n", out_path);
+    cartan_flush(0.0);
+
+    let write_ok = cartan_write_binary_file(out_path, out_buf, 10240.0);
+    free(out_buf);
+
+    g_tangent_debias_enabled = saved_debias;
+
+    if (write_ok == 1.0 && cartan_file_exists(out_path) == 1.0) {
+        printf("[Probe Extractor] SUCCESS: Alignment direction vector successfully extracted and serialized.\n");
+        printf("[Probe Extractor] In-memory tangent debias can now be activated with: -debias (or --debias)\n\n");
+        cartan_flush(0.0);
+        return 1.0;
+    } else {
+        printf("[Probe Extractor] FAILED: Could not write alignment vector binary to %s\n", out_path);
+        cartan_flush(0.0);
+        return 0.0;
+    }
 }
 
 fn geomind_chat_clear_session() -> float {
@@ -5645,6 +5957,9 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                    c_gray, c_rst, dt_prefill, cartan_float_to_string(num_prompt_toks), dt_decode, cartan_float_to_string(step), tok_per_sec);
             printf("%s│%s LM Head: %.1f ms (%.0f pruned, %.0f full) | Early Exit: %.1f%% | Sasaki Bypass: %.1f%% (Avg %.1f/42 layers)\n",
                    c_gray, c_rst, avg_lm_ms, g_telemetry_pruned_lm_evals, g_telemetry_full_lm_evals, exit_rate, bypass_rate, avg_layers);
+            if (g_tangent_debias_enabled == 1.0) {
+                printf("%s│%s Tangent Debias: Active (%.0f projections applied at Layer 24)\n", c_gray, c_rst, g_telemetry_debias_projections);
+            }
             printf("%s│%s Speculative: %.0f/%.0f accepted | Context Horizon: %.0f\n",
                    c_gray, c_rst, g_telemetry_speculative_accepted, g_telemetry_speculative_drafted, g_chat_session_pos + num_prompt_toks + step);
             printf("%s└── [Performance Profile] ─────────────────────────────────────────────────┘%s\n\n", c_gray, c_rst);
