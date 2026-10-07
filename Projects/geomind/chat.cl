@@ -1714,24 +1714,27 @@ fn geomind_sanitize_output_for_display(raw: string) -> string {
             i = i + 12.0;
             continue;
         }
-        // 4b. Strip internal parenthetical self-correction and thought commentary
-        if (geomind_string_starts_with_offset(raw, "*(Self-correction", i) == 1.0 ||
-            geomind_string_starts_with_offset(raw, "*(Self-Correction", i) == 1.0 ||
-            geomind_string_starts_with_offset(raw, "**(Self-correction", i) == 1.0 ||
-            geomind_string_starts_with_offset(raw, "**(Self-Correction", i) == 1.0 ||
-            geomind_string_starts_with_offset(raw, "*(Contextual", i) == 1.0 ||
-            geomind_string_starts_with_offset(raw, "**(Contextual", i) == 1.0 ||
-            geomind_string_starts_with_offset(raw, "*(thought", i) == 1.0 ||
-            geomind_string_starts_with_offset(raw, "*(Thought", i) == 1.0 ||
-            geomind_string_starts_with_offset(raw, "**(thought", i) == 1.0 ||
-            geomind_string_starts_with_offset(raw, "**(Thought", i) == 1.0 ||
-            geomind_string_starts_with_offset(raw, "**(After receiving", i) == 1.0 ||
-            geomind_string_starts_with_offset(raw, "*(If the user", i) == 1.0 ||
-            geomind_string_starts_with_offset(raw, "**(If the user", i) == 1.0) {
-            let sc_close = geomind_string_index_of_offset_ignore_case(raw, ")", i);
-            if (sc_close >= 0.0) {
-                var advance = sc_close + 1.0;
-                while (advance < raw_len && (cartan_string_get_char(raw, advance) == 42.0 || cartan_string_get_char(raw, advance) == 58.0 || cartan_string_get_char(raw, advance) == 32.0 || cartan_string_get_char(raw, advance) == 10.0)) {
+        // 4b. Strip internal parenthetical stage directions, self-corrections, and thought commentary
+        if (geomind_string_starts_with_offset(raw, "*(", i) == 1.0 ||
+            geomind_string_starts_with_offset(raw, "**(", i) == 1.0) {
+            var open_len = 2.0;
+            if (geomind_string_starts_with_offset(raw, "**(", i) == 1.0) {
+                open_len = 3.0;
+            }
+            var scan = i + open_len;
+            var depth = 1.0;
+            while (scan < raw_len && depth > 0.0) {
+                let c = cartan_string_get_char(raw, scan);
+                if (c == 40.0) {
+                    depth = depth + 1.0;
+                } else if (c == 41.0) {
+                    depth = depth - 1.0;
+                }
+                scan = scan + 1.0;
+            }
+            if (depth == 0.0) {
+                var advance = scan;
+                while (advance < raw_len && (cartan_string_get_char(raw, advance) == 42.0 || cartan_string_get_char(raw, advance) == 58.0 || cartan_string_get_char(raw, advance) == 32.0 || cartan_string_get_char(raw, advance) == 10.0 || cartan_string_get_char(raw, advance) == 13.0)) {
                     advance = advance + 1.0;
                 }
                 i = advance;
@@ -2442,29 +2445,50 @@ fn geomind_chat_learn_conversational_turn(speaker: string, text: string) -> floa
                         cartan_string_eq(norm_attr, "preferred_name") == 0.0 &&
                         cartan_string_eq(norm_attr, "nicknames") == 0.0) {
 
-                        var final_val = cleaned_val;
-                        if (cartan_string_eq(norm_attr, "pet") == 1.0 && cartan_string_contains(final_val, "(") == 0.0) {
-                            let low_ca = veto_string_to_lower(cleaned_attr);
-                            if (cartan_string_contains(low_ca, "dog") == 1.0) {
-                                final_val = cartan_string_concat(final_val, " (dog)");
-                            } else if (cartan_string_contains(low_ca, "cat") == 1.0) {
-                                final_val = cartan_string_concat(final_val, " (cat)");
+                        var is_condition = 0.0;
+                        if (cartan_string_eq(norm_attr, "pet") == 1.0) {
+                            let low_cv = veto_string_to_lower(cleaned_val);
+                            if (cartan_string_eq(low_cv, "sick") == 1.0 ||
+                                cartan_string_eq(low_cv, "ill") == 1.0 ||
+                                cartan_string_eq(low_cv, "hurt") == 1.0 ||
+                                cartan_string_eq(low_cv, "injured") == 1.0 ||
+                                cartan_string_eq(low_cv, "wheezing") == 1.0 ||
+                                cartan_string_eq(low_cv, "coughing") == 1.0 ||
+                                cartan_string_eq(low_cv, "dying") == 1.0 ||
+                                cartan_string_eq(low_cv, "dead") == 1.0 ||
+                                cartan_string_eq(low_cv, "fine") == 1.0 ||
+                                cartan_string_eq(low_cv, "ok") == 1.0 ||
+                                cartan_string_eq(low_cv, "okay") == 1.0) {
+                                is_condition = 1.0;
                             }
-                            free(low_ca);
+                            free(low_cv);
                         }
-                        if (geomind_is_multivalued_attr(norm_attr) == 1.0) {
-                            let cur_v = sqlite_vec_get_user_attr(db, g_active_user_id, norm_attr);
-                            if (cartan_string_length(cur_v) > 0.0 && cartan_string_contains(cur_v, cleaned_val) == 0.0) {
-                                final_val = cartan_string_concat(cur_v, ", ");
-                                final_val = cartan_string_concat(final_val, cleaned_val);
+
+                        if (is_condition == 0.0) {
+                            var final_val = cleaned_val;
+                            if (cartan_string_eq(norm_attr, "pet") == 1.0 && cartan_string_contains(final_val, "(") == 0.0) {
+                                let low_ca = veto_string_to_lower(cleaned_attr);
+                                if (cartan_string_contains(low_ca, "dog") == 1.0) {
+                                    final_val = cartan_string_concat(final_val, " (dog)");
+                                } else if (cartan_string_contains(low_ca, "cat") == 1.0) {
+                                    final_val = cartan_string_concat(final_val, " (cat)");
+                                }
+                                free(low_ca);
                             }
+                            if (geomind_is_multivalued_attr(norm_attr) == 1.0) {
+                                let cur_v = sqlite_vec_get_user_attr(db, g_active_user_id, norm_attr);
+                                if (cartan_string_length(cur_v) > 0.0 && cartan_string_contains(cur_v, cleaned_val) == 0.0) {
+                                    final_val = cartan_string_concat(cur_v, ", ");
+                                    final_val = cartan_string_concat(final_val, cleaned_val);
+                                }
+                            }
+                            sqlite_vec_set_user_attr(db, g_active_user_id, norm_attr, final_val);
+                            let title_str = geomind_format_attr_title(norm_attr);
+                            printf("[Cognitive Memory] Learned Interlocutor %s: %s.%s = '%s' (Domain 10: USERS_AND_RELATIONSHIPS)\n",
+                                   title_str, g_active_user_id, norm_attr, final_val);
+                            cartan_flush(0.0);
+                            learned = learned + 1.0;
                         }
-                        sqlite_vec_set_user_attr(db, g_active_user_id, norm_attr, final_val);
-                        let title_str = geomind_format_attr_title(norm_attr);
-                        printf("[Cognitive Memory] Learned Interlocutor %s: %s.%s = '%s' (Domain 10: USERS_AND_RELATIONSHIPS)\n",
-                               title_str, g_active_user_id, norm_attr, final_val);
-                        cartan_flush(0.0);
-                        learned = learned + 1.0;
                     }
                 }
                 search_offset = val_start;
@@ -3130,9 +3154,6 @@ fn geomind_parse_and_dispatch_tool_call(call_str: string) -> string {
                     file_exists_ok = 1.0;
                 }
             }
-            if (file_exists_ok == 0.0 && cartan_string_length(g_last_tool_file_path) > 0.0) {
-                arg1 = g_last_tool_file_path;
-            }
         } else if (cartan_string_eq(tool_name, "list_dir") == 1.0) {
             arg1 = geomind_extract_xml_attribute(call_str, "path");
             if (cartan_string_length(arg1) == 0.0) {
@@ -3151,9 +3172,6 @@ fn geomind_parse_and_dispatch_tool_call(call_str: string) -> string {
             }
             if (cartan_string_length(arg1) == 0.0) {
                 arg1 = geomind_extract_path_from_prompt(g_last_user_prompt);
-            }
-            if (cartan_string_length(arg1) == 0.0 && cartan_string_length(g_last_tool_file_path) > 0.0) {
-                arg1 = g_last_tool_file_path;
             }
         } else if (cartan_string_eq(tool_name, "exec_command") == 1.0) {
             arg1 = geomind_extract_xml_attribute(call_str, "cmd");
@@ -3252,7 +3270,11 @@ fn geomind_chat_build_cognitive_preamble_for_prompt(db: ptr, prompt: string) -> 
 
     var pre = "You are ";
     pre = cartan_string_concat(pre, s_name);
-    pre = cartan_string_concat(pre, ", an AI pair programmer and sovereign intelligence created by ");
+    if (geomind_is_interpersonal_intent(prompt) == 1.0) {
+        pre = cartan_string_concat(pre, ", an empathetic AI companion, confidant, and sovereign intelligence created by ");
+    } else {
+        pre = cartan_string_concat(pre, ", an AI pair programmer and sovereign intelligence created by ");
+    }
     pre = cartan_string_concat(pre, s_creator);
     pre = cartan_string_concat(pre, ".\n");
 
@@ -3271,9 +3293,13 @@ fn geomind_chat_build_cognitive_preamble_for_prompt(db: ptr, prompt: string) -> 
         }
         pre = cartan_string_concat(pre, ". Speak directly to ");
         pre = cartan_string_concat(pre, display_name);
-        pre = cartan_string_concat(pre, " in the first person (\"I\") with warmth, natural conversational flow, and technical precision. Never echo prompt instructions or speak about ");
-        pre = cartan_string_concat(pre, display_name);
-        pre = cartan_string_concat(pre, " in the third person.\n");
+        if (geomind_is_interpersonal_intent(prompt) == 1.0) {
+            pre = cartan_string_concat(pre, " in the first person (\"I\") with deep warmth, genuine empathy, and practical care. Focus 100% on their situation, pet, and well-being. Never mention programming, files, or technical tasks.\n");
+        } else {
+            pre = cartan_string_concat(pre, " in the first person (\"I\") with warmth, natural conversational flow, and technical precision. Never echo prompt instructions or speak about ");
+            pre = cartan_string_concat(pre, display_name);
+            pre = cartan_string_concat(pre, " in the third person.\n");
+        }
 
         if (cartan_string_length(p_name) > 0.0) { free(p_name); }
         if (cartan_string_length(p_rel) > 0.0) { free(p_rel); }
@@ -3293,7 +3319,7 @@ fn geomind_chat_build_cognitive_preamble(db: ptr) -> string {
 
 // Standalone tool definitions specification string (permanently resident)
 fn geomind_chat_get_tool_definitions() -> string {
-    return " [Available Tools: read_file(path), write_file(path, content), exec_command(cmd), list_dir(path), file_exists(path), browse_web(url), read_screen(). Capability: read_file(path) reads source code, text, Word (.docx), Excel (.xlsx), and PDF (.pdf). Environment: Repository root CARTAN. GeoMind codebase is in Projects/geomind/ (main.car, chat.cl, engine.cl). Compiler in src/cartanc/. To inspect your code, list directory: <tool_call:list_dir path=\"Projects/geomind\"/> or read: <tool_call:read_file path=\"Projects/geomind/main.car\"/>. Action Directive: You have live local host access. When asked to inspect code, read files, examine directories, run terminal commands, or check git status, DO NOT output internal thoughts, preambles, or conversational refusal. Emit the tool call IMMEDIATELY: <tool_call:read_file path=\"...\"/>, <tool_call:exec_command cmd=\"...\"/>, <tool_call:list_dir path=\"...\"/>, <tool_call:file_exists path=\"...\"/>, <tool_call:browse_web url=\"...\"/>, <tool_call:read_screen/>, or <tool_call:write_file path=\"...\">CONTENT</tool_call>. The system executes the call and returns <tool_response tool=\"...\" status=\"...\">RESULT</tool_response>. Use that genuine output to answer Rick without echoing the tool response tags.]";
+    return " [Available Tools: read_file(path), write_file(path, content), exec_command(cmd), list_dir(path), file_exists(path), browse_web(url), read_screen(). Capability: read_file(path) reads source code, text, Word (.docx), Excel (.xlsx), and PDF (.pdf). Environment: Repository root CARTAN. When Rick explicitly requests file inspection, directory listing, or terminal commands, invoke the requested tool using: <tool_call:tool_name param=\"value\"/>. The system executes the call and returns <tool_response tool=\"...\" status=\"...\">RESULT</tool_response>. Use that output to answer Rick. For all conversational, personal, empathetic, or conceptual discussions, converse naturally and directly without invoking tools.]";
 }
 
 // Intent detector: checks whether user prompt indicates a file, terminal, web, or screen tool operation
@@ -3500,8 +3526,12 @@ fn geomind_chat_get_tool_action_prime(prompt: string) -> string {
     return "";
 }
 
-// Tool schema residency: Tool definitions are permanently active and resident
+// Tool schema residency: Tool definitions are active for technical and action tasks,
+// but strictly excluded during personal, interpersonal, empathetic, and urgent personal events
 fn geomind_chat_requires_tool_definitions(prompt: string) -> float {
+    if (geomind_is_interpersonal_intent(prompt) == 1.0) {
+        return 0.0;
+    }
     return 1.0;
 }
 
@@ -3550,6 +3580,47 @@ fn geomind_is_identity_inquiry(prompt: string) -> float {
     }
     free(low_p);
     return is_id;
+}
+
+// Interpersonal, relationship, personal pet, and health detector: routes to Domain 10 (USERS_AND_RELATIONSHIPS)
+fn geomind_is_interpersonal_intent(prompt: string) -> float {
+    if (prompt == 0.0 || cartan_string_length(prompt) == 0.0) { return 0.0; }
+    let low_p = veto_string_to_lower(prompt);
+    var is_rel = 0.0;
+    if (cartan_string_contains(low_p, "dog") == 1.0 ||
+        cartan_string_contains(low_p, "cat") == 1.0 ||
+        cartan_string_contains(low_p, "pet") == 1.0 ||
+        cartan_string_contains(low_p, "puppy") == 1.0 ||
+        cartan_string_contains(low_p, "kitten") == 1.0 ||
+        cartan_string_contains(low_p, "animal") == 1.0 ||
+        cartan_string_contains(low_p, "sick") == 1.0 ||
+        cartan_string_contains(low_p, "wheez") == 1.0 ||
+        cartan_string_contains(low_p, "cough") == 1.0 ||
+        cartan_string_contains(low_p, "hurt") == 1.0 ||
+        cartan_string_contains(low_p, "pain") == 1.0 ||
+        cartan_string_contains(low_p, "vet") == 1.0 ||
+        cartan_string_contains(low_p, "hospital") == 1.0 ||
+        cartan_string_contains(low_p, "doctor") == 1.0 ||
+        cartan_string_contains(low_p, "frog") == 1.0 ||
+        cartan_string_contains(low_p, "toad") == 1.0 ||
+        cartan_string_contains(low_p, "poison") == 1.0 ||
+        cartan_string_contains(low_p, "athena") == 1.0 ||
+        cartan_string_contains(low_p, "family") == 1.0 ||
+        cartan_string_contains(low_p, "wife") == 1.0 ||
+        cartan_string_contains(low_p, "husband") == 1.0 ||
+        cartan_string_contains(low_p, "son") == 1.0 ||
+        cartan_string_contains(low_p, "daughter") == 1.0 ||
+        cartan_string_contains(low_p, "friend") == 1.0 ||
+        cartan_string_contains(low_p, "feeling") == 1.0 ||
+        cartan_string_contains(low_p, "feel ") == 1.0 ||
+        cartan_string_contains(low_p, "worried") == 1.0 ||
+        cartan_string_contains(low_p, "scared") == 1.0 ||
+        cartan_string_contains(low_p, "sad") == 1.0 ||
+        cartan_string_contains(low_p, "tired") == 1.0) {
+        is_rel = 1.0;
+    }
+    free(low_p);
+    return is_rel;
 }
 
 // Just-In-Time (JIT) Targeted User Attribute Retrieval from Domain 10
@@ -7024,6 +7095,7 @@ fn geomind_chat_clear_session() -> float {
     geomind_reset_kv_caches();
     g_last_user_prompt = "";
     g_last_model_reply = "";
+    g_last_tool_file_path = "";
     if (g_prev_decode_h != 0.0) {
         cartan_vec_free(g_prev_decode_h);
         g_prev_decode_h = 0.0;
@@ -7224,7 +7296,9 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
     if (temp >= 1.0) { entropy_tier = 2.0; }
     if (temp <= 0.1) { entropy_tier = 0.0; }
     let nses_turn = nses_pipeline_execute_turn(nses_pipe, prompt, entropy_tier, "");
-    if (geomind_is_identity_inquiry(prompt) == 1.0) {
+    if (geomind_is_interpersonal_intent(prompt) == 1.0) {
+        nses_turn.active_domain = 10.0; // Domain 10: USERS_AND_RELATIONSHIPS
+    } else if (geomind_is_identity_inquiry(prompt) == 1.0) {
         nses_turn.active_domain = 9.0; // Domain 9: SELF_AND_IDENTITY
     } else if (geomind_is_tool_action_intent(prompt) == 1.0) {
         nses_turn.active_domain = 11.0; // Domain 11: TOOLS_AND_ACTIONS
@@ -7665,8 +7739,17 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                     }
                 }
 
-                // Anti-Deflection: suppress unsolicited redirection to directory/file inspection
-                if (nses_turn.active_domain != 11.0 && cartan_string_length(prime_str) == 0.0) {
+                // Anti-Deflection & Non-Tool Guard: strictly forbid tool and bracket openings at Step 0
+                if (geomind_is_tool_action_intent(prompt) == 0.0) {
+                    cartan_vec_set_f32(logits_vec, 60.0, -10000.0);       // '<'
+                    cartan_vec_set_f32(logits_vec, 236778.0, -10000.0);   // '<'
+                    cartan_vec_set_f32(logits_vec, 91.0, -10000.0);       // '['
+                    cartan_vec_set_f32(logits_vec, 236840.0, -10000.0);   // '['
+                    cartan_vec_set_f32(logits_vec, 46.0, -10000.0);       // '<|tool>'
+                    cartan_vec_set_f32(logits_vec, 48.0, -10000.0);       // '<|tool_call>'
+                    cartan_vec_set_f32(logits_vec, 6173.0, -10000.0);     // 'Focus'
+                    cartan_vec_set_f32(logits_vec, 23797.0, -10000.0);    // 'Regarding'
+                } else if (nses_turn.active_domain != 11.0 && cartan_string_length(prime_str) == 0.0) {
                     let pen_focus = cartan_vec_get_f32(logits_vec, 6173.0);
                     cartan_vec_set_f32(logits_vec, 6173.0, pen_focus - 4.0);
                     let pen_regard = cartan_vec_get_f32(logits_vec, 23797.0);
@@ -7920,8 +8003,8 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
             cartan_flush(0.0);
         }
 
-        // Reactive Agentic Tool Call Interception
-        if (tool_calls_executed < 5.0) {
+        // Reactive Agentic Tool Call Interception: gated strictly by user tool action intent
+        if (tool_calls_executed < 5.0 && geomind_is_tool_action_intent(prompt) == 1.0) {
             let gen_text = prompt_scaffold_get_text(gen_buffer);
             var tc_start = geomind_string_index_of_offset_ignore_case(gen_text, "<tool_call:", last_tool_call_offset);
             var is_json_tool = 0.0;
@@ -8212,13 +8295,13 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
         if (post_tool_start_tokens > 0.0) {
             post_tool_explanation_tokens = gen_tokens_emitted - post_tool_start_tokens;
         }
-        if (successful_tool_calls > 0.0 && post_tool_explanation_tokens >= 32.0) {
+        if (geomind_is_tool_action_intent(prompt) == 1.0 && successful_tool_calls > 0.0 && post_tool_explanation_tokens >= 32.0) {
             printf("\n%s[GeoMind Online SFT] Successful tool interaction & substantive explanation (%.0f executed, %.0f post-tool tokens). Running backward pass...%s\n",
                    geomind_col_green(), successful_tool_calls, post_tool_explanation_tokens, geomind_col_reset());
             cartan_flush(0.0);
             geomind_chat_apply_tool_learning(prompt, full_gen_text);
         } else if (tool_calls_executed > 0.0) {
-            printf("\n%s[GeoMind Online SFT] Tool execution aborted without explanation or errored out. SFT reinforcement skipped.%s\n",
+            printf("\n%s[GeoMind Online SFT] Tool execution unprompted, aborted without explanation, or errored out. SFT reinforcement skipped.%s\n",
                    geomind_col_amber(), geomind_col_reset());
             cartan_flush(0.0);
         }

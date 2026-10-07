@@ -3996,3 +3996,24 @@ Core CARTAN programming language, compiler, runtime, and general-purpose standar
   6. Verified selective regression test suite: 8/8 passed in 66.09s (`tools/run_affected_tests.ps1 -Auto`).
   7. Validated live extraction on `Projects/geomind/docs/research/unified_geometrodynamics.docx` from native CARTAN JIT runtime.
 
+---
+
+## [ISSUE-421] [RESOLVED] Conversational Empathy Grounding, Tool Hallucination Isolation & Unprompted Online SFT Loop Elimination
+
+- **Severity**: Critical (Cognitive Alignment, Conversational Safety & Plasticity Integrity)
+- **Component**: [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl), [`Projects/geomind/trainingdata/cognitive_memory.db`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/trainingdata/cognitive_memory.db)
+- **Description**:
+  1. **Hallucinatory Deflection to Developer File Tools**: When presented with emotionally sensitive, personal, or urgent health events (e.g., Rick reporting his dog Athena was sick and wheezing from playing with a frog), GeoMind deflected into executing developer file tools (`read_file("../Projects/geomind/main.car")`), outputting *"I see your file system status... Is there anything else I can help you read or manage regarding your current work environment?"*
+  2. **Runaway Online SFT Positive Feedback Loop**: Autonomous Online SFT previously reinforced any turn where a tool executed and was followed by $\ge 32$ post-tool tokens. When unprompted tool hallucinations triggered on personal turns, the system executed genuine GPU backpropagation (`cartan_tensor_train_step`), reinforcing Domain 11 (`TOOLS_AND_ACTIONS`) synaptic pathways and cementing tool opening token logits at Step 0 for subsequent turns.
+  3. **Resident Tool Schema Attention Priming**: Resident tool schemas in Turn-0 context primed the 42-layer attention heads towards tool syntax and file-management deflection even when blocked from immediate execution.
+  4. **Adjective Attribute Pollution**: Entity extraction (`my <attribute> is <value>`) incorrectly parsed state adjectives, saving `User:Rick.pet = 'Athena (dog), sick'`.
+  5. **Parenthetical Thought Leaks**: Internal model meta-commentary (e.g. `*(Self-correction...)*`, `*(Contextual...)*`, `*(My internal systems shift...)*`) occasionally escaped into assistant display output due to narrow ad-hoc string matching.
+- **Resolution**:
+  1. **Sterilized Resident Tool Definitions**: Removed literal completion triggers and emission commands from schema definitions in `Projects/geomind/chat.cl`.
+  2. **Interpersonal & Emotional Intent Gating**: Implemented `geomind_is_interpersonal_intent(prompt)` prioritizing Domain 10 (`USERS_AND_RELATIONSHIPS`) before tool or identity routing. Injected an empathetic companion preamble explicitly forbidding unsolicited coding or file chatter.
+  3. **Dynamic Context Schema Gating**: Enforced `geomind_chat_requires_tool_definitions(prompt) == 0.0` on interpersonal turns, eliminating tool schemas from active context and reducing pre-fill overhead by >300 tokens.
+  4. **Universal Step 0 Non-Tool Logit Clamping**: Hard-masked tool opening tokens (`<`, `[`, `<|tool>`, `<|tool_call>`) and deflection ramps (`Focus`, `Regarding`) at Step 0 when `geomind_is_tool_action_intent(prompt) == 0.0`.
+  5. **Strict Intent-Gated Online SFT**: Gated `geomind_chat_apply_tool_learning` strictly behind `geomind_is_tool_action_intent(prompt) == 1.0`, permanently terminating unprompted tool learning feedback loops.
+  6. **Memory & State Sanitation**: Added `g_last_tool_file_path` clearing on session reset, filtered state adjectives (`sick`, `ill`, `wheezing`, `hurt`) from attribute learning, and corrected `User:Rick.pet` in `cognitive_memory.db`.
+  7. **Generalized Parenthetical Stage-Direction Stripping**: Refactored `geomind_sanitize_output_for_display` to strip any `*(` or `**(` parenthetical block matching its closing delimiter via depth scanning.
+  8. **Empirical Verification**: Built clean native executable `bin/geomind.exe` with `cartanc.exe`. Verified live dialogue on RTX 2000 Ada with zero tool calls, zero file system deflection, zero SFT reinforcement, and focused empathetic response.

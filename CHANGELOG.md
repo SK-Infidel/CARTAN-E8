@@ -4,6 +4,26 @@ All notable changes to the CARTAN programming language, self-hosting compiler (`
 
 In accordance with User Rule 3 and project standards, GeoMind cognitive model releases are tracked independently in [`Projects/geomind/CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/CHANGELOG.md).
 
+## [8.526.0] - 2026-10-07 (Conversational Empathy Grounding, Tool Hallucination Isolation & SFT Loop Prevention)
+
+### Completed & Validated
+- **Interpersonal & Emotional Intent Gating ([`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl))**:
+  - Implemented `geomind_is_interpersonal_intent(prompt)` prioritizing Domain 10 (`USERS_AND_RELATIONSHIPS`) before tool or identity checks.
+  - Dynamically configured empathetic companion preamble, strictly forbidding unsolicited coding or file chatter during personal, emotional, or pet health dialogue.
+  - Gated tool schema residency (`geomind_chat_requires_tool_definitions`) to return 0.0 on interpersonal prompts, eliminating all tool schemas from context and reducing pre-fill overhead by >300 tokens.
+- **Tool Hallucination Isolation & Step 0 Masking**:
+  - Sterilized resident tool schemas by removing literal execution examples and emission commands.
+  - Hard-masked tool opening tokens (`<`, `[`, `<|tool>`, `<|tool_call>`) and deflection ramps (`Focus`, `Regarding`) at Step 0 when `geomind_is_tool_action_intent(prompt) == 0.0`.
+  - Gated reactive tool execution strictly behind `geomind_is_tool_action_intent(prompt) == 1.0`.
+- **Strict Intent-Gated Online SFT**:
+  - Gated autonomous Online SFT reinforcement (`geomind_chat_apply_tool_learning`) strictly to turns where `geomind_is_tool_action_intent(prompt) == 1.0`, terminating runaway backprop loops that reinforced tool hallucinations.
+- **State Sanitation & Generalized Stage-Direction Stripping**:
+  - Filtered condition adjectives (`sick`, `ill`, `wheezing`, `hurt`) from memory attribute extraction and cleaned `User:Rick.pet` in `cognitive_memory.db`.
+  - Generalized parenthetical stage direction and internal monologue stripping in `geomind_sanitize_output_for_display` using parenthesis depth matching.
+- **Empirical Hardware & Regression Verification**:
+  - Built clean native `bin/geomind.exe` with `cartanc.exe` (170,469 LLVM IR instructions).
+  - Verified live dialogue on RTX 2000 Ada with zero tool calls, zero file system deflection, zero SFT reinforcement, and focused empathetic response.
+
 ## [8.525.0] - 2026-10-07 (Multi-Format Rich Document Ingestion Engine)
 
 ### Completed & Validated
