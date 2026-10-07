@@ -184,7 +184,14 @@ fn geomind_moe_forward(hidden_dim: float, x: ptr) -> ptr {
 }
 
 fn cartan_sasaki_brainstem_route_vec(pos: ptr, mom: ptr, temp: float) -> ptr {
-    return geomind_sasaki_stream_routing(pos, mom, temp);
+    let w_static = geomind_sasaki_stream_routing(pos, mom, temp);
+    let res = cartan_vec_create();
+    var s = 0.0;
+    while (s < 8.0) {
+        cartan_vec_push_f32(res, cartan_vec_get_f32(w_static, s));
+        s = s + 1.0;
+    }
+    return res;
 }
 
 var g_sasaki_top1_result: ptr = 0.0;

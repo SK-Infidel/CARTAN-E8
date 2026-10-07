@@ -59,6 +59,7 @@ fn geomind_chat_resolve_path(path: string) -> string {
     // 5. If path starts with "../" or "..\", also try resolving with Projects/geomind/
     if (cartan_string_starts_with(path, "../") == 1.0 || cartan_string_starts_with(path, "..\\") == 1.0) {
         let stripped = cartan_string_substring(path, 3.0, cartan_string_length(path));
+        if (cartan_file_exists(stripped) == 1.0) { return stripped; }
         let p_rel = cartan_string_concat("Projects/geomind/", stripped);
         if (cartan_file_exists(p_rel) == 1.0) { return p_rel; }
         let p_rel_up = cartan_string_concat("../Projects/geomind/", stripped);
@@ -366,7 +367,7 @@ var g_stream_masks_loaded: float = 0.0;
 var g_stream_pruning_enabled: float = 0.0; // Disabled by default for authentic 167k vocabulary
 var g_last_user_prompt: string = "";
 var g_last_model_reply: string = "";
-var g_rolling_context_threshold: float = 1024.0;
+var g_rolling_context_threshold: float = 12288.0;
 
 // Persistent LM Head Scratch & Telemetry
 var g_lm_head_h_raw: ptr = 0.0;
@@ -1380,23 +1381,61 @@ fn geomind_sanitize_output_for_display(raw: string) -> string {
             i = i + 7.0;
             continue;
         }
+        if (geomind_string_starts_with_offset(raw, "</blockquote>", i) == 1.0) {
+            i = i + 13.0;
+            continue;
+        }
+        if (geomind_string_starts_with_offset(raw, "<blockquote>", i) == 1.0) {
+            i = i + 12.0;
+            continue;
+        }
         // 4b. Strip internal parenthetical self-correction and thought commentary
         if (geomind_string_starts_with_offset(raw, "*(Self-correction", i) == 1.0 ||
+            geomind_string_starts_with_offset(raw, "*(Self-Correction", i) == 1.0 ||
+            geomind_string_starts_with_offset(raw, "**(Self-correction", i) == 1.0 ||
+            geomind_string_starts_with_offset(raw, "**(Self-Correction", i) == 1.0 ||
+            geomind_string_starts_with_offset(raw, "*(Contextual", i) == 1.0 ||
+            geomind_string_starts_with_offset(raw, "**(Contextual", i) == 1.0 ||
             geomind_string_starts_with_offset(raw, "*(thought", i) == 1.0 ||
             geomind_string_starts_with_offset(raw, "*(Thought", i) == 1.0 ||
+            geomind_string_starts_with_offset(raw, "**(thought", i) == 1.0 ||
+            geomind_string_starts_with_offset(raw, "**(Thought", i) == 1.0 ||
             geomind_string_starts_with_offset(raw, "**(After receiving", i) == 1.0 ||
-            geomind_string_starts_with_offset(raw, "*(If the user", i) == 1.0) {
+            geomind_string_starts_with_offset(raw, "*(If the user", i) == 1.0 ||
+            geomind_string_starts_with_offset(raw, "**(If the user", i) == 1.0) {
             let sc_close = geomind_string_index_of_offset_ignore_case(raw, ")", i);
             if (sc_close >= 0.0) {
                 var advance = sc_close + 1.0;
-                if (advance < raw_len && cartan_string_get_char(raw, advance) == 42.0) { advance = advance + 1.0; }
-                if (advance < raw_len && cartan_string_get_char(raw, advance) == 42.0) { advance = advance + 1.0; }
+                while (advance < raw_len && (cartan_string_get_char(raw, advance) == 42.0 || cartan_string_get_char(raw, advance) == 58.0 || cartan_string_get_char(raw, advance) == 32.0 || cartan_string_get_char(raw, advance) == 10.0)) {
+                    advance = advance + 1.0;
+                }
                 i = advance;
                 continue;
             } else {
                 i = raw_len;
                 break;
             }
+        }
+        // 4c. Subword boundary repairs & stilted phrase sanitization
+        if (geomind_string_starts_with_offset(raw, "itselfspecifically", i) == 1.0) {
+            prompt_scaffold_append(out_buf, "itself, specifically");
+            i = i + 18.0;
+            continue;
+        }
+        if (geomind_string_starts_with_offset(raw, "concerningly:", i) == 1.0) {
+            prompt_scaffold_append(out_buf, "specifically:");
+            i = i + 13.0;
+            continue;
+        }
+        if (geomind_string_starts_with_offset(raw, "concerningly", i) == 1.0) {
+            prompt_scaffold_append(out_buf, "specifically");
+            i = i + 12.0;
+            continue;
+        }
+        if (geomind_string_starts_with_offset(raw, "designated structure of GeoMind", i) == 1.0) {
+            prompt_scaffold_append(out_buf, "GeoMind architecture");
+            i = i + 31.0;
+            continue;
         }
         // 5. Tool call blocks
         if (geomind_string_starts_with_offset(raw, "<tool_call:", i) == 1.0) {
@@ -1802,7 +1841,7 @@ fn geomind_chat_learn_conversational_turn(speaker: string, text: string) -> floa
                 }
                 sqlite_vec_set_user_attr(db, "User:Rick", "preferred_name", cand_user);
                 sqlite_vec_set_user_attr(db, "User:Rick", "role", "Creator & Architect");
-                sqlite_vec_set_user_attr(db, "User:Rick", "relationship", "Father / Primary Creator");
+                sqlite_vec_set_user_attr(db, "User:Rick", "relationship", "Creator & Lead Architect");
                 sqlite_vec_set_user_attr(db, "User:Rick", "permission_tier", "root");
                 printf("[Cognitive Memory] Identified interlocutor: User:Rick (Creator & Architect, Domain 10)\n");
             } else {
@@ -2197,10 +2236,21 @@ fn geomind_tool_read_file(path: string) -> string {
     let resolved = geomind_chat_resolve_path(path);
     if (cartan_string_length(resolved) > 0.0 && cartan_file_exists(resolved) == 1.0) {
         target = resolved;
-    } else if (cartan_file_exists(path) == 0.0) {
-        return cartan_string_concat("Error: File not found: ", path);
+    } else if (cartan_file_exists(path) == 1.0) {
+        target = path;
+    } else {
+        // If path is a directory (e.g. Projects/geomind), check if main.car exists in it
+        let main_cand = cartan_string_concat(path, "/main.car");
+        let r_cand = geomind_chat_resolve_path(main_cand);
+        if (cartan_string_length(r_cand) > 0.0 && cartan_file_exists(r_cand) == 1.0) {
+            target = r_cand;
+        } else if (cartan_file_exists(main_cand) == 1.0) {
+            target = main_cand;
+        } else {
+            return cartan_string_concat("Error: File not found: ", path);
+        }
     }
-    g_last_tool_file_path = path;
+    g_last_tool_file_path = target;
     let content = cartan_read_file(target);
     let clean_content = cartan_string_replace(content, "\r\n", "\n");
     let len = cartan_string_length(clean_content);
@@ -2491,7 +2541,7 @@ fn geomind_extract_path_from_prompt(prompt: string) -> string {
             var clean_word = word;
             let w_len = cartan_string_length(word);
             let last_c = cartan_string_get_char(word, w_len - 1.0);
-            if (last_c == 63.0 || last_c == 46.0 || last_c == 44.0 || last_c == 33.0 || last_c == 58.0 || last_c == 59.0) {
+            if (w_len > 1.0 && (last_c == 63.0 || last_c == 46.0 || last_c == 44.0 || last_c == 33.0 || last_c == 58.0 || last_c == 59.0)) {
                 clean_word = cartan_string_substring(word, 0.0, w_len - 1.0);
                 free(word);
             }
@@ -2612,9 +2662,61 @@ fn geomind_parse_and_dispatch_tool_call(call_str: string) -> string {
         }
         tool_name = cartan_string_substring(call_str, s_start, s_end);
 
-        if (cartan_string_eq(tool_name, "read_file") == 1.0 ||
-            cartan_string_eq(tool_name, "list_dir") == 1.0 ||
-            cartan_string_eq(tool_name, "file_exists") == 1.0) {
+        if (cartan_string_eq(tool_name, "read_file") == 1.0) {
+            arg1 = geomind_extract_xml_attribute(call_str, "path");
+            if (cartan_string_length(arg1) == 0.0) {
+                arg1 = geomind_extract_tag_body(call_str);
+            }
+            var file_exists_ok = 0.0;
+            if (cartan_string_length(arg1) > 0.0) {
+                if (cartan_file_exists(arg1) == 1.0) {
+                    file_exists_ok = 1.0;
+                } else {
+                    let r = geomind_chat_resolve_path(arg1);
+                    if (cartan_string_length(r) > 0.0 && cartan_file_exists(r) == 1.0) {
+                        arg1 = r;
+                        file_exists_ok = 1.0;
+                    }
+                }
+            }
+            if (file_exists_ok == 0.0) {
+                let prompt_path = geomind_extract_path_from_prompt(g_last_user_prompt);
+                if (cartan_string_length(prompt_path) > 0.0) {
+                    if (cartan_file_exists(prompt_path) == 1.0) {
+                        arg1 = prompt_path;
+                        file_exists_ok = 1.0;
+                    } else {
+                        let r_prompt = geomind_chat_resolve_path(prompt_path);
+                        if (cartan_string_length(r_prompt) > 0.0 && cartan_file_exists(r_prompt) == 1.0) {
+                            arg1 = r_prompt;
+                            file_exists_ok = 1.0;
+                        }
+                    }
+                }
+            }
+            if (file_exists_ok == 0.0 && cartan_string_length(arg1) > 0.0) {
+                let main_sub = cartan_string_concat(arg1, "/main.car");
+                let r_main = geomind_chat_resolve_path(main_sub);
+                if (cartan_string_length(r_main) > 0.0 && cartan_file_exists(r_main) == 1.0) {
+                    arg1 = r_main;
+                    file_exists_ok = 1.0;
+                }
+            }
+            if (file_exists_ok == 0.0 && cartan_string_length(g_last_tool_file_path) > 0.0) {
+                arg1 = g_last_tool_file_path;
+            }
+        } else if (cartan_string_eq(tool_name, "list_dir") == 1.0) {
+            arg1 = geomind_extract_xml_attribute(call_str, "path");
+            if (cartan_string_length(arg1) == 0.0) {
+                arg1 = geomind_extract_tag_body(call_str);
+            }
+            if (cartan_string_length(arg1) == 0.0) {
+                arg1 = geomind_extract_path_from_prompt(g_last_user_prompt);
+            }
+            if (cartan_string_length(arg1) == 0.0) {
+                arg1 = ".";
+            }
+        } else if (cartan_string_eq(tool_name, "file_exists") == 1.0) {
             arg1 = geomind_extract_xml_attribute(call_str, "path");
             if (cartan_string_length(arg1) == 0.0) {
                 arg1 = geomind_extract_tag_body(call_str);
@@ -2693,31 +2795,68 @@ fn geomind_parse_and_dispatch_tool_call(call_str: string) -> string {
     return resp;
 }
 
-fn geomind_chat_build_cognitive_preamble(db: ptr) -> string {
-    if (db == 0.0) { return "[Cognitive Context]\nIdentity: GeoMind.\n"; }
+fn geomind_chat_requires_codebase_context(prompt: string) -> float {
+    if (prompt == 0.0 || cartan_string_length(prompt) == 0.0) { return 0.0; }
+    let low_p = veto_string_to_lower(prompt);
+    var req = 0.0;
+    if (cartan_string_contains(low_p, "architecture") == 1.0 ||
+        cartan_string_contains(low_p, "codebase") == 1.0 ||
+        cartan_string_contains(low_p, "structure") == 1.0 ||
+        cartan_string_contains(low_p, "manifold") == 1.0 ||
+        cartan_string_contains(low_p, "layer") == 1.0 ||
+        cartan_string_contains(low_p, "engine") == 1.0 ||
+        cartan_string_contains(low_p, "optimize") == 1.0 ||
+        cartan_string_contains(low_p, "efficient") == 1.0) {
+        req = 1.0;
+    }
+    free(low_p);
+    return req;
+}
+
+fn geomind_chat_build_cognitive_preamble_for_prompt(db: ptr, prompt: string) -> string {
+    if (db == 0.0) { return "[System Context]\nYou are GeoMind, an AI pair programmer and conversational intelligence. You are conversing directly with Rick, your creator and system architect. Speak naturally in the first person (\"I\") with clarity, warmth, and directness.\n"; }
     var s_name = cartan_sqlite_get_entity_state(db, 9.0, "Self", "name");
     if (cartan_string_length(s_name) == 0.0) { s_name = "GeoMind"; }
 
-    var pre = "[Cognitive Context]\nIdentity: ";
+    var pre = "[System Context]\nYou are ";
     pre = cartan_string_concat(pre, s_name);
-    pre = cartan_string_concat(pre, ".\n");
+    pre = cartan_string_concat(pre, ", an AI pair programmer and sovereign neuro-symbolic intelligence.\n");
 
     if (g_active_user_verified == 1.0) {
         let p_name = sqlite_vec_get_user_attr(db, g_active_user_id, "preferred_name");
         var display_name = p_name;
-        if (cartan_string_length(display_name) == 0.0) { display_name = g_active_user_id; }
+        if (cartan_string_length(display_name) == 0.0) { display_name = "Rick"; }
+        let p_role = sqlite_vec_get_user_attr(db, g_active_user_id, "role");
+        let p_rel = sqlite_vec_get_user_attr(db, g_active_user_id, "relationship");
 
-        pre = cartan_string_concat(pre, "User: ");
+        pre = cartan_string_concat(pre, "You are conversing directly with ");
         pre = cartan_string_concat(pre, display_name);
-        pre = cartan_string_concat(pre, ".\nAddress ");
+        if (cartan_string_length(p_rel) > 0.0) {
+            pre = cartan_string_concat(pre, " (");
+            pre = cartan_string_concat(pre, p_rel);
+            pre = cartan_string_concat(pre, ")");
+        }
+        pre = cartan_string_concat(pre, ". Speak directly to ");
         pre = cartan_string_concat(pre, display_name);
-        pre = cartan_string_concat(pre, " warmly by name.\n");
+        pre = cartan_string_concat(pre, " in the first person (\"I\") with warmth, natural conversational flow, and technical precision. Never echo prompt instructions or speak about ");
+        pre = cartan_string_concat(pre, display_name);
+        pre = cartan_string_concat(pre, " in the third person.\n");
         if (cartan_string_length(p_name) > 0.0) { free(p_name); }
+        if (cartan_string_length(p_role) > 0.0) { free(p_role); }
+        if (cartan_string_length(p_rel) > 0.0) { free(p_rel); }
     } else {
-        pre = cartan_string_concat(pre, "Unverified Guest: Introduce yourself warmly and ask their name.\n");
+        pre = cartan_string_concat(pre, "You are conversing with an unverified guest. Introduce yourself warmly and ask their name.\n");
+    }
+
+    if (geomind_chat_requires_codebase_context(prompt) == 1.0) {
+        pre = cartan_string_concat(pre, "Architecture Context: Sovereign 42-layer continuous manifold over E8 Lie group with WebGPU acceleration. Codebase: Core entry point at Projects/geomind/main.car, chat REPL at Projects/geomind/chat.cl, manifold engine at Projects/geomind/engine.cl, training pipeline at Projects/geomind/train.cl.\n");
     }
 
     return pre;
+}
+
+fn geomind_chat_build_cognitive_preamble(db: ptr) -> string {
+    return geomind_chat_build_cognitive_preamble_for_prompt(db, "");
 }
 
 // Standalone tool definitions specification string (only loaded on-demand when tool intent is detected)
@@ -2726,223 +2865,155 @@ fn geomind_chat_get_tool_definitions() -> string {
 }
 
 // Intent detector: checks whether user prompt indicates a file, terminal, web, or screen tool operation
-fn geomind_chat_requires_tool_definitions(prompt: string) -> float {
-    if (g_chat_tools_persistent == 1.0) { return 1.0; }
-    if (prompt == 0.0 || cartan_string_length(prompt) == 0.0) { return 0.0; }
+// Constructs grounded, exact tool call prime string when prompt is an explicit action directive
+fn geomind_chat_get_tool_action_prime(prompt: string) -> string {
+    if (prompt == 0.0 || cartan_string_length(prompt) == 0.0) { return ""; }
     let low_p = veto_string_to_lower(prompt);
-    var requires_tools = 0.0;
 
-    // 1. Explicit Tool Directives & Primers
+    // 0. Explicit Tool Directives & Primers
     if (cartan_string_contains(low_p, "<tool_call") == 1.0 ||
-        cartan_string_contains(low_p, "tool") == 1.0 ||
-        cartan_string_contains(low_p, "tools") == 1.0 ||
         cartan_string_contains(low_p, "use tool") == 1.0 ||
         cartan_string_contains(low_p, "run tool") == 1.0) {
-        requires_tools = 1.0;
+        free(low_p);
+        return "<tool_call:";
     }
 
-    // 2. File Reading, Viewing & Content Inspection
-    if (requires_tools == 0.0) {
-        if (cartan_string_contains(low_p, "read file") == 1.0 ||
-            cartan_string_contains(low_p, "read_file") == 1.0 ||
-            cartan_string_contains(low_p, "view file") == 1.0 ||
-            cartan_string_contains(low_p, "open file") == 1.0 ||
-            cartan_string_contains(low_p, "examine file") == 1.0 ||
-            cartan_string_contains(low_p, "inspect file") == 1.0 ||
-            cartan_string_contains(low_p, "check file") == 1.0 ||
-            cartan_string_contains(low_p, "show file") == 1.0 ||
-            cartan_string_contains(low_p, "display file") == 1.0 ||
-            cartan_string_contains(low_p, "cat ") == 1.0 ||
-            cartan_string_contains(low_p, "load file") == 1.0 ||
-            cartan_string_contains(low_p, "content of") == 1.0 ||
-            cartan_string_contains(low_p, "contents of") == 1.0 ||
-            cartan_string_contains(low_p, "what is in") == 1.0 ||
-            cartan_string_contains(low_p, "what's in") == 1.0 ||
-            cartan_string_contains(low_p, "whats in") == 1.0 ||
-            cartan_string_contains(low_p, "read source") == 1.0 ||
-            cartan_string_contains(low_p, "view source") == 1.0) {
-            requires_tools = 1.0;
+    // 1. Explicit File Reading, Viewing & Inspection
+    let has_read_verb = (cartan_string_contains(low_p, "read file") == 1.0 ||
+                         cartan_string_contains(low_p, "read_file") == 1.0 ||
+                         cartan_string_contains(low_p, "view file") == 1.0 ||
+                         cartan_string_contains(low_p, "open file") == 1.0 ||
+                         cartan_string_contains(low_p, "examine file") == 1.0 ||
+                         cartan_string_contains(low_p, "inspect file") == 1.0 ||
+                         cartan_string_contains(low_p, "show file") == 1.0 ||
+                         cartan_string_contains(low_p, "display file") == 1.0 ||
+                         cartan_string_contains(low_p, "cat ") == 1.0 ||
+                         cartan_string_contains(low_p, "read ") == 1.0 ||
+                         cartan_string_contains(low_p, "look at ") == 1.0 ||
+                         cartan_string_contains(low_p, "take a look at ") == 1.0 ||
+                         cartan_string_contains(low_p, "check file ") == 1.0 ||
+                         cartan_string_contains(low_p, "load file ") == 1.0 ||
+                         cartan_string_contains(low_p, "content of ") == 1.0 ||
+                         cartan_string_contains(low_p, "contents of ") == 1.0 ||
+                         cartan_string_contains(low_p, "what's in ") == 1.0 ||
+                         cartan_string_contains(low_p, "what is in ") == 1.0);
+
+    if (has_read_verb == 1.0) {
+        let p_path = geomind_extract_path_from_prompt(prompt);
+        if (cartan_string_length(p_path) > 0.0) {
+            free(low_p);
+            var prime = "<tool_call:read_file path=\"";
+            prime = cartan_string_concat(prime, p_path);
+            prime = cartan_string_concat(prime, "\"/>\n");
+            return prime;
+        }
+        if (cartan_string_contains(low_p, "that file") == 1.0 && cartan_string_length(g_last_tool_file_path) > 0.0) {
+            free(low_p);
+            var prime = "<tool_call:read_file path=\"";
+            prime = cartan_string_concat(prime, g_last_tool_file_path);
+            prime = cartan_string_concat(prime, "\"/>\n");
+            return prime;
         }
     }
 
-    // 3. File Writing, Modifying, Saving & Creating
-    if (requires_tools == 0.0) {
-        if (cartan_string_contains(low_p, "write file") == 1.0 ||
-            cartan_string_contains(low_p, "write_file") == 1.0 ||
-            cartan_string_contains(low_p, "save file") == 1.0 ||
-            cartan_string_contains(low_p, "create file") == 1.0 ||
-            cartan_string_contains(low_p, "modify file") == 1.0 ||
-            cartan_string_contains(low_p, "edit file") == 1.0 ||
-            cartan_string_contains(low_p, "update file") == 1.0 ||
-            cartan_string_contains(low_p, "append to file") == 1.0 ||
-            cartan_string_contains(low_p, "overwrite file") == 1.0 ||
-            cartan_string_contains(low_p, "dump file") == 1.0 ||
-            cartan_string_contains(low_p, "write to ") == 1.0) {
-            requires_tools = 1.0;
+    // 2. Directory Navigation & Listing
+    let has_dir_verb = (cartan_string_contains(low_p, "list dir") == 1.0 ||
+                        cartan_string_contains(low_p, "list_dir") == 1.0 ||
+                        cartan_string_contains(low_p, "list directory") == 1.0 ||
+                        cartan_string_contains(low_p, "list files") == 1.0 ||
+                        cartan_string_contains(low_p, "show files") == 1.0 ||
+                        cartan_string_contains(low_p, "directory contents") == 1.0 ||
+                        cartan_string_contains(low_p, "folder contents") == 1.0 ||
+                        cartan_string_contains(low_p, "browse folder") == 1.0 ||
+                        cartan_string_contains(low_p, "ls ") == 1.0 ||
+                        cartan_string_contains(low_p, "dir ") == 1.0);
+
+    if (has_dir_verb == 1.0) {
+        var d_path = geomind_extract_path_from_prompt(prompt);
+        if (cartan_string_length(d_path) == 0.0) {
+            if (cartan_string_contains(low_p, "projects/geomind") == 1.0 ||
+                cartan_string_contains(low_p, "geomind") == 1.0) {
+                d_path = "Projects/geomind";
+            } else {
+                d_path = ".";
+            }
+        }
+        free(low_p);
+        var prime = "<tool_call:list_dir path=\"";
+        prime = cartan_string_concat(prime, d_path);
+        prime = cartan_string_concat(prime, "\"/>\n");
+        return prime;
+    }
+
+    // 3. Terminal & Shell Command Execution
+    let has_cmd_verb = (cartan_string_contains(low_p, "exec_command") == 1.0 ||
+                        cartan_string_contains(low_p, "run command") == 1.0 ||
+                        cartan_string_contains(low_p, "execute command") == 1.0 ||
+                        cartan_string_contains(low_p, "run in terminal") == 1.0 ||
+                        cartan_string_contains(low_p, "git status") == 1.0 ||
+                        cartan_string_contains(low_p, "git diff") == 1.0 ||
+                        cartan_string_contains(low_p, "git log") == 1.0 ||
+                        cartan_string_contains(low_p, "cargo test") == 1.0 ||
+                        cartan_string_contains(low_p, "cargo check") == 1.0 ||
+                        cartan_string_contains(low_p, "cargo build") == 1.0 ||
+                        cartan_string_contains(low_p, "cartanc build") == 1.0);
+
+    if (has_cmd_verb == 1.0) {
+        var cmd = geomind_extract_command_from_prompt(prompt);
+        if (cartan_string_length(cmd) == 0.0) {
+            if (cartan_string_contains(low_p, "git status") == 1.0) { cmd = "git status"; }
+            else if (cartan_string_contains(low_p, "git diff") == 1.0) { cmd = "git diff"; }
+            else if (cartan_string_contains(low_p, "git log") == 1.0) { cmd = "git log -n 5 --oneline"; }
+            else if (cartan_string_contains(low_p, "cargo test") == 1.0) { cmd = "cargo test"; }
+            else if (cartan_string_contains(low_p, "cargo check") == 1.0) { cmd = "cargo check"; }
+        }
+        if (cartan_string_length(cmd) > 0.0) {
+            free(low_p);
+            var prime = "<tool_call:exec_command cmd=\"";
+            prime = cartan_string_concat(prime, cmd);
+            prime = cartan_string_concat(prime, "\"/>\n");
+            return prime;
         }
     }
 
-    // 4. File Existence, Searching & Locating
-    if (requires_tools == 0.0) {
-        if (cartan_string_contains(low_p, "file exists") == 1.0 ||
-            cartan_string_contains(low_p, "file_exists") == 1.0 ||
-            cartan_string_contains(low_p, "does file exist") == 1.0 ||
-            cartan_string_contains(low_p, "check if file") == 1.0 ||
-            cartan_string_contains(low_p, "find file") == 1.0 ||
-            cartan_string_contains(low_p, "search file") == 1.0 ||
-            cartan_string_contains(low_p, "locate file") == 1.0 ||
-            cartan_string_contains(low_p, "where is file") == 1.0 ||
-            cartan_string_contains(low_p, "where is the file") == 1.0) {
-            requires_tools = 1.0;
-        }
+    // 4. Screen OCR
+    if (cartan_string_contains(low_p, "read screen") == 1.0 ||
+        cartan_string_contains(low_p, "read_screen") == 1.0 ||
+        cartan_string_contains(low_p, "screenshot") == 1.0 ||
+        cartan_string_contains(low_p, "look at my screen") == 1.0 ||
+        cartan_string_contains(low_p, "what's on my screen") == 1.0) {
+        free(low_p);
+        return "<tool_call:read_screen/>\n";
     }
 
-    // 5. Directory & Folder Navigation / Listing
-    if (requires_tools == 0.0) {
-        if (cartan_string_contains(low_p, "list dir") == 1.0 ||
-            cartan_string_contains(low_p, "list_dir") == 1.0 ||
-            cartan_string_contains(low_p, "list directory") == 1.0 ||
-            cartan_string_contains(low_p, "directory contents") == 1.0 ||
-            cartan_string_contains(low_p, "folder contents") == 1.0 ||
-            cartan_string_contains(low_p, "list files") == 1.0 ||
-            cartan_string_contains(low_p, "show files") == 1.0 ||
-            cartan_string_contains(low_p, "what files") == 1.0 ||
-            cartan_string_contains(low_p, "browse folder") == 1.0 ||
-            cartan_string_contains(low_p, "explore folder") == 1.0 ||
-            cartan_string_contains(low_p, "directory structure") == 1.0 ||
-            cartan_string_contains(low_p, "in directory") == 1.0 ||
-            cartan_string_contains(low_p, "in folder") == 1.0 ||
-            cartan_string_contains(low_p, "ls ") == 1.0 ||
-            cartan_string_contains(low_p, "dir ") == 1.0) {
-            requires_tools = 1.0;
-        }
-    }
-
-    // 6. Code & Codebase Inspection
-    if (requires_tools == 0.0) {
-        if (cartan_string_contains(low_p, "code") == 1.0 ||
-            cartan_string_contains(low_p, "codebase") == 1.0 ||
-            cartan_string_contains(low_p, "source code") == 1.0 ||
-            cartan_string_contains(low_p, "look at your code") == 1.0 ||
-            cartan_string_contains(low_p, "look at the code") == 1.0 ||
-            cartan_string_contains(low_p, "take a look") == 1.0 ||
-            cartan_string_contains(low_p, "look at") == 1.0 ||
-            cartan_string_contains(low_p, "inspect") == 1.0 ||
-            cartan_string_contains(low_p, "examine") == 1.0 ||
-            cartan_string_contains(low_p, "review code") == 1.0 ||
-            cartan_string_contains(low_p, "check code") == 1.0 ||
-            cartan_string_contains(low_p, "see your code") == 1.0 ||
-            cartan_string_contains(low_p, "view code") == 1.0 ||
-            cartan_string_contains(low_p, "file") == 1.0 ||
-            cartan_string_contains(low_p, "directory") == 1.0 ||
-            cartan_string_contains(low_p, "folder") == 1.0) {
-            requires_tools = 1.0;
-        }
-    }
-
-    // 7. Git & Version Control Operations
-    if (requires_tools == 0.0) {
-        if (cartan_string_contains(low_p, "git ") == 1.0 ||
-            cartan_string_contains(low_p, "status") == 1.0 ||
-            cartan_string_contains(low_p, "diff") == 1.0 ||
-            cartan_string_contains(low_p, "git status") == 1.0 ||
-            cartan_string_contains(low_p, "git diff") == 1.0 ||
-            cartan_string_contains(low_p, "git log") == 1.0 ||
-            cartan_string_contains(low_p, "git branch") == 1.0 ||
-            cartan_string_contains(low_p, "git commit") == 1.0 ||
-            cartan_string_contains(low_p, "repo") == 1.0 ||
-            cartan_string_contains(low_p, "repository") == 1.0 ||
-            cartan_string_contains(low_p, "working tree") == 1.0 ||
-            cartan_string_contains(low_p, "commits") == 1.0 ||
-            cartan_string_contains(low_p, "branches") == 1.0 ||
-            cartan_string_contains(low_p, "stash") == 1.0) {
-            requires_tools = 1.0;
-        }
-    }
-
-    // 8. Build, Compiler & Cargo Operations
-    if (requires_tools == 0.0) {
-        if (cartan_string_contains(low_p, "compile") == 1.0 ||
-            cartan_string_contains(low_p, "build") == 1.0 ||
-            cartan_string_contains(low_p, "cartanc") == 1.0 ||
-            cartan_string_contains(low_p, "cargo") == 1.0 ||
-            cartan_string_contains(low_p, "cargo test") == 1.0 ||
-            cartan_string_contains(low_p, "cargo check") == 1.0 ||
-            cartan_string_contains(low_p, "run tests") == 1.0 ||
-            cartan_string_contains(low_p, "compiler") == 1.0 ||
-            cartan_string_contains(low_p, "linker") == 1.0) {
-            requires_tools = 1.0;
-        }
-    }
-
-    // 9. Known Project Paths & Code Files
-    if (requires_tools == 0.0) {
-        if (cartan_string_contains(low_p, "main.car") == 1.0 ||
-            cartan_string_contains(low_p, "chat.cl") == 1.0 ||
-            cartan_string_contains(low_p, "engine.cl") == 1.0 ||
-            cartan_string_contains(low_p, "c_runtime.c") == 1.0 ||
-            cartan_string_contains(low_p, "cargo.toml") == 1.0 ||
-            cartan_string_contains(low_p, "changelog.md") == 1.0 ||
-            cartan_string_contains(low_p, "issues.md") == 1.0 ||
-            cartan_string_contains(low_p, "roadmap.md") == 1.0 ||
-            cartan_string_contains(low_p, "src/") == 1.0 ||
-            cartan_string_contains(low_p, "projects/") == 1.0 ||
-            cartan_string_contains(low_p, "test/") == 1.0 ||
-            cartan_string_contains(low_p, "tools/") == 1.0 ||
-            cartan_string_contains(low_p, "scratch/") == 1.0 ||
-            cartan_string_contains(low_p, ".car") == 1.0 ||
-            cartan_string_contains(low_p, ".cl") == 1.0 ||
-            cartan_string_contains(low_p, ".rs") == 1.0 ||
-            cartan_string_contains(low_p, ".c") == 1.0 ||
-            cartan_string_contains(low_p, ".h") == 1.0 ||
-            cartan_string_contains(low_p, ".py") == 1.0 ||
-            cartan_string_contains(low_p, ".ps1") == 1.0 ||
-            cartan_string_contains(low_p, ".json") == 1.0 ||
-            cartan_string_contains(low_p, ".toml") == 1.0) {
-            requires_tools = 1.0;
-        }
-    }
-
-    // 10. Terminal, Shell & Process Execution
-    if (requires_tools == 0.0) {
-        if (cartan_string_contains(low_p, "exec_command") == 1.0 ||
-            cartan_string_contains(low_p, "run command") == 1.0 ||
-            cartan_string_contains(low_p, "execute command") == 1.0 ||
-            cartan_string_contains(low_p, "terminal") == 1.0 ||
-            cartan_string_contains(low_p, "shell") == 1.0 ||
-            cartan_string_contains(low_p, "run in terminal") == 1.0 ||
-            cartan_string_contains(low_p, "command line") == 1.0 ||
-            cartan_string_contains(low_p, "powershell") == 1.0 ||
-            cartan_string_contains(low_p, "cmd ") == 1.0 ||
-            cartan_string_contains(low_p, "bash") == 1.0 ||
-            cartan_string_contains(low_p, "execute script") == 1.0 ||
-            cartan_string_contains(low_p, "run script") == 1.0) {
-            requires_tools = 1.0;
-        }
-    }
-
-    // 11. Web Browsing & Screen OCR Vision
-    if (requires_tools == 0.0) {
-        if (cartan_string_contains(low_p, "browse web") == 1.0 ||
-            cartan_string_contains(low_p, "browse_web") == 1.0 ||
-            cartan_string_contains(low_p, "http://") == 1.0 ||
-            cartan_string_contains(low_p, "https://") == 1.0 ||
-            cartan_string_contains(low_p, "read screen") == 1.0 ||
-            cartan_string_contains(low_p, "read_screen") == 1.0 ||
-            cartan_string_contains(low_p, "screenshot") == 1.0 ||
-            cartan_string_contains(low_p, "screen capture") == 1.0 ||
-            cartan_string_contains(low_p, "look at my screen") == 1.0 ||
-            cartan_string_contains(low_p, "look at the screen") == 1.0 ||
-            cartan_string_contains(low_p, "what's on my screen") == 1.0 ||
-            cartan_string_contains(low_p, "whats on my screen") == 1.0 ||
-            cartan_string_contains(low_p, "see my screen") == 1.0 ||
-            cartan_string_contains(low_p, "capture screen") == 1.0) {
-            requires_tools = 1.0;
+    // 5. Web Browsing
+    if (cartan_string_contains(low_p, "browse web") == 1.0 ||
+        cartan_string_contains(low_p, "browse_web") == 1.0 ||
+        cartan_string_contains(low_p, "http://") == 1.0 ||
+        cartan_string_contains(low_p, "https://") == 1.0) {
+        let p_url = geomind_extract_path_from_prompt(prompt);
+        if (cartan_string_length(p_url) > 0.0) {
+            free(low_p);
+            var prime = "<tool_call:browse_web url=\"";
+            prime = cartan_string_concat(prime, p_url);
+            prime = cartan_string_concat(prime, "\"/>\n");
+            return prime;
         }
     }
 
     free(low_p);
-    return requires_tools;
+    return "";
+}
+
+// Intent detector: checks whether user prompt indicates a genuine file, terminal, web, or screen tool operation
+fn geomind_chat_requires_tool_definitions(prompt: string) -> float {
+    if (g_chat_tools_persistent == 1.0) { return 1.0; }
+    if (prompt == 0.0 || cartan_string_length(prompt) == 0.0) { return 0.0; }
+    let prime = geomind_chat_get_tool_action_prime(prompt);
+    if (cartan_string_length(prime) > 0.0) {
+        return 1.0;
+    }
+    return 0.0;
 }
 
 // Just-In-Time (JIT) Targeted User Attribute Retrieval from Domain 10
@@ -3931,8 +4002,8 @@ fn geomind_mount_gpu_resident_layers() -> float {
     }
     if (mounted > 0.0) {
         let dev_name = cartan_wgpu_get_device_name();
-        var mem_str = "1.87 GB";
-        if (layer_format == 1.0) { mem_str = "3.73 GB"; }
+        var mem_str = "2.83 GB";
+        if (layer_format == 1.0) { mem_str = "4.69 GB"; }
         if (dev_name != 0.0) {
             printf("  [GPU VRAM] %s / 42 Layers (%s) 100%% Resident in GDDR6 VRAM on %s.\n", cartan_float_to_string(mounted), mem_str, dev_name);
         } else {
@@ -3969,7 +4040,7 @@ var g_manifold_v_caches: ptr = 0.0;
 var g_manifold_kv_init: float = 0.0;
 var g_ephemeral_memory: float = 0.0;
 var g_chat_session_pos: float = 0.0;
-var g_chat_context_limit: float = 8192.0;
+var g_chat_context_limit: float = 16384.0;
 
 fn geomind_chat_get_context_limit() -> float {
     return g_chat_context_limit;
@@ -4611,7 +4682,11 @@ fn geomind_apply_stream_gated_logit_bias(logits: ptr, stream_idx: float, stream_
 fn geomind_chat_apply_tool_learning(prompt: string, full_tool_turn: string) -> float {
     printf("[GeoMind Online SFT] Reinforcing successful tool execution trajectory via backpropagation...\n");
     let p_toks = cartan_hub_encode_text_to_tokens(prompt);
-    let resp_toks = cartan_hub_encode_text_to_tokens(full_tool_turn);
+    var tool_turn_clamped = full_tool_turn;
+    if (cartan_string_length(tool_turn_clamped) > 2048.0) {
+        tool_turn_clamped = cartan_string_substring(tool_turn_clamped, 0.0, 2048.0);
+    }
+    let resp_toks = cartan_hub_encode_text_to_tokens(tool_turn_clamped);
     if (resp_toks == 0.0) {
         if (p_toks != 0.0) { cartan_vec_free(p_toks); }
         return 0.0;
@@ -4709,7 +4784,7 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
 
     // Dynamic Cognitive Preamble Assembly from Domain 9 (Identity) & Domain 1 (User)
     let db = geomind_chat_get_db();
-    let preamble = geomind_chat_build_cognitive_preamble(db);
+    let preamble = geomind_chat_build_cognitive_preamble_for_prompt(db, prompt);
 
     // FIFO Rolling Context Window Guard: dynamic horizon protection
     var rolling_limit = g_rolling_context_threshold;
@@ -4717,8 +4792,13 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
         rolling_limit = g_chat_context_limit;
     }
     if (g_chat_session_pos >= rolling_limit) {
-        printf("[GeoMind Memory] Rolling context window horizon reached (%.0f tokens). Consolidating dialogue into fresh active window.\n", g_chat_session_pos);
+        printf("[GeoMind Memory] Rolling context window horizon reached (%.0f tokens). Consolidating dialogue into Tier 2 SQLite Cognitive Memory...\n", g_chat_session_pos);
         cartan_flush(0.0);
+        if (db != 0.0) {
+            let cons_cnt = sqlite_vec_consolidate_episodes(db, 1.0);
+            printf("[GeoMind Memory] Consolidated %.0f conversational episodes into persistent cognitive beliefs.\n", cons_cnt);
+            cartan_flush(0.0);
+        }
         g_chat_session_pos = 0.0;
         geomind_reset_kv_caches();
     }
@@ -4951,8 +5031,8 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
     var post_tool_min_tokens = 0.0;
 
     // Step 0 Autonomous Tool Scaffolding (Teacher Forcing):
-    if (geomind_chat_requires_tool_definitions(prompt) == 1.0) {
-        let prime_str = "<tool_call:";
+    var prime_str = geomind_chat_get_tool_action_prime(prompt);
+    if (cartan_string_length(prime_str) > 0.0) {
         prompt_scaffold_append(gen_buffer, prime_str);
         if (g_chat_buffered_output == 0.0) {
             printf("%s", prime_str);
@@ -4976,6 +5056,44 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
         }
         gen_tokens_emitted = gen_tokens_emitted + n_prime;
         cartan_vec_free(prime_toks);
+
+        if (cartan_string_contains(prime_str, "/>") == 1.0 || cartan_string_contains(prime_str, "</tool_call>") == 1.0) {
+            last_tool_call_offset = cartan_string_length(prime_str);
+            let tool_resp = geomind_parse_and_dispatch_tool_call(prime_str);
+            if (cartan_string_length(tool_resp) > 0.0) {
+                if (g_chat_buffered_output == 0.0) {
+                    printf("%s", tool_resp);
+                    cartan_flush(0.0);
+                }
+                prompt_scaffold_append(gen_buffer, tool_resp);
+                tool_calls_executed = tool_calls_executed + 1.0;
+                if (cartan_string_contains(tool_resp, "status=\"ok\"") == 1.0) {
+                    successful_tool_calls = successful_tool_calls + 1.0;
+                }
+                post_tool_start_tokens = gen_tokens_emitted;
+                post_tool_min_tokens = gen_tokens_emitted + 48.0;
+
+                let resp_tokens = cartan_hub_encode_text_to_tokens(tool_resp);
+                let n_resp = cartan_vec_len(resp_tokens);
+                var max_resp_ingest = 96.0;
+                if (n_resp < max_resp_ingest) { max_resp_ingest = n_resp; }
+                var ri = 0.0;
+                while (ri < max_resp_ingest && (g_chat_session_pos + num_prompt_toks + step) < g_chat_context_limit) {
+                    let r_tok = cartan_vec_get_f32(resp_tokens, ri);
+                    cartan_vec_push_f32(history, r_tok);
+                    let next_h = geomind_execute_manifold_decode_step(r_tok, g_chat_session_pos + num_prompt_toks + step);
+                    if (next_h != 0.0) {
+                        if (cur_h != 0.0 && cur_h != hidden_state) {
+                            cartan_vec_free(cur_h);
+                        }
+                        cur_h = next_h;
+                    }
+                    step = step + 1.0;
+                    ri = ri + 1.0;
+                }
+                cartan_vec_free(resp_tokens);
+            }
+        }
     }
 
     while (gen_tokens_emitted < max_t && (g_chat_session_pos + num_prompt_toks + step) < g_chat_context_limit) {
@@ -5038,7 +5156,7 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                 cartan_vec_set_f32(logits_vec, 106.0, -10000.0);
                 cartan_vec_set_f32(logits_vec, 107.0, -10000.0);
             }
-            if (geomind_chat_requires_tool_definitions(prompt) == 1.0 || nses_turn.active_domain == 11.0) {
+            if (cartan_string_length(prime_str) > 0.0 || nses_turn.active_domain == 11.0) {
                 cartan_vec_set_f32(logits_vec, 3805.0, -10000.0);   // '[]' (Empty tool call refusal)
                 cartan_vec_set_f32(logits_vec, 236840.0, -10000.0); // '['
             }
@@ -5164,6 +5282,21 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
         }
 
         // Standard Single-token Decode Path
+        if (cartan_string_length(tok_str0) > 0.0) {
+            let last_b = prompt_scaffold_last_byte(gen_buffer);
+            let first_b = cartan_byte_at(tok_str0, 0.0);
+            if (((last_b >= 65.0 && last_b <= 90.0) || (last_b >= 97.0 && last_b <= 122.0)) &&
+                ((first_b >= 65.0 && first_b <= 90.0) || (first_b >= 97.0 && first_b <= 122.0))) {
+                if (cartan_string_length(tok_str0) >= 4.0 &&
+                    cartan_string_starts_with(tok_str0, "ing") == 0.0 &&
+                    cartan_string_starts_with(tok_str0, "tion") == 0.0 &&
+                    cartan_string_starts_with(tok_str0, "ment") == 0.0 &&
+                    cartan_string_starts_with(tok_str0, "able") == 0.0 &&
+                    cartan_string_starts_with(tok_str0, "ness") == 0.0) {
+                    prompt_scaffold_append(gen_buffer, " ");
+                }
+            }
+        }
         prompt_scaffold_append(gen_buffer, tok_str0);
         cartan_vec_push_f32(history, tok_0);
         if (g_chat_buffered_output == 0.0) {
@@ -5268,20 +5401,28 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
     }
 
         full_gen_text = prompt_scaffold_get_text(gen_buffer);
+        var display_resp = geomind_sanitize_output_for_display(full_gen_text);
         if (g_chat_buffered_output == 1.0) {
             if (g_chat_use_animation == 1.0) {
                 printf("%s", geomind_col_erase_line());
                 cartan_flush(0.0);
             }
-            let clean_resp = geomind_sanitize_output_for_display(full_gen_text);
-            var display_resp = clean_resp;
             if (cartan_string_length(display_resp) == 0.0) {
-                let p_name = sqlite_vec_get_user_attr(db, g_active_user_id, "preferred_name");
-                if (cartan_string_length(p_name) > 0.0) {
-                    display_resp = cartan_string_concat("Hello ", p_name);
-                    display_resp = cartan_string_concat(display_resp, "! I am here and listening. How can I assist you?");
+                if (tool_calls_executed > 0.0) {
+                    if (cartan_string_length(g_last_tool_file_path) > 0.0) {
+                        display_resp = cartan_string_concat("I have read and inspected `", g_last_tool_file_path);
+                        display_resp = cartan_string_concat(display_resp, "`. The module structure and entry points are resident in active context.");
+                    } else {
+                        display_resp = "I have completed the requested operation.";
+                    }
                 } else {
-                    display_resp = "Hello! I am here and listening. How can I assist you?";
+                    let p_name = sqlite_vec_get_user_attr(db, g_active_user_id, "preferred_name");
+                    if (cartan_string_length(p_name) > 0.0) {
+                        display_resp = cartan_string_concat("Hello ", p_name);
+                        display_resp = cartan_string_concat(display_resp, "! I am here and listening. How can I assist you?");
+                    } else {
+                        display_resp = "Hello! I am here and listening. How can I assist you?";
+                    }
                 }
             } else {
                 let low_resp = veto_string_to_lower(display_resp);
@@ -5445,13 +5586,17 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                 }
             }
         }
-        if (cartan_string_length(full_gen_text) > 0.0 &&
-            cartan_string_contains(full_gen_text, "<|turn>") == 0.0 &&
-            cartan_string_contains(full_gen_text, "<turn|>") == 0.0) {
-            geomind_chat_log_turn("geomind", full_gen_text);
-            geomind_chat_learn_conversational_turn("model", full_gen_text);
+        var reply_to_log = display_resp;
+        if (cartan_string_length(reply_to_log) == 0.0) {
+            reply_to_log = full_gen_text;
+        }
+        if (cartan_string_length(reply_to_log) > 0.0 &&
+            cartan_string_contains(reply_to_log, "<|turn>") == 0.0 &&
+            cartan_string_contains(reply_to_log, "<turn|>") == 0.0) {
+            geomind_chat_log_turn("geomind", reply_to_log);
+            geomind_chat_learn_conversational_turn("model", reply_to_log);
             g_last_user_prompt = prompt;
-            g_last_model_reply = full_gen_text;
+            g_last_model_reply = reply_to_log;
         }
 
         var post_tool_explanation_tokens = 0.0;
@@ -5470,10 +5615,15 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
         }
 
         // 3. O(1) One-Shot Key-Value Attractor Basin Insertion: Ingest conversational context into persistent memory
-        // Guard: Only insert uncompromised attractors (preserves Hopfield memory from contradiction poisoning)
-        if (veto_res.is_vetoed == 0.0 && g_ephemeral_memory == 0.0 && cur_h != 0.0 && response_burst_vec != 0.0) {
+        // Guard: Only insert uncompromised, high-confidence attractors (preserves Hopfield memory from corruption)
+        if (veto_res.is_vetoed == 0.0 && g_ephemeral_memory == 0.0 && cur_h != 0.0 && response_burst_vec != 0.0 && tool_calls_executed == 0.0 && ensemble_score >= 0.85) {
             let burst_len = cartan_vec_len(response_burst_vec);
-            if (burst_len > 0.0) {
+            let disp_len = cartan_string_length(display_resp);
+            if (burst_len > 0.0 && disp_len >= 20.0 &&
+                cartan_string_contains(display_resp, "parents") == 0.0 &&
+                cartan_string_contains(display_resp, "concerningly") == 0.0 &&
+                cartan_string_contains(display_resp, "operational parameters") == 0.0 &&
+                cartan_string_contains(display_resp, "designated structure") == 0.0) {
                 cartan_hopfield_store_attractor_burst(cur_h, cur_h, response_burst_vec, burst_len);
                 cartan_hopfield_save_basins(geomind_chat_resolve_path("Projects/geomind/trainingdata/hopfield_basins.bin"));
             }

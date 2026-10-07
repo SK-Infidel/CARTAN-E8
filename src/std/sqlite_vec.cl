@@ -562,7 +562,7 @@ fn sqlite_vec_init_domain10(db: ptr) -> float {
         sqlite_vec_upsert_entity_state(db, 10.0, "User:Rick", "preferred_name", "Rick", 1.0);
         sqlite_vec_upsert_entity_state(db, 10.0, "User:Rick", "nicknames", "Rich", 1.0);
         sqlite_vec_upsert_entity_state(db, 10.0, "User:Rick", "role", "Creator & Architect", 1.0);
-        sqlite_vec_upsert_entity_state(db, 10.0, "User:Rick", "relationship", "Father / Primary Creator", 1.0);
+        sqlite_vec_upsert_entity_state(db, 10.0, "User:Rick", "relationship", "Creator & Lead Architect", 1.0);
         sqlite_vec_upsert_entity_state(db, 10.0, "User:Rick", "permission_tier", "root", 1.0);
         sqlite_vec_upsert_entity_state(db, 10.0, "User:Rick", "face_registered", "0", 1.0);
     }

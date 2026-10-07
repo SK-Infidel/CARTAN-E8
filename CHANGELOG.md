@@ -4,14 +4,49 @@ All notable changes to the CARTAN programming language, self-hosting compiler (`
 
 In accordance with User Rule 3 and project standards, GeoMind cognitive model releases are tracked independently in [`Projects/geomind/CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/CHANGELOG.md).
 
+## [8.506.0] - 2026-10-06 (Sprint 550: Diarization Disambiguation, Subword Spacing & Contextual Preamble Grounding)
+
+### Completed & Validated
+- **Diarization & Perspective Disambiguation**:
+  - Updated interlocutor relationship for `User:Rick` from `"Father / Primary Creator"` to `"Creator & Lead Architect"` in [`src/std/sqlite_vec.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/sqlite_vec.cl), [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl), and `cognitive_memory.db`.
+  - Refactored `geomind_chat_build_cognitive_preamble_for_prompt` to provide direct first/second person conversational grounding, eliminating perspective inversion (*"from your parents' perspective"*) and third-person address.
+  - Gated codebase architecture context behind `geomind_chat_requires_codebase_context(prompt)`, reducing prefill tokens from 165 to 91 on general queries.
+- **Subword Boundary Collapse Prevention**:
+  - Implemented `prompt_scaffold_last_byte` in [`src/std/prompt_scaffold.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/prompt_scaffold.cl).
+  - Added spacing prior in single-token decode loop in [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl) to insert whitespace when an unspaced standalone word token follows an alphanumeric character, fixing collapses like `itselfspecifically`.
+  - Expanded `geomind_sanitize_output_for_display` with `<blockquote>`, `</blockquote>`, and `**(Self-Correction...` stripping.
+- **Continuous Hopfield Memory Hygiene**:
+  - Guarded `cartan_hopfield_store_attractor_burst` in [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl) to require high confidence (`ensemble_score >= 0.85`), zero tool calls, and absence of stilted phrase patterns.
+  - Reset corrupted `hopfield_basins.bin` (archived to `.bin.bak`).
+- **Empirical Validation**:
+  - Clean build of `bin/geomind.exe` with `bin/cartanc.exe` (159,139 LLVM IR instructions).
+  - Verified natural first-person conversational tone and direct engagement with Rick.
+
+## [8.505.0] - 2026-10-06 (Context Horizon Episodic Caching, 16k Batch VRAM Scaling & Sasaki Ownership Fix)
+
+### Completed & Validated
+- **Sasaki Tangent Vector Ownership & Heap Corruption Elimination (`[ISSUE-410]`)**:
+  - Resolved `STATUS_HEAP_CORRUPTION` (`0xC0000374`) caused by `cartan_sasaki_brainstem_route_vec()` returning internal static buffer `g_sasaki_weights` directly.
+  - Cloned routing weights into caller-owned vectors in [`Projects/geomind/moe.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/moe.cl).
+- **Context Horizon SQLite Cognitive Memory Caching**:
+  - Consolidated dialogue episodes via `sqlite_vec_consolidate_episodes(db, 1.0)` upon reaching rolling context horizons in [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl), preventing conversational memory loss across horizon resets.
+  - Sanitized model turn logging and `g_last_model_reply` to store clean model text (`display_resp`), preventing raw 80 KB tool dump re-ingestion into active context.
+- **16k Context Limit & GPU VRAM Batch Buffer Scaling**:
+  - Expanded default context limit from 8,192 to 16,384 tokens across [`src/std/transformer.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl), [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl), and [`Projects/geomind/main.car`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/main.car).
+  - Scaled static scratch buffers `max_n` to 4,096 tokens and dynamic thresholds to `N > 4096.0`.
+  - Mounted 16,384-token batch buffers in physical GDDR6 VRAM (`160 MB buf_x + 640 MB buf_act + 160 MB buf_out = ~960 MB`), utilizing 2.83 GB total resident VRAM on NVIDIA RTX 2000 Ada Generation GPU.
+- **Empirical Validation**:
+  - Validated 3 consecutive multi-turn exchanges via `scratch/test_subproc.py` (Turn 1 critique -> Turn 2 77.5 KB `read_file` + SFT pass -> Turn 3 architecture agency discussion) exiting with code 0.
+
 ## [8.504.0] - 2026-10-06 (Sprint 548: Autonomous Tool Domain, Online Cross-Entropy SFT & Cognitive Thought Reasoning)
 
 ### Completed & Validated
-- **Autonomous Tool Execution & Thought Reasoning (`[ISSUE-407]`)**:
-  - Overhauled [`geomind_chat_requires_tool_definitions`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl) across 11 grouped semantic intent categories.
+- **Autonomous Tool Execution & Thought Reasoning (`[ISSUE-407]`, `[ISSUE-409]`)**:
+  - Overhauled [`geomind_chat_requires_tool_definitions`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl) and introduced `geomind_chat_get_tool_action_prime`: requires both an explicit action verb and an extractable target (file, directory, command, URL) to prevent false-positive empty tool calls on conversational prompts.
   - Routed tool turns to NSES Domain 11 (`TOOLS_AND_ACTIONS`) with refusal token suppression (`3805.0` and `236840.0`).
-  - Added Step 0 `<tool_call:` teacher forcing with 96-token bounded decode conditioning and fallback path/command extraction.
-  - Enhanced [`geomind_chat_resolve_path`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl) for multi-directory resolution (`..\`, `../`, `bin/`, `Projects/geomind/`, `src/`, `tools/`).
+  - Added Step 0 immediate tool dispatching prior to decode while loop, appending tool responses and conditioning the manifold hidden state.
+  - Enforced `post_tool_min_tokens` ($\ge 48$ tokens) with control token suppression (`1.0`, `105.0`, `106.0`, `107.0`) to guarantee substantive explanations post-tool.
+  - Enhanced [`geomind_chat_resolve_path`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl) for multi-directory resolution (`..\`, `../`, `bin/`, `Projects/geomind/`, `src/`, `tools/`), including direct fallback to stripped paths.
   - Added `-think`, `--think`, `-thoughts`, `--thoughts`, `-stream`, `--stream` CLI flags and `/think` toggle with Pass 1 reasoning and Pass 2 model thoughts.
   - Implemented continuous online SFT backpropagation (`cartan_tensor_train_step`) and Hebbian reinforcement on every successful tool trajectory.
   - Full details tracked in [`Projects/geomind/CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/CHANGELOG.md).

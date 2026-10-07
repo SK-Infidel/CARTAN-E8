@@ -81,6 +81,12 @@ fn prompt_scaffold_append_char(buf: PromptScaffoldBuffer, byte_val: float) {
     cartan_set_byte(buf.raw_buffer, buf.length, 0.0);
 }
 
+// Returns the last byte character in the buffer, or 0.0 if empty
+fn prompt_scaffold_last_byte(buf: PromptScaffoldBuffer) -> float {
+    if (buf.raw_buffer == 0.0 || buf.length <= 0.0) { return 0.0; }
+    return cartan_byte_at(buf.raw_buffer, buf.length - 1.0);
+}
+
 
 // Boundary Containment Sanitizer (Invariant TS-4.3)
 // Quarantines rogue injected section delimiters from lateral primes or user inputs

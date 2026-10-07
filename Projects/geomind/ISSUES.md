@@ -3747,3 +3747,58 @@ Core CARTAN programming language, compiler, runtime, and general-purpose standar
   4. Gated SFT backpropagation: strictly requires `status="ok"` and $\ge 32$ post-tool substantive explanation tokens.
   5. Added `g_last_tool_file_path` fallback for multi-turn conversational queries like "what else is in that file?".
 
+---
+
+## [ISSUE-409] [FIXED] False-Positive Tool Calling on Conversational Prompts & Step 0 Dispatch Race Condition
+
+- **Severity**: High (Cognitive Grounding & Tool Execution Integrity)
+- **Component**: [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl)
+- **Description**:
+  1. Conversational questions asking for architecture critiques (e.g. *"So you've had a look at the main entry point to your code... what would you improve about it?"*) triggered empty tool calls (`read_file("")`) because `geomind_chat_requires_tool_definitions` used coarse substring matches on words like `"code"`, `"inspect"`, or `"file"`, while Step 0 forced `<tool_call:`.
+  2. When an explicit file path was requested (e.g. `..\Projects\Geomind\main.car`), the path was extracted and primed into the generator buffer, but tool interception was deferred until after sampling token 0 inside the decode loop. Because `post_tool_min_tokens` was initially 0.0, the model sampled EOS/`<turn|>` immediately after the primed tag, breaking from the decode loop before the dispatcher ran.
+  3. In [`geomind_chat_resolve_path`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl), paths starting with `..\` were not checking if the stripped path existed directly in the current working directory.
+- **Resolution**:
+  1. Replaced coarse `requires_tool_definitions` with `geomind_chat_get_tool_action_prime(prompt)`: requires both an explicit action verb AND an extractable file path, directory, command, or URL before injecting tool schemas or primes.
+  2. Enriched cognitive preamble in [`geomind_chat_build_cognitive_preamble`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl) with sovereign 42-layer E8 architecture and codebase entry point locations (`Projects/geomind/main.car`, `chat.cl`, `engine.cl`).
+  3. Updated [`geomind_chat_resolve_path`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl) to directly test `cartan_file_exists(stripped)` when path starts with `..\` or `../`.
+  4. Executed primed tool calls immediately prior to entering the decode while loop, appending the tool response to the prompt scaffold and conditioning the manifold hidden state.
+  5. Set `post_tool_min_tokens` to `gen_tokens_emitted + 48.0` with token logit suppression for control tokens `1.0`, `105.0`, `106.0`, and `107.0`, ensuring at least 48 tokens of substantive post-tool explanation.
+  6. Verified via 2-turn interactive test: Turn 1 provides a 380-token conversational architecture critique without tools; Turn 2 executes `read_file("Projects\Geomind\main.car")`, generates 175 explanation tokens, and completes an authentic SFT backpropagation step (CE Loss: 24.4546).
+
+---
+
+## [ISSUE-410] [FIXED] Context Horizon SQLite Episodic Caching, 16k Batch VRAM Scaling & Sasaki Vector Ownership Heap Corruption
+
+- **Severity**: Critical (Heap Corruption & Context Window Memory Architecture)
+- **Component**: [`Projects/geomind/moe.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/moe.cl), [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl), [`src/std/transformer.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl), [`Projects/geomind/main.car`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/main.car)
+- **Description**:
+  1. `cartan_sasaki_brainstem_route_vec()` in `moe.cl` was returning the static scratch buffer pointer `g_sasaki_weights` directly. Callers in `chat.cl` (line 5771) and `e8_attention_engine.cl` (line 177) called `cartan_vec_free(weights)`, deallocating the static scratch buffer into the CRT heap while leaving the global pointer non-zero. On subsequent turns (Turn 2+), `geomind_sasaki_stream_routing` accessed the freed memory and `cartan_vec_free` double-freed it, crashing with `STATUS_HEAP_CORRUPTION` (`0xC0000374`).
+  2. In `geomind_chat_step`, `g_last_model_reply` and `geomind_chat_log_turn` were saving `full_gen_text` (which included 80 KB raw tool file content payloads) rather than `display_resp` (the sanitized model text). When context shifted or rolled, `geomind_chat_append_turn_tokens` attempted to BPE encode 25,000 tokens of raw source code into 1,024-token batch buffers, causing memory exhaustion and bounds overflows.
+  3. Context horizon shifting at `g_chat_session_pos >= rolling_limit` merely reset the KV cache without consolidating conversational episodes into Tier 2 SQLite Cognitive Memory.
+  4. Transformer batch allocation limits (`g_trans_gpu_int4_batch_x`, `batch_act`, `batch_out`) and scratch buffers were capped at 1,024 tokens.
+- **Resolution**:
+  1. Updated `cartan_sasaki_brainstem_route_vec()` in `moe.cl` to allocate and return a cloned 8-element vector for caller ownership, keeping `g_sasaki_weights` pristine across all conversational turns.
+  2. Hoisted `display_resp` to function scope in `chat.cl` and used `reply_to_log = display_resp` for `g_last_model_reply`, `geomind_chat_log_turn`, and `geomind_chat_learn_conversational_turn`. Clamped `tool_turn` before tokenization in `geomind_chat_apply_tool_learning` to 2048 chars.
+  3. Integrated `sqlite_vec_consolidate_episodes(db, 1.0)` on rolling context window horizon shifts in `chat.cl`, consolidating dialogue turns into persistent cognitive beliefs before resetting KV arenas.
+  4. Scaled context limits from 8,192 to 16,384 tokens across `transformer.cl`, `chat.cl`, and `main.car`. Scaled static scratch buffers `max_n` to 4,096 tokens and dynamic thresholds to `N > 4096.0`. Mounted 16,384-token batch buffers on GPU (`buf_x` 160MB + `buf_act` 640MB + `buf_out` 160MB = ~960MB), bringing total GPU resident VRAM to 2.83 GB on NVIDIA RTX 2000 Ada Generation laptop GPU.
+  5. Empirically validated across 3 consecutive turns via `scratch/test_subproc.py` with exit code 0: Turn 1 architecture critique (617 tokens) -> Turn 2 77.5 KB `read_file` + SFT backward pass (175 tokens) -> Turn 3 architecture agency discussion (367 tokens).
+
+---
+
+## [ISSUE-411] [FIXED] Diarization Inversion, BPE Subword Collapse & Hopfield Attractor Basin Poisoning
+
+- **Severity**: High (Conversational Alignment & Token Decoding Integrity)
+- **Component**: [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl), [`src/std/sqlite_vec.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/sqlite_vec.cl), [`src/std/prompt_scaffold.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/prompt_scaffold.cl)
+- **Description**:
+  1. `User:Rick` relationship was defined as `"Father / Primary Creator"` in `sqlite_vec.cl` and `chat.cl`. Injected into the opening `<|turn>user` turn alongside third-person directive `"Address Rick warmly by name with deep respect"`, the model inverted roles into *"from your parents' perspective"* and echoed meta-directives (*"To whom I may direct this observation, respectfully (Rick)..."*).
+  2. BPE vocabulary contains whole words both with leading space (` specifically`) and without space (`specifically`). Sampling bare words after alphanumeric tokens caused subword boundary collapses (`itselfspecifically`).
+  3. Every turn where `veto_res.is_vetoed == 0.0` was inserting 5-token bursts into `cartan_hopfield_store_attractor_burst` and saving to `hopfield_basins.bin`. Hallucinated/stilted turns created corrupted attractor wells that biased future speculative drafting.
+- **Resolution**:
+  1. Replaced `"Father / Primary Creator"` with `"Creator & Lead Architect"` in `sqlite_vec.cl`, `chat.cl`, and `Projects/geomind/trainingdata/cognitive_memory.db`.
+  2. Refactored `geomind_chat_build_cognitive_preamble_for_prompt` with direct first/second person conversational grounding. Gated codebase architecture dump behind `geomind_chat_requires_codebase_context(prompt)`.
+  3. Implemented `prompt_scaffold_last_byte` in `prompt_scaffold.cl`. In single-token decode loop, injected leading space when an unspaced standalone word token ($\ge 4$ characters) follows an alphanumeric character. Expanded `geomind_sanitize_output_for_display` to strip `<blockquote>`, `</blockquote>`, and `**(Self-Correction...`.
+  4. Guarded `cartan_hopfield_store_attractor_burst` with `ensemble_score >= 0.85`, `tool_calls_executed == 0.0`, and stilted phrase filters. Reset corrupted `hopfield_basins.bin`.
+  5. Verified clean compilation via `bin/cartanc.exe` and tested interactive prompts: prefill dropped from 165 to 91 tokens; GeoMind greeted Rick directly and addressed architectural agency with zero diarization defects.
+
+
+

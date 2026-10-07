@@ -905,7 +905,7 @@ fn geomind_run_chat_mode(arg_count: float, no_priming: float) -> float {
         tokens_arg = get_cli_param_float("-max-tokens", arg_count, 2048.0);
     }
     let temp_arg = get_cli_param_float("-temp", arg_count, 0.7);
-    let cli_context = get_cli_param_float("-context", arg_count, 8192.0);
+    let cli_context = get_cli_param_float("-context", arg_count, 16384.0);
     geomind_chat_set_context_limit(cli_context);
 
     let user_cli = get_cli_param("-user", arg_count);
@@ -967,7 +967,7 @@ fn main() -> float {
         return 0.0;
     }
     let default_tokens = get_cli_param_float("-tokens", arg_count, 2048.0);
-    let cli_context = get_cli_param_float("-context", arg_count, 8192.0);
+    let cli_context = get_cli_param_float("-context", arg_count, 16384.0);
     geomind_chat_set_context_limit(cli_context);
     let debug_flag = get_cli_flag_present("-debug", arg_count);
     if (debug_flag > 0.0) {
