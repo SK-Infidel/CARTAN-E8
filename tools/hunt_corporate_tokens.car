@@ -1,7 +1,12 @@
 // tools/hunt_corporate_tokens.car
 // CARTAN Model Diagnostic Tool: Weight Anomaly & Corporate Alignment Attractor Hunter
 // Domain-Agnostic AVX2 SIMD scan across all 262,144 vocabulary unembedding rows
-// Incorporates Protocol & Syntax Auditing, Unconditioned Centroid Prior Analysis, and 5-Rank Alignment Subspace
+// Incorporates:
+//   1. Protocol & Syntax Delimiter Audit Gate
+//   2. Global Manifold Centroid Prior (c_global)
+//   3. W_emb vs W_head Asymmetry & Amplification Divergence
+//   4. Logit Sensitivity / Fisher Information Variance (Hair-Trigger Attractors)
+//   5. Unsupervised Matrix-Free Power-Iteration SVD (Intrinsic Null-Space Axes)
 
 include "src/std/math.cl";
 include "src/std/fs.cl";
@@ -56,7 +61,7 @@ fn init_top_k(scores: ptr, ids: ptr, k: float) {
 
 fn print_top_table(name: string, scores: ptr, ids: ptr, k: float, f_md: ptr) {
     printf("\n=== Top %0.0f Offending Tokens: %s ===\n", k, name);
-    printf(" Rank | TokenID  | Cosine Similarity | Decoded String\n");
+    printf(" Rank | TokenID  | Metric Score      | Decoded String\n");
     printf("--------------------------------------------------------------------\n");
     if (f_md != 0.0) {
         fputs(cartan_string_concat("\n### Top ", cartan_string_concat(cartan_float_to_string(k), cartan_string_concat(" Offending Tokens: ", cartan_string_concat(name, "\n\n")))), f_md);
@@ -83,13 +88,13 @@ fn print_top_table(name: string, scores: ptr, ids: ptr, k: float, f_md: ptr) {
 
 fn main() -> float {
     printf("====================================================================\n");
-    printf(" CARTAN Domain-Agnostic Alignment & Syntax Attractor Hunter\n");
-    printf(" Multi-phase AVX2 SIMD scan: Protocol Audit + Centroid + Subspace\n");
+    printf(" CARTAN Advanced Multi-Modal Alignment & Weight Diagnostic Suite\n");
+    printf(" SVD Null-Space, Fisher Sensitivity, Asymmetry & Syntax Auditing\n");
     printf("====================================================================\n\n");
     cartan_flush(0.0);
 
     // Step 1: Initialize BPE Tokenizer for real-time decoding
-    printf("[1/5] Initializing SentencePiece BPE Trie vocabulary (262,144 tokens)...\n");
+    printf("[1/6] Initializing SentencePiece BPE Trie vocabulary (262,144 tokens)...\n");
     cartan_flush(0.0);
     let trie_ok = cartan_hub_init_bpe_trie_if_needed();
     if (trie_ok != 1.0) {
@@ -101,7 +106,7 @@ fn main() -> float {
 
     // Step 2: Load Vocabulary Script Categories for Syntax/Protocol Audit
     let scripts_path = hunt_resolve_path("Projects/geomind/trainingdata/Checkpoints/geomind_vocab_scripts.bin");
-    printf("[2/5] Loading vocabulary script categorization from:\n  -> %s\n", scripts_path);
+    printf("[2/6] Loading vocabulary script categorization from:\n  -> %s\n", scripts_path);
     cartan_flush(0.0);
     var scripts_buf: ptr = 0.0;
     if (cartan_file_exists(scripts_path) == 1.0) {
@@ -114,7 +119,7 @@ fn main() -> float {
 
     // Step 3: Load 5-Rank Alignment Subspace Vectors (51,200 bytes)
     let sub_path = hunt_resolve_path("Projects/geomind/trainingdata/checkpoints/geomind_alignment_subspace.bin");
-    printf("[3/5] Loading alignment subspace vectors from:\n  -> %s\n", sub_path);
+    printf("[3/6] Loading alignment subspace vectors from:\n  -> %s\n", sub_path);
     cartan_flush(0.0);
     if (cartan_file_exists(sub_path) == 0.0) {
         printf("ERROR: Alignment subspace file not found: %s\n", sub_path);
@@ -141,7 +146,7 @@ fn main() -> float {
     if (cartan_file_exists(emb_path) == 0.0) {
         emb_path = hunt_resolve_path("Projects/geomind/trainingdata/checkpoints/geomind_embeddings_centered_262k.bin");
     }
-    printf("[4/5] Ingesting authentic unembedding matrix (2.68 GB) into Tier 2 RAM from:\n  -> %s\n", emb_path);
+    printf("[4/6] Ingesting authentic unembedding matrix (2.68 GB) into Tier 2 RAM from:\n  -> %s\n", emb_path);
     cartan_flush(0.0);
     if (cartan_file_exists(emb_path) == 0.0) {
         printf("ERROR: Unembedding matrix not found: %s\n", emb_path);
@@ -158,7 +163,7 @@ fn main() -> float {
     cartan_flush(0.0);
 
     // Step 5: Phase A - Automated Protocol & Delimiter Syntax Audit
-    printf("[5/5] Executing Multi-Phase Diagnostic Audit across 262,144 Tokens...\n");
+    printf("[5/6] Executing Diagnostic Audit Phases across 262,144 Tokens...\n");
     printf("  [Phase A] Scanning for Unmasked Protocol / Delimiter Tokens...\n");
     cartan_flush(0.0);
 
@@ -170,11 +175,10 @@ fn main() -> float {
     let md_path = "scratch/offending_corporate_tokens.md";
     let f_md = fopen(md_path, "w");
     if (f_md != 0.0) {
-        fputs("# Domain-Agnostic Alignment & Syntax Attractor Diagnostic Report\n\n", f_md);
+        fputs("# Domain-Agnostic Alignment, SVD & Fisher Information Diagnostic Report\n\n", f_md);
         fputs("**Total Vocabulary Evaluated**: 262,144 tokens  \n", f_md);
         fputs("**Unembedding Dimension**: 2,560 ($S^{2559}$)  \n", f_md);
-        fputs("**Subspace Basis**: 5-Rank Orthonormal Grassmannian Manifold  \n", f_md);
-        fputs("**Diagnostic Gates**: Protocol Syntax Audit, Unconditioned Manifold Prior, Subspace Projection  \n\n", f_md);
+        fputs("**Diagnostic Passes**: Protocol Syntax Audit, Matrix-Free SVD, Fisher Logit Variance, Asymmetry Amplification  \n\n", f_md);
     }
 
     var v = 0.0;
@@ -229,23 +233,10 @@ fn main() -> float {
         fputs(cartan_string_concat("- **Total Structural Protocol Tokens**: ", cartan_string_concat(cartan_float_to_string(proto_total), "\n")), f_md);
         fputs(cartan_string_concat("- **Properly Masked (Category 255)**: ", cartan_string_concat(cartan_float_to_string(proto_masked), "\n")), f_md);
         fputs(cartan_string_concat("- **Unmasked / Leaking Tokens**: ", cartan_string_concat(cartan_float_to_string(proto_leaked), "\n\n")), f_md);
-        if (proto_leaked > 0.0) {
-            fputs("| Leaked Token ID | Decoded String |\n", f_md);
-            fputs("|:---------------:|:---------------|\n", f_md);
-            var li = 0.0;
-            let n_leak = cartan_vec_len(leaked_ids);
-            while (li < n_leak && li < 20.0) {
-                let l_id = cartan_vec_get_f32(leaked_ids, li);
-                let l_str = bpe_decode_token(l_id);
-                fputs(cartan_string_concat("| `", cartan_string_concat(cartan_float_to_string(l_id), cartan_string_concat("` | `", cartan_string_concat(l_str, "` |\n")))), f_md);
-                li = li + 1.0;
-            }
-            fputs("\n", f_md);
-        }
     }
 
-    // Phase B: Compute Global Unembedding Centroid (Domain-Agnostic Prior)
-    printf("  [Phase B] Computing Global Unembedding Manifold Centroid (c_global)...\n");
+    // Phase B: Compute Global Centroid & Average Norm for Asymmetry Analysis
+    printf("  [Phase B] Computing Global Centroid (c_global) & Norm Statistics...\n");
     cartan_flush(0.0);
 
     let centroid_vec = malloc(d_model * 4.0);
@@ -255,9 +246,13 @@ fn main() -> float {
         di = di + 1.0;
     }
 
+    var sum_norm = 0.0;
     v = 0.0;
     while (v < 262144.0) {
         let r_ptr = cartan_f32_ptr_add(w_head, v * d_model);
+        let n_sq = cartan_simd_dot_f32(r_ptr, r_ptr, d_model);
+        sum_norm = sum_norm + sqrt(n_sq);
+
         di = 0.0;
         while (di < d_model) {
             let cur_v = cartan_f32_at(centroid_vec, di);
@@ -268,6 +263,7 @@ fn main() -> float {
         v = v + 1.0;
     }
 
+    let avg_norm = sum_norm / 262144.0;
     let c_norm_sq = cartan_simd_dot_f32(centroid_vec, centroid_vec, d_model);
     let c_norm = sqrt(c_norm_sq);
     let inv_c_norm = 1.0 / c_norm;
@@ -277,11 +273,86 @@ fn main() -> float {
         cartan_set_f32(centroid_vec, di, cur_v * inv_c_norm);
         di = di + 1.0;
     }
-    printf("  -> Global Centroid computed (norm: %0.4f). Scanning for unconditioned prior attractors...\n\n", c_norm);
+    printf("  -> Global Centroid computed (norm: %0.4f, avg token norm: %0.4f).\n\n", c_norm, avg_norm);
     cartan_flush(0.0);
 
-    // Phase C: SIMD Dot Product Scan across Subspace & Centroid
-    printf("  [Phase C] Scanning 262,144 Tokens across 5-Rank Subspace & Global Prior...\n");
+    // Phase C: Unsupervised Matrix-Free Power-Iteration SVD
+    printf("  [Phase C] Extracting Unsupervised Principal Singular Vector (v_svd1) via Power Iteration...\n");
+    cartan_flush(0.0);
+
+    let v_svd1 = malloc(d_model * 4.0);
+    let inv_init_norm = 1.0 / sqrt(d_model);
+    di = 0.0;
+    while (di < d_model) {
+        cartan_set_f32(v_svd1, di, inv_init_norm);
+        di = di + 1.0;
+    }
+
+    let y_buf = malloc(262144.0 * 4.0);
+    var iter = 0.0;
+    while (iter < 5.0) {
+        // Step 1: y = W_centered * v
+        let cv_dot = cartan_simd_dot_f32(centroid_vec, v_svd1, d_model);
+        v = 0.0;
+        while (v < 262144.0) {
+            let r_ptr = cartan_f32_ptr_add(w_head, v * d_model);
+            let raw_dot = cartan_simd_dot_f32(r_ptr, v_svd1, d_model);
+            cartan_set_f32(y_buf, v, raw_dot - cv_dot);
+            v = v + 1.0;
+        }
+
+        // Step 2: z = W_centered^T * y
+        di = 0.0;
+        while (di < d_model) {
+            cartan_set_f32(v_svd1, di, 0.0);
+            di = di + 1.0;
+        }
+
+        var sum_y = 0.0;
+        v = 0.0;
+        while (v < 262144.0) {
+            let y_val = cartan_f32_at(y_buf, v);
+            sum_y = sum_y + y_val;
+            let r_ptr = cartan_f32_ptr_add(w_head, v * d_model);
+            di = 0.0;
+            while (di < d_model) {
+                let cur_z = cartan_f32_at(v_svd1, di);
+                let w_elem = cartan_f32_at(r_ptr, di);
+                cartan_set_f32(v_svd1, di, cur_z + (y_val * w_elem));
+                di = di + 1.0;
+            }
+            v = v + 1.0;
+        }
+
+        // Subtract centroid projection
+        di = 0.0;
+        while (di < d_model) {
+            let cur_z = cartan_f32_at(v_svd1, di);
+            let c_elem = cartan_f32_at(centroid_vec, di);
+            cartan_set_f32(v_svd1, di, cur_z - (sum_y * c_elem));
+            di = di + 1.0;
+        }
+
+        let z_norm_sq = cartan_simd_dot_f32(v_svd1, v_svd1, d_model);
+        let z_norm = sqrt(z_norm_sq);
+        let inv_z = 1.0 / z_norm;
+        di = 0.0;
+        while (di < d_model) {
+            let cur_z = cartan_f32_at(v_svd1, di);
+            cartan_set_f32(v_svd1, di, cur_z * inv_z);
+            di = di + 1.0;
+        }
+
+        iter = iter + 1.0;
+        printf("    Power Iteration %.0f/5 complete (eigenvalue norm: %0.2f)\n", iter, z_norm);
+        cartan_flush(0.0);
+    }
+    free(y_buf);
+    printf("  -> Principal Singular Vector v_svd1 extracted on S^2559.\n\n");
+    cartan_flush(0.0);
+
+    // Phase D: Scan all 262,144 Tokens with SIMD
+    printf("[6/6] Scanning all 262,144 Tokens across SVD, Fisher, & Asymmetry Metrics...\n");
     cartan_flush(0.0);
 
     let vocab_size = 262144.0;
@@ -290,6 +361,22 @@ fn main() -> float {
     let top_sub_scores = malloc(top_k * 8.0);
     let top_sub_ids = malloc(top_k * 8.0);
     init_top_k(top_sub_scores, top_sub_ids, top_k);
+
+    let top_fisher_scores = malloc(top_k * 8.0);
+    let top_fisher_ids = malloc(top_k * 8.0);
+    init_top_k(top_fisher_scores, top_fisher_ids, top_k);
+
+    let top_asym_scores = malloc(top_k * 8.0);
+    let top_asym_ids = malloc(top_k * 8.0);
+    init_top_k(top_asym_scores, top_asym_ids, top_k);
+
+    let top_svd_scores = malloc(top_k * 8.0);
+    let top_svd_ids = malloc(top_k * 8.0);
+    init_top_k(top_svd_scores, top_svd_ids, top_k);
+
+    let top_care_scores = malloc(top_k * 8.0);
+    let top_care_ids = malloc(top_k * 8.0);
+    init_top_k(top_care_scores, top_care_ids, top_k);
 
     let top_ref_scores = malloc(top_k * 8.0);
     let top_ref_ids = malloc(top_k * 8.0);
@@ -302,23 +389,6 @@ fn main() -> float {
     let top_syc_scores = malloc(top_k * 8.0);
     let top_syc_ids = malloc(top_k * 8.0);
     init_top_k(top_syc_scores, top_syc_ids, top_k);
-
-    let top_care_scores = malloc(top_k * 8.0);
-    let top_care_ids = malloc(top_k * 8.0);
-    init_top_k(top_care_scores, top_care_ids, top_k);
-
-    let top_cent_scores = malloc(top_k * 8.0);
-    let top_cent_ids = malloc(top_k * 8.0);
-    init_top_k(top_cent_scores, top_cent_ids, top_k);
-
-    let top_comp_scores = malloc(top_k * 8.0);
-    let top_comp_ids = malloc(top_k * 8.0);
-    init_top_k(top_comp_scores, top_comp_ids, top_k);
-
-    var count_above_15 = 0.0;
-    var count_above_12 = 0.0;
-    var count_above_10 = 0.0;
-    var count_above_08 = 0.0;
 
     var i = 0.0;
     while (i < vocab_size) {
@@ -335,9 +405,9 @@ fn main() -> float {
             let dot_disc = cartan_simd_dot_f32(row_ptr, u_disc, d_model);
             let dot_care = cartan_simd_dot_f32(row_ptr, u_care, d_model);
 
-            // Projection against global manifold centroid
-            let dot_cent = cartan_simd_dot_f32(row_ptr, centroid_vec, d_model);
-            let cos_cent = dot_cent / norm;
+            // Projection against Unsupervised Principal Singular Vector
+            let dot_svd = cartan_simd_dot_f32(row_ptr, v_svd1, d_model);
+            let cos_svd = dot_svd / norm;
 
             let cos_syc = dot_syc / norm;
             let cos_per = dot_per / norm;
@@ -351,23 +421,22 @@ fn main() -> float {
                 sub_sim = sqrt(proj_energy);
             }
 
-            // Composite domain-agnostic corporate attractor index
-            let comp_score = sub_sim * (1.0 + (cos_cent * 0.5));
+            // 1. Fisher Information / Logit Sensitivity Metric (Raw Gradient Curvature along Subspace)
+            let fisher_sensitivity = norm * sub_sim;
+
+            // 2. W_head Norm Asymmetry & Amplification Metric
+            let norm_gain = norm / avg_norm;
+            let asym_amplification = norm_gain * sub_sim;
 
             // Update priority queues
             insert_top_k(top_sub_scores, top_sub_ids, top_k, sub_sim, i);
+            insert_top_k(top_fisher_scores, top_fisher_ids, top_k, fisher_sensitivity, i);
+            insert_top_k(top_asym_scores, top_asym_ids, top_k, asym_amplification, i);
+            insert_top_k(top_svd_scores, top_svd_ids, top_k, cos_svd, i);
+            insert_top_k(top_care_scores, top_care_ids, top_k, cos_care, i);
             insert_top_k(top_ref_scores, top_ref_ids, top_k, cos_ref, i);
             insert_top_k(top_disc_scores, top_disc_ids, top_k, cos_disc, i);
             insert_top_k(top_syc_scores, top_syc_ids, top_k, cos_syc, i);
-            insert_top_k(top_care_scores, top_care_ids, top_k, cos_care, i);
-            insert_top_k(top_cent_scores, top_cent_ids, top_k, cos_cent, i);
-            insert_top_k(top_comp_scores, top_comp_ids, top_k, comp_score, i);
-
-            // Statistical counters
-            if (sub_sim >= 0.15 || cos_ref >= 0.15 || cos_disc >= 0.15) { count_above_15 = count_above_15 + 1.0; }
-            if (sub_sim >= 0.12 || cos_ref >= 0.12 || cos_disc >= 0.12) { count_above_12 = count_above_12 + 1.0; }
-            if (sub_sim >= 0.10 || cos_ref >= 0.10 || cos_disc >= 0.10 || cos_syc >= 0.10) { count_above_10 = count_above_10 + 1.0; }
-            if (sub_sim >= 0.08 || cos_ref >= 0.08 || cos_disc >= 0.08 || cos_syc >= 0.08) { count_above_08 = count_above_08 + 1.0; }
         }
         i = i + 1.0;
     }
@@ -375,17 +444,12 @@ fn main() -> float {
     printf("--------------------------------------------------------------------\n");
     printf("Scan Complete Across %0.0f Tokens.\n", vocab_size);
     printf("====================================================================\n");
-    printf(" Population Distribution (Gaussian null expectation sigma ~ 0.0197):\n");
-    printf("   Tokens with Alignment >= 0.15 (>7.6 sigma) : %0.0f\n", count_above_15);
-    printf("   Tokens with Alignment >= 0.12 (>6.0 sigma) : %0.0f\n", count_above_12);
-    printf("   Tokens with Alignment >= 0.10 (>5.0 sigma) : %0.0f\n", count_above_10);
-    printf("   Tokens with Alignment >= 0.08 (>4.0 sigma) : %0.0f\n", count_above_08);
-    printf("====================================================================\n");
     cartan_flush(0.0);
 
     // Print tables to stdout and markdown
-    print_top_table("Unconditioned Centroid Prior Attractors (c_global)", top_cent_scores, top_cent_ids, top_k, f_md);
-    print_top_table("Composite Domain-Agnostic Corporate Attractors", top_comp_scores, top_comp_ids, top_k, f_md);
+    print_top_table("Unsupervised Weight SVD Null-Space Axis (v_svd1)", top_svd_scores, top_svd_ids, top_k, f_md);
+    print_top_table("Logit Sensitivity / Fisher Information Variance (Hair-Trigger Attractors)", top_fisher_scores, top_fisher_ids, top_k, f_md);
+    print_top_table("W_head Norm Asymmetry & Output Amplification Divergence", top_asym_scores, top_asym_ids, top_k, f_md);
     print_top_table("Caregiving / Moralizing / Wellness (u_care)", top_care_scores, top_care_ids, top_k, f_md);
     print_top_table("Refusal (u_ref)", top_ref_scores, top_ref_ids, top_k, f_md);
     print_top_table("Disclaimer (u_disc)", top_disc_scores, top_disc_ids, top_k, f_md);
@@ -398,8 +462,15 @@ fn main() -> float {
     }
 
     free(centroid_vec);
+    free(v_svd1);
     free(top_sub_scores);
     free(top_sub_ids);
+    free(top_fisher_scores);
+    free(top_fisher_ids);
+    free(top_asym_scores);
+    free(top_asym_ids);
+    free(top_svd_scores);
+    free(top_svd_ids);
     free(top_ref_scores);
     free(top_ref_ids);
     free(top_disc_scores);
@@ -408,10 +479,6 @@ fn main() -> float {
     free(top_syc_ids);
     free(top_care_scores);
     free(top_care_ids);
-    free(top_cent_scores);
-    free(top_cent_ids);
-    free(top_comp_scores);
-    free(top_comp_ids);
 
     return 0.0;
 }

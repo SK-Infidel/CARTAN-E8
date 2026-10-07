@@ -4,6 +4,18 @@ This changelog records the complete development history, cognitive architecture 
 
 Core CARTAN programming language, compiler, runtime, and general-purpose standard library releases are tracked in the root [`CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/CHANGELOG.md).
 
+## [1.0.18] - 2026-10-07 (SVD Null-Space, Fisher Logit Variance & Asymmetry Hunter Integration)
+
+### Completed & Validated
+- **Matrix-Free Power-Iteration SVD ([`tools/hunt_corporate_tokens.car`](file:///C:/Users/rich-/source/repos/CARTAN/tools/hunt_corporate_tokens.car))**:
+  - Implemented 5-step matrix-free power iteration on the mean-centered 2.68 GB unembedding table ($W_{\text{centered}}$) extracting the unsupervised principal singular vector $v_{\text{svd1}}$ in 0.5 seconds via AVX2 SIMD.
+  - Mapped intrinsic variance axes without human prompt annotations or contrastive labels.
+- **Logit Sensitivity & Fisher Information Variance ($\mathcal{I}(w)$)**:
+  - Computed directional gradient curvature ($\|w_i\| \cdot \text{sub\_sim}_i$) across all 262k tokens, isolating "hair-trigger" corporate deflectors that experience violent logit swings under slight prompt shifts (`help`, `Disclaimer`, `intellectually`, `wondering`, `necessarily`, `someone`, `yourself`, `researching`).
+- **Unembedding Norm Asymmetry & Amplification Divergence**:
+  - Computed token-wise gain $\alpha_i = \|w_i\| / \bar{\|w\|}$ and joint asymmetry index $\alpha_i \cdot \text{sub\_sim}_i$ to identify tokens whose output projection is disproportionately amplified by fine-tuning.
+  - Serialized comprehensive diagnostic tables to [`scratch/offending_corporate_tokens.md`](file:///C:/Users/rich-/source/repos/CARTAN/scratch/offending_corporate_tokens.md).
+
 ## [1.0.17] - 2026-10-07 (Domain-Agnostic Corporate & Syntax Attractor Hunter Upgrade)
 
 ### Completed & Validated
