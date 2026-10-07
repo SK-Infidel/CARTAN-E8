@@ -70,6 +70,7 @@ trainingdata/
 !test/geomind/trainingdata/cross_domain_ontology.car
 !test/geomind/trainingdata/analogy_benchmark.json
 !tools/eval_analogy_benchmark.py
+!tools/build_gemma_vocab_scripts.py
 Projects/geomind/docs/deprecated/architecture_v1.md
 Projects/geomind/docs/deprecated/main.md
 Projects/geomind/docs/deprecated/roadmap_v1.md

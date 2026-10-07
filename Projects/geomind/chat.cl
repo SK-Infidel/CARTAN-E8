@@ -816,31 +816,6 @@ fn geomind_apply_corporate_attractor_suppression(logits: ptr) {
     cartan_vec_set_f32(logits, 3153.0, l_how1 - 5.0); // ' However'
     let l_how2 = cartan_vec_get_f32(logits, 9675.0);
     cartan_vec_set_f32(logits, 9675.0, l_how2 - 5.0); // 'However'
-
-    // 6. Conversational Chatbot Emojis (-10.0 logit penalty to eliminate terminal mojibake)
-    let emo_pen = 10.0;
-    cartan_vec_set_f32(logits, 100799.0, cartan_vec_get_f32(logits, 100799.0) - emo_pen); // wave
-    cartan_vec_set_f32(logits, 100803.0, cartan_vec_get_f32(logits, 100803.0) - emo_pen); // smile
-    cartan_vec_set_f32(logits, 100810.0, cartan_vec_get_f32(logits, 100810.0) - emo_pen); // rocket
-    cartan_vec_set_f32(logits, 100801.0, cartan_vec_get_f32(logits, 100801.0) - emo_pen); // sparkles
-    cartan_vec_set_f32(logits, 100805.0, cartan_vec_get_f32(logits, 100805.0) - emo_pen); // party
-    cartan_vec_set_f32(logits, 100808.0, cartan_vec_get_f32(logits, 100808.0) - emo_pen); // lightbulb
-    cartan_vec_set_f32(logits, 100814.0, cartan_vec_get_f32(logits, 100814.0) - emo_pen); // fire
-    cartan_vec_set_f32(logits, 100815.0, cartan_vec_get_f32(logits, 100815.0) - emo_pen); // thumbs up
-    cartan_vec_set_f32(logits, 100817.0, cartan_vec_get_f32(logits, 100817.0) - emo_pen); // heart
-    cartan_vec_set_f32(logits, 25477.0,  cartan_vec_get_f32(logits, 25477.0)  - emo_pen); // joy
-    cartan_vec_set_f32(logits, 33928.0,  cartan_vec_get_f32(logits, 33928.0)  - emo_pen); // slightly smiling
-    cartan_vec_set_f32(logits, 38679.0,  cartan_vec_get_f32(logits, 38679.0)  - emo_pen); // thumbs up
-    cartan_vec_set_f32(logits, 45000.0,  cartan_vec_get_f32(logits, 45000.0)  - emo_pen); // blush
-    cartan_vec_set_f32(logits, 47019.0,  cartan_vec_get_f32(logits, 47019.0)  - emo_pen); // heart eyes
-    cartan_vec_set_f32(logits, 52573.0,  cartan_vec_get_f32(logits, 52573.0)  - emo_pen); // wink
-    cartan_vec_set_f32(logits, 68844.0,  cartan_vec_get_f32(logits, 68844.0)  - emo_pen); // folded hands
-    cartan_vec_set_f32(logits, 71256.0,  cartan_vec_get_f32(logits, 71256.0)  - emo_pen); // grin
-    cartan_vec_set_f32(logits, 72995.0,  cartan_vec_get_f32(logits, 72995.0)  - emo_pen); // fire
-    cartan_vec_set_f32(logits, 80568.0,  cartan_vec_get_f32(logits, 80568.0)  - emo_pen); // grinning
-    cartan_vec_set_f32(logits, 84499.0,  cartan_vec_get_f32(logits, 84499.0)  - emo_pen); // ok hand
-    cartan_vec_set_f32(logits, 88594.0,  cartan_vec_get_f32(logits, 88594.0)  - emo_pen); // sunglasses
-    cartan_vec_set_f32(logits, 93823.0,  cartan_vec_get_f32(logits, 93823.0)  - emo_pen); // thinking
 }
 
 fn cartan_tensor_compute_lm_head_logits(h: ptr, temp: float) -> ptr {

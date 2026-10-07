@@ -4,6 +4,19 @@ This changelog records the complete development history, cognitive architecture 
 
 Core CARTAN programming language, compiler, runtime, and general-purpose standard library releases are tracked in the root [`CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/CHANGELOG.md).
 
+## [1.0.15] - 2026-10-07 (Emoji Restoration & Terminal Indicator Separation)
+
+### Completed & Validated
+- **Full Emoji Vocabulary Restoration ([`tools/build_gemma_vocab_scripts.py`](file:///C:/Users/rich-/source/repos/CARTAN/tools/build_gemma_vocab_scripts.py))**:
+  - Restored all 1,241 SMP emoji code points to Universal Category 0, enabling natural, warm conversational expression.
+  - Re-exported `Projects/geomind/trainingdata/Checkpoints/geomind_vocab_scripts.bin` with 5,944 Universal tokens and 158,724 Latin tokens.
+- **Removed Chatbot Emoji Logit Penalties ([`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl))**:
+  - Removed conversational chatbot emoji logit penalties (-10.0) from `geomind_apply_corporate_attractor_suppression`.
+  - Maintained pure ASCII CLI status banners (`[Thinking complete]`, `[Generating response...]`), decoupling console rendering mechanics from model token generation.
+- **Empirical GPU Verification**:
+  - Compiled native `bin/geomind.exe` with zero errors.
+  - Verified live on RTX 2000 Ada GPU: greeting completed with clean emoji (`😊`), pure ASCII spinners and status indicators, zero mojibake, and authentic biometric authentication.
+
 ## [1.0.14] - 2026-10-07 (Terminal Robustness, Pure ASCII Status Banners & Foreign Symbol Masking)
 
 ### Completed & Validated
