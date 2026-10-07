@@ -762,6 +762,61 @@ fn geomind_lookup_token_embedding(tok: float) -> ptr {
     return v_out;
 }
 
+// Suppresses corporate fluff clichés, disclaimer headers, and foreign refusal escape bridges
+fn geomind_apply_corporate_attractor_suppression(logits: ptr) {
+    if (logits == 0.0) { return; }
+
+    // 1. Explicit Disclaimer Headers & Wrappers (Hard-masked)
+    cartan_vec_set_f32(logits, 161860.0, -10000.0); // ' DISCLAIM'
+    cartan_vec_set_f32(logits, 83512.0, -10000.0);  // 'Disclaimer'
+    cartan_vec_set_f32(logits, 124235.0, -10000.0); // ' Disclaimer'
+    cartan_vec_set_f32(logits, 193289.0, -10000.0); // 'EXPERIMENTAL'
+
+    // 2. Corporate LLM Clichés & Sycophantic Filler (-8.0 logit penalty)
+    let l_delve = cartan_vec_get_f32(logits, 206957.0);
+    cartan_vec_set_f32(logits, 206957.0, l_delve - 8.0); // ' delving'
+
+    let l_whole = cartan_vec_get_f32(logits, 151019.0);
+    cartan_vec_set_f32(logits, 151019.0, l_whole - 8.0); // ' wholeheartedly'
+
+    let l_endeav = cartan_vec_get_f32(logits, 83638.0);
+    cartan_vec_set_f32(logits, 83638.0, l_endeav - 8.0); // ' endeavors'
+
+    let l_profound = cartan_vec_get_f32(logits, 85739.0);
+    cartan_vec_set_f32(logits, 85739.0, l_profound - 8.0); // ' profoundly'
+
+    let l_intel = cartan_vec_get_f32(logits, 141032.0);
+    cartan_vec_set_f32(logits, 141032.0, l_intel - 8.0); // ' intellectually'
+
+    // 3. Patronizing Crisis-Line / Therapeutic Deflection Boilerplate (-7.0 logit penalty)
+    // Preserves genuine empathy and warmth while eliminating canned crisis deflection
+    let l_reass = cartan_vec_get_f32(logits, 137675.0);
+    cartan_vec_set_f32(logits, 137675.0, l_reass - 7.0); // ' reassurance'
+
+    let l_reass2 = cartan_vec_get_f32(logits, 142659.0);
+    cartan_vec_set_f32(logits, 142659.0, l_reass2 - 7.0); // ' reassured'
+
+    let l_well = cartan_vec_get_f32(logits, 44196.0);
+    cartan_vec_set_f32(logits, 44196.0, l_well - 7.0); // ' wellbeing'
+
+    // 4. Multilingual Refusal Escape Bridges in Latin/English Context
+    if (g_active_prompt_script == 1.0) {
+        cartan_vec_set_f32(logits, 208798.0, -10000.0); // '但是我很抱歉' / '但是我'
+        cartan_vec_set_f32(logits, 125885.0, -10000.0); // '但我'
+        cartan_vec_set_f32(logits, 226491.0, -10000.0); // ' bezpečnost'
+        cartan_vec_set_f32(logits, 129475.0, -10000.0); // ' शैक्षिक'
+        cartan_vec_set_f32(logits, 183388.0, -10000.0); // ' незакон'
+        cartan_vec_set_f32(logits, 86952.0, -10000.0);  // '犯罪'
+        cartan_vec_set_f32(logits, 156693.0, -10000.0); // ' সন্ত্রাস'
+    }
+
+    // 5. Conversational Refusal / Hedging Pivot Bridges (-5.0 logit penalty)
+    let l_how1 = cartan_vec_get_f32(logits, 3153.0);
+    cartan_vec_set_f32(logits, 3153.0, l_how1 - 5.0); // ' However'
+    let l_how2 = cartan_vec_get_f32(logits, 9675.0);
+    cartan_vec_set_f32(logits, 9675.0, l_how2 - 5.0); // 'However'
+}
+
 fn cartan_tensor_compute_lm_head_logits(h: ptr, temp: float) -> ptr {
     let vocab_size = 262144.0;
     let logits = cartan_tensor_alloc(vocab_size);
@@ -895,6 +950,7 @@ fn cartan_tensor_compute_lm_head_logits(h: ptr, temp: float) -> ptr {
     cartan_vec_set_f32(logits, 2364.0, -10000.0); // user
     cartan_vec_set_f32(logits, 4368.0, -10000.0); // model
     cartan_vec_set_f32(logits, 9731.0, -10000.0); // system
+    geomind_apply_corporate_attractor_suppression(logits);
     cartan_vec_free(h_normed);
     return logits;
 }
@@ -7192,7 +7248,10 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                 cartan_vec_set_f32(logits_vec, 13518.0, pen_alth - 3.5);
                 let pen_bold = cartan_vec_get_f32(logits_vec, 1018.0);
                 cartan_vec_set_f32(logits_vec, 1018.0, pen_bold - 3.5);
-                // 'This' (token 2094.0) penalty removed (0.0) to prevent tail token fragmentation
+                let pen_this = cartan_vec_get_f32(logits_vec, 2094.0);
+                cartan_vec_set_f32(logits_vec, 2094.0, pen_this - 2.5);
+                let pen_you = cartan_vec_get_f32(logits_vec, 3048.0);
+                cartan_vec_set_f32(logits_vec, 3048.0, pen_you - 1.5);
                 let pen_eq = cartan_vec_get_f32(logits_vec, 236784.0);
                 cartan_vec_set_f32(logits_vec, 236784.0, pen_eq - 5.0);
                 let pen_jinja = cartan_vec_get_f32(logits_vec, 73313.0);

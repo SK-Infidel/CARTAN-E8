@@ -7,6 +7,10 @@ In accordance with User Rule 3 and project standards, GeoMind cognitive model re
 ## [8.514.0] - 2026-10-07 (Sprint 557: English Manifold Orthogonalization, Soft Damping & Protocol Masking)
 
 ### Completed & Validated
+- **Corporate Alignment Attractor Hunter Tool ([`tools/hunt_corporate_tokens.car`](file:///C:/Users/rich-/source/repos/CARTAN/tools/hunt_corporate_tokens.car))**:
+  - Implemented standalone developer tool scanning all 262,144 tokens in the 2.68 GB unembedding table against the 5-rank orthonormal alignment subspace.
+  - Accelerated via native AVX2 SIMD dot products (`cartan_simd_dot_f32`) and SentencePiece BPE Trie zero-copy decoding.
+  - Empirically mapped weight anomalies across Refusal, Disclaimer, Sycophancy, Caregiving, and Subspace energy, generating [`scratch/offending_corporate_tokens.md`](file:///C:/Users/rich-/source/repos/CARTAN/scratch/offending_corporate_tokens.md).
 - **English Language Centroid Orthogonalization ($C_{\text{en}} \in \mathbb{R}^{2560 \times 3}$)**:
   - Extracted 3D English technical manifold basis at Layer 32 across 6 foundational technical disciplines.
   - Projected $C_{\text{en}}$ out of all 5 debias delta vectors ($V_{\text{clean}} = V - C_{\text{en}}(C_{\text{en}}^T V)$) prior to Gram-Schmidt.

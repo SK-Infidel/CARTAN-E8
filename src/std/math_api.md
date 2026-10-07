@@ -60,15 +60,23 @@
 - **Type**: Verified TypeChecker Symbol Table Export
 - **Status**: Production-Grade Native Implementation
 
-### `cartan_mmap_file()`
-- **Type**: Verified TypeChecker Symbol Table Export
-- **Status**: Production-Grade Native Implementation
-
-### `cartan_munmap_file()`
-- **Type**: Verified TypeChecker Symbol Table Export
-- **Status**: Production-Grade Native Implementation
-
 ### `cartan_simd_dot_f32()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
+### `cartan_simd_dot_i8_f32()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
+### `cartan_simd_dot_i4_f32()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
+### `cartan_byte_at()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
+### `cartan_set_byte()`
 - **Type**: Verified TypeChecker Symbol Table Export
 - **Status**: Production-Grade Native Implementation
 
@@ -77,6 +85,26 @@
 - **Status**: Production-Grade Native Implementation
 
 ### `cartan_set_f32()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
+### `cartan_ptr_at()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
+### `cartan_set_ptr()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
+### `cartan_atomic_f32_at()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
+### `cartan_atomic_set_f32()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
+### `cartan_memory_fence()`
 - **Type**: Verified TypeChecker Symbol Table Export
 - **Status**: Production-Grade Native Implementation
 
@@ -148,7 +176,15 @@
 - **Type**: Verified TypeChecker Symbol Table Export
 - **Status**: Production-Grade Native Implementation
 
+### `_fseeki64()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
 ### `ftell()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
+### `_ftelli64()`
 - **Type**: Verified TypeChecker Symbol Table Export
 - **Status**: Production-Grade Native Implementation
 
@@ -213,6 +249,30 @@
 - **Status**: Production-Grade Native Implementation
 
 ### `__acrt_iob_func()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
+### `CreateThread()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
+### `WaitForSingleObject()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
+### `CloseHandle()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
+### `Sleep()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
+### `_kbhit()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
+### `_getch()`
 - **Type**: Verified TypeChecker Symbol Table Export
 - **Status**: Production-Grade Native Implementation
 
@@ -436,6 +496,14 @@
 - **Type**: Verified TypeChecker Symbol Table Export
 - **Status**: Production-Grade Native Implementation
 
+### `cartan_mmap_file()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
+### `cartan_munmap_file()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
 ### `cartan_get_env()`
 - **Type**: Verified TypeChecker Symbol Table Export
 - **Status**: Production-Grade Native Implementation
@@ -452,7 +520,7 @@
 - **Type**: Verified TypeChecker Symbol Table Export
 - **Status**: Production-Grade Native Implementation
 
-### `c_cartan_read_line()`
+### `getchar()`
 - **Type**: Verified TypeChecker Symbol Table Export
 - **Status**: Production-Grade Native Implementation
 
@@ -473,6 +541,14 @@
 - **Status**: Production-Grade Native Implementation
 
 ### `cartan_get_quote()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
+### `cartan_resolve_compiler_path()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
+### `cartan_get_compiler_lib_flags()`
 - **Type**: Verified TypeChecker Symbol Table Export
 - **Status**: Production-Grade Native Implementation
 
@@ -720,6 +796,14 @@
 - **Type**: Verified TypeChecker Symbol Table Export
 - **Status**: Production-Grade Native Implementation
 
+### `cartan_tensor_backward()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
+### `cartan_tensor_step()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
 ### `cartan_free_compute_graph()`
 - **Type**: Verified TypeChecker Symbol Table Export
 - **Status**: Production-Grade Native Implementation
@@ -776,11 +860,19 @@
 - **Type**: Verified TypeChecker Symbol Table Export
 - **Status**: Production-Grade Native Implementation
 
+### `cartan_fluid_truncate_fp16()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
 ### `cartan_sparsity_start()`
 - **Type**: Verified TypeChecker Symbol Table Export
 - **Status**: Production-Grade Native Implementation
 
 ### `cartan_sparsity_end()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
+### `cartan_tensor_prune_magnitude()`
 - **Type**: Verified TypeChecker Symbol Table Export
 - **Status**: Production-Grade Native Implementation
 
@@ -901,6 +993,14 @@
 - **Status**: Production-Grade Native Implementation
 
 ### `cartan_init_fractal_attention()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
+### `cartan_init_sieving_cache()`
+- **Type**: Verified TypeChecker Symbol Table Export
+- **Status**: Production-Grade Native Implementation
+
+### `cartan_init_elastic_vocab()`
 - **Type**: Verified TypeChecker Symbol Table Export
 - **Status**: Production-Grade Native Implementation
 
