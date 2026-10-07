@@ -1720,10 +1720,10 @@ fn cartan_trans_pool_worker_main(param: ptr) -> float {
         while (state != 1.0) {
             if (g_trans_pool_running == 0.0) { return 0.0; }
             if (g_trans_pool_standby == 1.0) {
-                Sleep(10.0);
+                SwitchToThread();
             } else {
                 spin_yield = spin_yield + 1.0;
-                if (spin_yield > 20000.0) {
+                if (spin_yield > 5000.0) {
                     SwitchToThread();
                     spin_yield = 0.0;
                 }
@@ -2621,6 +2621,43 @@ fn cartan_trans_pool_worker_main(param: ptr) -> float {
                     p = p + 1.0;
                 }
                 j = j + 1.0;
+            }
+        } else if (op == 18.0) {
+            let w_emb = cartan_ptr_at(param, 4.0);
+            let ics = cartan_ptr_at(param, 5.0);
+            let in_h = cartan_ptr_at(param, 6.0);
+            let out_logits = cartan_ptr_at(param, 7.0);
+            let active_indices = cartan_ptr_at(param, 8.0);
+            let clr_start = cartan_f32_at(param, 27.0);
+            let clr_end = cartan_f32_at(param, 28.0);
+            let inv_cap = 1.0 / 30.0;
+
+            // Parallel clear slice to mask value (-10000.0)
+            var clr_i = clr_start;
+            while (clr_i < clr_end) {
+                cartan_vec_set_f32(out_logits, clr_i, -10000.0);
+                clr_i = clr_i + 1.0;
+            }
+
+            // Compute projection only for active token slice
+            var idx_i = start_row;
+            while (idx_i < end_row) {
+                let r = cartan_f32_at(active_indices, idx_i);
+                if (r == 0.0 || r == 2.0 || r == 3.0 || r == 98.0 || r == 100.0 || r == 101.0 || r == 105.0 || r == 2364.0 || r == 4368.0 || r == 9731.0) {
+                    cartan_vec_set_f32(out_logits, r, -10000.0);
+                } else {
+                    let row_ptr = cartan_f32_ptr_add(w_emb, r * in_dim);
+                    let dot = cartan_simd_dot_f32(in_h, row_ptr, in_dim);
+                    capped = 30.0 * tanh(dot * inv_cap);
+                    if (ics != 0.0) {
+                        let ic = cartan_f32_at(ics, r);
+                        if (ic < 6.0 && ic > 0.0) {
+                            capped = capped - 0.35 * (6.0 - ic);
+                        }
+                    }
+                    cartan_vec_set_f32(out_logits, r, capped);
+                }
+                idx_i = idx_i + 1.0;
             }
         }
 
@@ -4097,6 +4134,96 @@ fn cartan_trans_pool_dispatch_lm_head(
             cartan_vec_set_f32(out_logits, r, capped);
         }
         r = r + 1.0;
+    }
+
+    ti = 1.0;
+    while (ti < 8.0) {
+        let tp = cartan_f32_ptr_add(g_trans_thread_tasks, ti * 64.0);
+        spin = 0.0;
+        s = cartan_atomic_f32_at(tp, 24.0);
+        while (s != 2.0) {
+            spin = spin + 1.0;
+            if (spin > 5000.0) {
+                SwitchToThread();
+                spin = 0.0;
+            }
+            s = cartan_atomic_f32_at(tp, 24.0);
+        }
+        cartan_memory_fence();
+        cartan_atomic_set_f32(tp, 24.0, 0.0);
+        ti = ti + 1.0;
+    }
+}
+
+fn cartan_trans_pool_dispatch_lm_head_indexed(
+    vocab_size: float,
+    dim: float,
+    w_emb: ptr,
+    ics: ptr,
+    in_h: ptr,
+    out_logits: ptr,
+    active_indices: ptr,
+    num_active: float
+) {
+    if (g_trans_pool_standby == 1.0) { g_trans_pool_standby = 0.0; }
+    cartan_init_transformer_scratch_buffers();
+    let chunk = floor(num_active / 8.0);
+    let clr_chunk = vocab_size / 8.0;
+    var ti = 0.0;
+    var spin = 0.0;
+    var s = 0.0;
+    var capped = 0.0;
+    let inv_cap = 1.0 / 30.0;
+
+    ti = 1.0;
+    while (ti < 8.0) {
+        let tp = cartan_f32_ptr_add(g_trans_thread_tasks, ti * 64.0);
+        cartan_set_f32(tp, 0.0, ti * chunk);
+        var end_r = (ti + 1.0) * chunk;
+        if (ti == 7.0) { end_r = num_active; }
+        cartan_set_f32(tp, 1.0, end_r);
+        cartan_set_f32(tp, 2.0, dim);
+        cartan_set_f32(tp, 3.0, 18.0);
+        cartan_set_ptr(tp, 4.0, w_emb);
+        cartan_set_ptr(tp, 5.0, ics);
+        cartan_set_ptr(tp, 6.0, in_h);
+        cartan_set_ptr(tp, 7.0, out_logits);
+        cartan_set_ptr(tp, 8.0, active_indices);
+        cartan_set_f32(tp, 27.0, ti * clr_chunk);
+        var end_clr = (ti + 1.0) * clr_chunk;
+        if (ti == 7.0) { end_clr = vocab_size; }
+        cartan_set_f32(tp, 28.0, end_clr);
+        cartan_memory_fence();
+        cartan_atomic_set_f32(tp, 24.0, 1.0);
+        ti = ti + 1.0;
+    }
+
+    // Thread 0: parallel clear slice 0
+    var clr_0 = 0.0;
+    while (clr_0 < clr_chunk) {
+        cartan_vec_set_f32(out_logits, clr_0, -10000.0);
+        clr_0 = clr_0 + 1.0;
+    }
+
+    // Thread 0: compute projection for active token slice 0
+    var idx_i = 0.0;
+    while (idx_i < chunk) {
+        let r = cartan_f32_at(active_indices, idx_i);
+        if (r == 0.0 || r == 2.0 || r == 3.0 || r == 98.0 || r == 100.0 || r == 101.0 || r == 105.0 || r == 2364.0 || r == 4368.0 || r == 9731.0) {
+            cartan_vec_set_f32(out_logits, r, -10000.0);
+        } else {
+            let row_ptr = cartan_f32_ptr_add(w_emb, r * dim);
+            let dot = cartan_simd_dot_f32(in_h, row_ptr, dim);
+            capped = 30.0 * tanh(dot * inv_cap);
+            if (ics != 0.0) {
+                let ic = cartan_f32_at(ics, r);
+                if (ic < 6.0 && ic > 0.0) {
+                    capped = capped - 0.35 * (6.0 - ic);
+                }
+            }
+            cartan_vec_set_f32(out_logits, r, capped);
+        }
+        idx_i = idx_i + 1.0;
     }
 
     ti = 1.0;

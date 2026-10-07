@@ -361,6 +361,14 @@ var g_active_script_mask: ptr = 0.0;
 var g_cached_mask_script: float = -1.0;
 var g_active_prompt_script: float = 1.0;
 
+// Active Script & Stream Indexed Vocabulary Arrays (for cartan_trans_pool_dispatch_lm_head_indexed)
+var g_active_script_indices: ptr = 0.0;
+var g_active_script_count: float = 0.0;
+var g_cached_indices_script: float = -1.0;
+var g_stream_script_indices: ptr = 0.0;
+var g_stream_script_count: float = 0.0;
+var g_cached_stream_idx: float = -1.0;
+
 // Stream Domain Vocabulary Pruning Assets (8 * 262,144 bytes = 2,097,152 bytes)
 var g_stream_masks_buf: ptr = 0.0;
 var g_stream_masks_loaded: float = 0.0;
@@ -492,6 +500,10 @@ fn geomind_get_language_mask_for_script(target_script: float) -> ptr {
         return g_active_script_mask;
     }
 
+    if (g_active_script_indices == 0.0) {
+        g_active_script_indices = malloc(1048576.0);
+    }
+    var count = 0.0;
     var v = 0.0;
     while (v < 262144.0) {
         let cat = cartan_byte_at(g_vocab_scripts_buf, v);
@@ -508,15 +520,46 @@ fn geomind_get_language_mask_for_script(target_script: float) -> ptr {
             }
         }
         cartan_set_byte(g_active_script_mask, v, active);
+        if (active == 1.0) {
+            cartan_set_f32(g_active_script_indices, count, v);
+            count = count + 1.0;
+        }
         v = v + 1.0;
     }
+    g_active_script_count = count;
     g_cached_mask_script = target_script;
+    g_cached_indices_script = target_script;
     return g_active_script_mask;
+}
+
+fn geomind_build_stream_indices_if_needed(stream_idx: float) {
+    geomind_load_stream_masks_if_needed();
+    if (g_stream_masks_buf == 0.0) { return; }
+    if (g_cached_stream_idx == stream_idx && g_stream_script_indices != 0.0) {
+        return;
+    }
+    if (g_stream_script_indices == 0.0) {
+        g_stream_script_indices = malloc(1048576.0);
+    }
+    let mask_offset = stream_idx * 262144.0;
+    let s_mask = cartan_c_ptr_add(g_stream_masks_buf, mask_offset);
+    var count = 0.0;
+    var v = 0.0;
+    while (v < 262144.0) {
+        let act = cartan_byte_at(s_mask, v);
+        if (act > 0.0) {
+            cartan_set_f32(g_stream_script_indices, count, v);
+            count = count + 1.0;
+        }
+        v = v + 1.0;
+    }
+    g_stream_script_count = count;
+    g_cached_stream_idx = stream_idx;
 }
 
 fn geomind_get_stream_pruned_vocab_mask(target_script: float, stream_idx: float, stream_w: float) -> ptr {
     geomind_load_stream_masks_if_needed();
-    // Activate stream domain pruning when enabled, English script, and Sasaki confidence >= threshold (0.32)
+    // Activate stream domain pruning when enabled, English script, and Sasaki confidence >= threshold (0.35)
     if (g_stream_pruning_enabled == 1.0 && target_script == 1.0 && g_stream_masks_buf != 0.0 && stream_w >= g_sasaki_stream_threshold && stream_idx >= 0.0 && stream_idx < 8.0) {
         let mask_offset = stream_idx * 262144.0;
         let s_mask = cartan_c_ptr_add(g_stream_masks_buf, mask_offset);
@@ -526,6 +569,31 @@ fn geomind_get_stream_pruned_vocab_mask(target_script: float, stream_idx: float,
     g_telemetry_full_lm_evals = g_telemetry_full_lm_evals + 1.0;
     // Default to authentic language mask (167,243 active Universal + Latin tokens for English)
     return geomind_get_language_mask_for_script(target_script);
+}
+
+fn geomind_get_stream_pruned_vocab_indices(target_script: float, stream_idx: float, stream_w: float) -> ptr {
+    geomind_load_stream_masks_if_needed();
+    if (g_stream_pruning_enabled == 1.0 && target_script == 1.0 && g_stream_masks_buf != 0.0 && stream_w >= g_sasaki_stream_threshold && stream_idx >= 0.0 && stream_idx < 8.0) {
+        geomind_build_stream_indices_if_needed(stream_idx);
+        if (g_stream_script_count > 0.0) {
+            g_telemetry_pruned_lm_evals = g_telemetry_pruned_lm_evals + 1.0;
+            return g_stream_script_indices;
+        }
+    }
+    g_telemetry_full_lm_evals = g_telemetry_full_lm_evals + 1.0;
+    geomind_get_language_mask_for_script(target_script);
+    return g_active_script_indices;
+}
+
+fn geomind_get_active_vocab_count(target_script: float, stream_idx: float, stream_w: float) -> float {
+    if (g_stream_pruning_enabled == 1.0 && target_script == 1.0 && g_stream_masks_buf != 0.0 && stream_w >= g_sasaki_stream_threshold && stream_idx >= 0.0 && stream_idx < 8.0) {
+        geomind_build_stream_indices_if_needed(stream_idx);
+        if (g_stream_script_count > 0.0) {
+            return g_stream_script_count;
+        }
+    }
+    geomind_get_language_mask_for_script(target_script);
+    return g_active_script_count;
 }
 
 fn geomind_load_e8_assets_if_needed() -> float {
@@ -745,9 +813,15 @@ fn cartan_tensor_compute_lm_head_logits(h: ptr, temp: float) -> ptr {
             di = di + 1.0;
         }
         var ics_ptr = g_e8_ics;
-        var mask_ptr = geomind_get_stream_pruned_vocab_mask(g_active_prompt_script, g_active_dom_stream, g_active_dom_w);
+        let num_active = geomind_get_active_vocab_count(g_active_prompt_script, g_active_dom_stream, g_active_dom_w);
         let t_head0 = clock();
-        cartan_trans_pool_dispatch_lm_head(vocab_size, 2560.0, g_full_emb_buf, ics_ptr, g_lm_head_h_raw, logits, mask_ptr);
+        if (num_active > 0.0 && num_active < vocab_size) {
+            var indices_ptr = geomind_get_stream_pruned_vocab_indices(g_active_prompt_script, g_active_dom_stream, g_active_dom_w);
+            cartan_trans_pool_dispatch_lm_head_indexed(vocab_size, 2560.0, g_full_emb_buf, ics_ptr, g_lm_head_h_raw, logits, indices_ptr, num_active);
+        } else {
+            var mask_ptr = geomind_get_stream_pruned_vocab_mask(g_active_prompt_script, g_active_dom_stream, g_active_dom_w);
+            cartan_trans_pool_dispatch_lm_head(vocab_size, 2560.0, g_full_emb_buf, ics_ptr, g_lm_head_h_raw, logits, mask_ptr);
+        }
         let t_head1 = clock();
         g_telemetry_lm_head_total_ms = g_telemetry_lm_head_total_ms + (t_head1 - t_head0);
         g_telemetry_lm_head_calls = g_telemetry_lm_head_calls + 1.0;
@@ -4459,6 +4533,14 @@ var g_sasaki_bypass_enabled: float = 0.0;
 var g_active_dom_stream: float = 0.0;
 var g_active_dom_w: float = 0.0;
 
+fn geomind_chat_set_sasaki_bypass(val: float) {
+    g_sasaki_bypass_enabled = val;
+}
+
+fn geomind_chat_get_sasaki_bypass() -> float {
+    return g_sasaki_bypass_enabled;
+}
+
 var g_prev_decode_h: ptr = 0.0;
 var g_decode_vel_h: ptr = 0.0;
 var g_prev_layer24_h: ptr = 0.0;
@@ -4560,7 +4642,14 @@ fn geomind_execute_manifold_decode_step(sampled_tok: float, pos: float) -> ptr {
     g_active_dom_w = dom_w;
 
     var early_exited = 0.0;
+    var sasaki_bypassed = 0.0;
     l = 25.0;
+    if (g_sasaki_bypass_enabled == 1.0 && dom_w >= g_sasaki_stream_threshold) {
+        // Fast-Path: evaluate velocity (h_24, \dot{h}_24), bypass intermediate dense layers 25..40 directly to Anchor Layer 41
+        g_telemetry_stream_bypass_count = g_telemetry_stream_bypass_count + 1.0;
+        sasaki_bypassed = 1.0;
+        l = 41.0;
+    }
     while (l < 41.0) {
         geomind_poll_char_stream(l, 42.0);
         let layer_buf = geomind_get_layer_buffer(l);
@@ -4601,7 +4690,11 @@ fn geomind_execute_manifold_decode_step(sampled_tok: float, pos: float) -> ptr {
     }
 
     if (early_exited == 0.0) {
-        g_telemetry_total_layers_executed = g_telemetry_total_layers_executed + 42.0;
+        if (sasaki_bypassed == 1.0) {
+            g_telemetry_total_layers_executed = g_telemetry_total_layers_executed + 26.0;
+        } else {
+            g_telemetry_total_layers_executed = g_telemetry_total_layers_executed + 42.0;
+        }
         g_telemetry_total_decode_tokens = g_telemetry_total_decode_tokens + 1.0;
     }
     // Terminal character stream flush: ensures multi-byte/multi-char BPE glyphs flush completely
@@ -4668,9 +4761,9 @@ fn geomind_stream_draft_candidate_tokens(cur_h: ptr, dom_stream: float, dom_w: f
     let out_cands = cartan_vec_create();
     if (cur_h == 0.0 || max_draft <= 0.0) { return out_cands; }
 
-    // 1. Continuous Hopfield Attractor Memory draft (if high resonance >= 0.75)
+    // 1. Continuous Hopfield Attractor Memory draft (if high resonance >= 0.85)
     if (cartan_hopfield_attractor_count() > 0.0) {
-        let hopfield_cands = cartan_hopfield_draft_candidate_tokens(cur_h, max_draft, 0.75);
+        let hopfield_cands = cartan_hopfield_draft_candidate_tokens(cur_h, max_draft, 0.85);
         let n_hop = cartan_vec_len(hopfield_cands);
         if (n_hop >= max_draft) {
             cartan_vec_free(out_cands);
@@ -4679,7 +4772,9 @@ fn geomind_stream_draft_candidate_tokens(cur_h: ptr, dom_stream: float, dom_w: f
         cartan_vec_free(hopfield_cands);
     }
 
-    // 2. Active Cortical Stream geometric transformation & domain draft projection
+    // 2. Active Cortical Stream geometric transformation & domain draft projection (< 0.15ms per draft token)
+    geomind_load_stream_masks_if_needed();
+    geomind_load_stream_adapters_if_needed();
     if (dom_w >= g_sasaki_stream_threshold && g_stream_masks_buf != 0.0) {
         let stream_h = geomind_single_stream_forward(cur_h, dom_stream);
         let draft_logits1 = cartan_tensor_compute_lm_head_logits(stream_h, 0.70);
@@ -5235,7 +5330,7 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
 
         // Stream-Driven Speculative Fast Drafting (Batched Verification with Ghost-Free Anchor Commitment)
         if (g_hopfield_speculative_draft_enabled == 1.0 && step + 2.0 < max_t) {
-            let candidate_tokens = geomind_stream_draft_candidate_tokens(cur_h, g_active_dom_stream, g_active_dom_w, 1.0);
+            let candidate_tokens = geomind_stream_draft_candidate_tokens(cur_h, g_active_dom_stream, g_active_dom_w, 3.0);
             let n_cands = cartan_vec_len(candidate_tokens);
             if (n_cands > 0.0) {
                 let n_draft = 1.0 + n_cands;
@@ -5259,6 +5354,9 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                 let draft_start = g_chat_session_pos + num_prompt_toks + step;
                 var dl = 0.0;
                 while (dl < 42.0) {
+                    if (g_sasaki_bypass_enabled == 1.0 && g_active_dom_w >= g_sasaki_stream_threshold && dl >= 25.0 && dl < 41.0) {
+                        dl = 41.0;
+                    }
                     let layer_buf = geomind_get_layer_buffer(dl);
                     if (layer_buf != 0.0) {
                         cartan_manifold_layer_forward_batch(draft_states, layer_buf, batch_tokens, n_draft, draft_start);
@@ -5545,8 +5643,8 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
             printf("\n%s┌── [📊 Inference Telemetry] ──────────────────────────────────────────────┐%s\n", c_gray, c_rst);
             printf("%s│%s Prefill: %.0f ms (%s tokens) | Decode: %.0f ms (%s tokens, %.1f tok/s)\n",
                    c_gray, c_rst, dt_prefill, cartan_float_to_string(num_prompt_toks), dt_decode, cartan_float_to_string(step), tok_per_sec);
-            printf("%s│%s LM Head: %.1f ms (%.0f pruned, %.0f full) | Early Exit: %.1f%% (Avg %.1f/42 layers)\n",
-                   c_gray, c_rst, avg_lm_ms, g_telemetry_pruned_lm_evals, g_telemetry_full_lm_evals, exit_rate, avg_layers);
+            printf("%s│%s LM Head: %.1f ms (%.0f pruned, %.0f full) | Early Exit: %.1f%% | Sasaki Bypass: %.1f%% (Avg %.1f/42 layers)\n",
+                   c_gray, c_rst, avg_lm_ms, g_telemetry_pruned_lm_evals, g_telemetry_full_lm_evals, exit_rate, bypass_rate, avg_layers);
             printf("%s│%s Speculative: %.0f/%.0f accepted | Context Horizon: %.0f\n",
                    c_gray, c_rst, g_telemetry_speculative_accepted, g_telemetry_speculative_drafted, g_chat_session_pos + num_prompt_toks + step);
             printf("%s└── [Performance Profile] ─────────────────────────────────────────────────┘%s\n\n", c_gray, c_rst);

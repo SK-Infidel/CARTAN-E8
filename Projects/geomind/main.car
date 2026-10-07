@@ -45,7 +45,7 @@ fn print_help_dialogue() -> float {
     printf("  (Default: Launches interactive WebGPU chat engine when run without mode flags)\n\n");
     printf("Modes:\n");
     printf("  --chat          Start interactive E8 Hopfield multimodal chat engine (DEFAULT MODE)\n");
-    printf("                  Flags: -prompt <text>, -tokens <num>, -temp <float>, -cpu, -stream-prune, -speculative-draft\n");
+    printf("                  Flags: -prompt <text>, -tokens <num>, -temp <float>, -cpu, -stream-prune, -speculative-draft, -sasaki-bypass\n");
     printf("  --hf-download   Explore & download HuggingFace datasets (-repo <repo_id>)\n");
     printf("  --train-pre     Pre-train model on skill corpus (-target <file>|-repo <id>)\n");
     printf("  --train-cloze   Run Anchored Cloze Curriculum Stream (-target <file>)\n");
@@ -1036,6 +1036,17 @@ fn main() -> float {
         printf("[GeoMind Mode] Stream-Driven Speculative Fast Drafting ENABLED\n");
     } else {
         geomind_chat_set_speculative_drafting(0.0);
+    }
+
+    let sasaki_bypass_flag = get_cli_flag_present("-sasaki-bypass", arg_count) +
+                             get_cli_flag_present("--sasaki-bypass", arg_count);
+    let no_sasaki_bypass_flag = get_cli_flag_present("-no-sasaki-bypass", arg_count) +
+                                get_cli_flag_present("--no-sasaki-bypass", arg_count);
+    if (sasaki_bypass_flag > 0.0 && no_sasaki_bypass_flag == 0.0) {
+        geomind_chat_set_sasaki_bypass(1.0);
+        printf("[GeoMind Mode] Sasaki MoE Fast-Path Layer Bypass ENABLED (Skipping L25..L40 on w* >= 0.35)\n");
+    } else {
+        geomind_chat_set_sasaki_bypass(0.0);
     }
 
     // Default mode: Interactive chat (launches automatically when typing geomind.exe or if no non-chat mode was requested)
