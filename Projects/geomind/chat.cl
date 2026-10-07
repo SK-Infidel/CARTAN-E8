@@ -33,6 +33,9 @@ include "../../src/std/cargraph_consolidate.cl";
 include "../../src/std/nses_pipeline.cl";
 include "../../src/std/saliency_attractor.cl";
 
+extern fn SetConsoleOutputCP(wCodePageID: float) -> float;
+extern fn SetConsoleCP(wCodePageID: float) -> float;
+
 // Resolves relative path across repo root, bin/, and Projects/geomind working directories
 fn geomind_chat_resolve_path(path: string) -> string {
     if (cartan_string_length(path) == 0.0) { return ""; }
@@ -3857,6 +3860,8 @@ fn geomind_chat_get_nses_pipeline() -> NSES_Pipeline {
 }
 
 fn geomind_chat_start() -> float {
+    SetConsoleOutputCP(65001.0);
+    SetConsoleCP(65001.0);
     printf("================================================================================\n");
     printf("  GEOMIND E8 MULTIMODAL NEURO-SYMBOLIC CHAT ENGINE (chat.car)\n");
     printf("  Sovereign GeoMind 42-Layer Manifold & SentencePiece BPE Tokenizer\n");

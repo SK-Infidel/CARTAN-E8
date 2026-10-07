@@ -4,6 +4,18 @@ This changelog records the complete development history, cognitive architecture 
 
 Core CARTAN programming language, compiler, runtime, and general-purpose standard library releases are tracked in the root [`CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/CHANGELOG.md).
 
+## [1.0.14] - 2026-10-07 (Console UTF-8 Code Page 65001 & Multi-Byte Emoji Rendering Fix)
+
+### Completed & Validated
+- **Windows Console Code Page 65001 Integration ([`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl), [`Projects/geomind/main.car`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/main.car))**:
+  - Bound `kernel32` Win32 API functions `SetConsoleOutputCP(65001.0)` and `SetConsoleCP(65001.0)` via C runtime linkage.
+  - Activated UTF-8 code page at entry of `main()` and `geomind_chat_start()`, preventing legacy OEM-US CP437/1252 byte-splitting of 4-byte UTF-8 glyphs (`[🧠 Thinking complete]`, `👋`, `😊`, `🚀`).
+- **Empirical CLI Verification**:
+  - Recompiled `bin/geomind.exe` with clean LLVM IR generation and AVX2 native optimization.
+  - Validated interactive greeting output with physical GPU execution: rendered `[🧠 Thinking complete]` and `😊` without character artifacts.
+- **Regression Test Suite**:
+  - Ran affected regression suite (`tools/run_affected_tests.ps1`): 8/8 targets passed cleanly in 64.13s.
+
 ## [1.0.13] - 2026-10-07 (Sprint 557: English Manifold Orthogonalization, Soft Damping & Protocol Masking)
 
 ### Completed & Validated

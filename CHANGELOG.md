@@ -4,6 +4,18 @@ All notable changes to the CARTAN programming language, self-hosting compiler (`
 
 In accordance with User Rule 3 and project standards, GeoMind cognitive model releases are tracked independently in [`Projects/geomind/CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/CHANGELOG.md).
 
+## [8.515.0] - 2026-10-07 (Console UTF-8 Code Page 65001 & Multi-Byte Emoji Rendering Fix)
+
+### Completed & Validated
+- **Windows Console Code Page 65001 Integration ([`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl), [`Projects/geomind/main.car`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/main.car))**:
+  - Bound Win32 console code page control functions `SetConsoleOutputCP(65001.0)` and `SetConsoleCP(65001.0)` via C runtime linkage.
+  - Initialized UTF-8 code page at entry of `main()` and `geomind_chat_start()`, resolving OEM-US CP437/1252 byte-splitting of 4-byte UTF-8 glyphs (`[🧠 Thinking complete]`, `👋`, `😊`, `🚀`).
+- **Empirical CLI Verification**:
+  - Recompiled native binary `bin/geomind.exe` with AVX2/FMA optimizations.
+  - Verified clean Unicode emoji rendering (`[🧠 Thinking complete]`, `😊`) during interactive model execution.
+- **Regression Test Suite**:
+  - Ran affected regression suite (`tools/run_affected_tests.ps1`): 8/8 targets passed cleanly in 64.13s.
+
 ## [8.514.0] - 2026-10-07 (Sprint 557: English Manifold Orthogonalization, Soft Damping & Protocol Masking)
 
 ### Completed & Validated

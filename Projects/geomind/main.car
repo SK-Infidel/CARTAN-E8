@@ -33,6 +33,8 @@ extern fn cartan_hopfield_energy(h: ptr) -> float;
 extern fn cartan_hopfield_save_basins(path: string) -> float;
 extern fn cartan_hopfield_load_basins(path: string) -> float;
 extern fn cartan_sleep_consolidate_cycle(filepath: string, lr: float, thresh: float) -> float;
+extern fn SetConsoleOutputCP(wCodePageID: float) -> float;
+extern fn SetConsoleCP(wCodePageID: float) -> float;
 
 
 fn print_help_dialogue() -> float {
@@ -965,6 +967,8 @@ fn geomind_run_chat_mode(arg_count: float, no_priming: float) -> float {
 }
 
 fn main() -> float {
+    SetConsoleOutputCP(65001.0);
+    SetConsoleCP(65001.0);
     let arg_count = sys_get_arg_count();
     if (get_cli_flag_present("--help", arg_count) > 0.0 || get_cli_flag_present("-h", arg_count) > 0.0) {
         print_help_dialogue();
