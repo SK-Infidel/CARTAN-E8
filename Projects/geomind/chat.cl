@@ -33,8 +33,6 @@ include "../../src/std/cargraph_consolidate.cl";
 include "../../src/std/nses_pipeline.cl";
 include "../../src/std/saliency_attractor.cl";
 
-extern fn SetConsoleOutputCP(wCodePageID: float) -> float;
-extern fn SetConsoleCP(wCodePageID: float) -> float;
 
 // Resolves relative path across repo root, bin/, and Projects/geomind working directories
 fn geomind_chat_resolve_path(path: string) -> string {
@@ -765,7 +763,7 @@ fn geomind_lookup_token_embedding(tok: float) -> ptr {
     return v_out;
 }
 
-// Suppresses corporate fluff clichés, disclaimer headers, and foreign refusal escape bridges
+// Suppresses corporate fluff cliches, disclaimer headers, and foreign refusal escape bridges
 fn geomind_apply_corporate_attractor_suppression(logits: ptr) {
     if (logits == 0.0) { return; }
 
@@ -775,7 +773,7 @@ fn geomind_apply_corporate_attractor_suppression(logits: ptr) {
     cartan_vec_set_f32(logits, 124235.0, -10000.0); // ' Disclaimer'
     cartan_vec_set_f32(logits, 193289.0, -10000.0); // 'EXPERIMENTAL'
 
-    // 2. Corporate LLM Clichés & Sycophantic Filler (-8.0 logit penalty)
+    // 2. Corporate LLM Cliches & Sycophantic Filler (-8.0 logit penalty)
     let l_delve = cartan_vec_get_f32(logits, 206957.0);
     cartan_vec_set_f32(logits, 206957.0, l_delve - 8.0); // ' delving'
 
@@ -818,6 +816,31 @@ fn geomind_apply_corporate_attractor_suppression(logits: ptr) {
     cartan_vec_set_f32(logits, 3153.0, l_how1 - 5.0); // ' However'
     let l_how2 = cartan_vec_get_f32(logits, 9675.0);
     cartan_vec_set_f32(logits, 9675.0, l_how2 - 5.0); // 'However'
+
+    // 6. Conversational Chatbot Emojis (-10.0 logit penalty to eliminate terminal mojibake)
+    let emo_pen = 10.0;
+    cartan_vec_set_f32(logits, 100799.0, cartan_vec_get_f32(logits, 100799.0) - emo_pen); // wave
+    cartan_vec_set_f32(logits, 100803.0, cartan_vec_get_f32(logits, 100803.0) - emo_pen); // smile
+    cartan_vec_set_f32(logits, 100810.0, cartan_vec_get_f32(logits, 100810.0) - emo_pen); // rocket
+    cartan_vec_set_f32(logits, 100801.0, cartan_vec_get_f32(logits, 100801.0) - emo_pen); // sparkles
+    cartan_vec_set_f32(logits, 100805.0, cartan_vec_get_f32(logits, 100805.0) - emo_pen); // party
+    cartan_vec_set_f32(logits, 100808.0, cartan_vec_get_f32(logits, 100808.0) - emo_pen); // lightbulb
+    cartan_vec_set_f32(logits, 100814.0, cartan_vec_get_f32(logits, 100814.0) - emo_pen); // fire
+    cartan_vec_set_f32(logits, 100815.0, cartan_vec_get_f32(logits, 100815.0) - emo_pen); // thumbs up
+    cartan_vec_set_f32(logits, 100817.0, cartan_vec_get_f32(logits, 100817.0) - emo_pen); // heart
+    cartan_vec_set_f32(logits, 25477.0,  cartan_vec_get_f32(logits, 25477.0)  - emo_pen); // joy
+    cartan_vec_set_f32(logits, 33928.0,  cartan_vec_get_f32(logits, 33928.0)  - emo_pen); // slightly smiling
+    cartan_vec_set_f32(logits, 38679.0,  cartan_vec_get_f32(logits, 38679.0)  - emo_pen); // thumbs up
+    cartan_vec_set_f32(logits, 45000.0,  cartan_vec_get_f32(logits, 45000.0)  - emo_pen); // blush
+    cartan_vec_set_f32(logits, 47019.0,  cartan_vec_get_f32(logits, 47019.0)  - emo_pen); // heart eyes
+    cartan_vec_set_f32(logits, 52573.0,  cartan_vec_get_f32(logits, 52573.0)  - emo_pen); // wink
+    cartan_vec_set_f32(logits, 68844.0,  cartan_vec_get_f32(logits, 68844.0)  - emo_pen); // folded hands
+    cartan_vec_set_f32(logits, 71256.0,  cartan_vec_get_f32(logits, 71256.0)  - emo_pen); // grin
+    cartan_vec_set_f32(logits, 72995.0,  cartan_vec_get_f32(logits, 72995.0)  - emo_pen); // fire
+    cartan_vec_set_f32(logits, 80568.0,  cartan_vec_get_f32(logits, 80568.0)  - emo_pen); // grinning
+    cartan_vec_set_f32(logits, 84499.0,  cartan_vec_get_f32(logits, 84499.0)  - emo_pen); // ok hand
+    cartan_vec_set_f32(logits, 88594.0,  cartan_vec_get_f32(logits, 88594.0)  - emo_pen); // sunglasses
+    cartan_vec_set_f32(logits, 93823.0,  cartan_vec_get_f32(logits, 93823.0)  - emo_pen); // thinking
 }
 
 fn cartan_tensor_compute_lm_head_logits(h: ptr, temp: float) -> ptr {
@@ -1299,7 +1322,7 @@ fn geomind_col_erase_line() -> string {
 }
 
 fn geomind_get_spinner_frame(idx: float) -> string {
-    return terminal_spinner_braille(idx);
+    return terminal_spinner_ascii(idx);
 }
 
 fn geomind_get_spinner_ascii_frame(idx: float) -> string {
@@ -1425,7 +1448,7 @@ fn geomind_sanitize_output_for_display(raw: string) -> string {
             if (close_pos >= 0.0) {
                 if (g_chat_show_thinking == 1.0) {
                     let thought_str = cartan_string_substring(raw, i + 7.0, close_pos);
-                    printf("\n%s[💭 Internal Model Reasoning]%s\n%s%s%s\n\n",
+                    printf("\n%s[Internal Model Reasoning]%s\n%s%s%s\n\n",
                            geomind_col_magenta(), geomind_col_reset(),
                            geomind_col_dim(), thought_str, geomind_col_reset());
                     cartan_flush(0.0);
@@ -1449,7 +1472,7 @@ fn geomind_sanitize_output_for_display(raw: string) -> string {
             if (close_pos >= 0.0) {
                 if (g_chat_show_thinking == 1.0) {
                     let thought_str = cartan_string_substring(raw, i + 9.0, close_pos);
-                    printf("\n%s[💭 Internal Model Reasoning]%s\n%s%s%s\n\n",
+                    printf("\n%s[Internal Model Reasoning]%s\n%s%s%s\n\n",
                            geomind_col_magenta(), geomind_col_reset(),
                            geomind_col_dim(), thought_str, geomind_col_reset());
                     cartan_flush(0.0);
@@ -1483,7 +1506,7 @@ fn geomind_sanitize_output_for_display(raw: string) -> string {
                     }
                     if (best_close > th_start) {
                         let thought_str = cartan_string_substring(raw, th_start, best_close);
-                        printf("\n%s[💭 Internal Model Reasoning]%s\n%s%s%s\n\n",
+                        printf("\n%s[Internal Model Reasoning]%s\n%s%s%s\n\n",
                                geomind_col_magenta(), geomind_col_reset(),
                                geomind_col_dim(), thought_str, geomind_col_reset());
                         cartan_flush(0.0);
@@ -2947,7 +2970,7 @@ fn geomind_parse_and_dispatch_tool_call(call_str: string) -> string {
 
     if (cartan_string_length(tool_name) == 0.0) { return ""; }
 
-    printf("\n%s[⚙️ Executing Tool: %s(\"%s\")]%s\n", geomind_col_yellow(), tool_name, arg1, geomind_col_reset());
+    printf("\n%s[Executing Tool: %s(\"%s\")]%s\n", geomind_col_yellow(), tool_name, arg1, geomind_col_reset());
     cartan_flush(0.0);
 
     let raw_result = geomind_tool_execute(tool_name, arg1, arg2);
@@ -2963,9 +2986,9 @@ fn geomind_parse_and_dispatch_tool_call(call_str: string) -> string {
         status = "error";
     }
     if (cartan_string_eq(status, "ok") == 1.0) {
-        printf("%s[⚙️ Tool Completed: ok]%s\n", geomind_col_cyan(), geomind_col_reset());
+        printf("%s[Tool Completed: ok]%s\n", geomind_col_cyan(), geomind_col_reset());
     } else {
-        printf("%s[⚙️ Tool Failed: error]%s\n", geomind_col_red(), geomind_col_reset());
+        printf("%s[Tool Failed: error]%s\n", geomind_col_red(), geomind_col_reset());
     }
     cartan_flush(0.0);
 
@@ -3860,8 +3883,6 @@ fn geomind_chat_get_nses_pipeline() -> NSES_Pipeline {
 }
 
 fn geomind_chat_start() -> float {
-    SetConsoleOutputCP(65001.0);
-    SetConsoleCP(65001.0);
     printf("================================================================================\n");
     printf("  GEOMIND E8 MULTIMODAL NEURO-SYMBOLIC CHAT ENGINE (chat.car)\n");
     printf("  Sovereign GeoMind 42-Layer Manifold & SentencePiece BPE Tokenizer\n");
@@ -7093,9 +7114,9 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
     var full_gen_text = "";
     if (g_chat_buffered_output == 1.0) {
         if (g_chat_use_animation == 1.0) {
-            printf("\r%s[✨ %s Generating response... (press '/' to interrupt)]%s", geomind_col_cyan(), geomind_get_spinner_frame(0.0), geomind_col_reset());
+            printf("\r%s[%s Generating response... (press '/' to interrupt)]%s", geomind_col_cyan(), geomind_get_spinner_frame(0.0), geomind_col_reset());
         } else {
-            printf("[✨ Generating response... (press '/' to interrupt)]\n");
+            printf("%s[Generating response... (press '/' to interrupt)]%s\n", geomind_col_cyan(), geomind_col_reset());
         }
     } else {
         if (g_chat_debug_mode == 1.0) {
@@ -7480,7 +7501,7 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                 cur_tok_per_sec = (step * 1000.0) / elapsed_ms;
             }
             let spin_ch = geomind_get_spinner_frame(step);
-            printf("\r%s[✨ %s Generating response... (%.0f tokens, %.1f tok/s) (press '/' to interrupt)]%s",
+            printf("\r%s[%s Generating response... (%.0f tokens, %.1f tok/s) (press '/' to interrupt)]%s",
                    geomind_col_cyan(), spin_ch, step, cur_tok_per_sec, geomind_col_reset());
             cartan_flush(0.0);
         }
@@ -7664,17 +7685,17 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
         if (g_chat_show_telemetry == 1.0) {
             let c_gray = geomind_col_gray();
             let c_rst = geomind_col_reset();
-            printf("\n%s┌── [📊 Inference Telemetry] ──────────────────────────────────────────────┐%s\n", c_gray, c_rst);
-            printf("%s│%s Prefill: %.0f ms (%s tokens) | Decode: %.0f ms (%s tokens, %.1f tok/s)\n",
+            printf("\n%s+-- [Inference Telemetry] ---------------------------------------------+%s\n", c_gray, c_rst);
+            printf("%s|%s Prefill: %.0f ms (%s tokens) | Decode: %.0f ms (%s tokens, %.1f tok/s)\n",
                    c_gray, c_rst, dt_prefill, cartan_float_to_string(num_prompt_toks), dt_decode, cartan_float_to_string(step), tok_per_sec);
-            printf("%s│%s LM Head: %.1f ms (%.0f pruned, %.0f full) | Early Exit: %.1f%% | Sasaki Bypass: %.1f%% (Avg %.1f/42 layers)\n",
+            printf("%s|%s LM Head: %.1f ms (%.0f pruned, %.0f full) | Early Exit: %.1f%% | Sasaki Bypass: %.1f%% (Avg %.1f/42 layers)\n",
                    c_gray, c_rst, avg_lm_ms, g_telemetry_pruned_lm_evals, g_telemetry_full_lm_evals, exit_rate, bypass_rate, avg_layers);
             if (g_tangent_debias_enabled == 1.0) {
-                printf("%s│%s Tangent Debias: Active (Rank-%.0f Subspace, %.0f projections at Layer 28)\n", c_gray, c_rst, g_alignment_subspace_rank, g_telemetry_debias_projections);
+                printf("%s|%s Tangent Debias: Active (Rank-%.0f Subspace, %.0f projections at Layer 28)\n", c_gray, c_rst, g_alignment_subspace_rank, g_telemetry_debias_projections);
             }
-            printf("%s│%s Speculative: %.0f/%.0f accepted | Context Horizon: %.0f\n",
+            printf("%s|%s Speculative: %.0f/%.0f accepted | Context Horizon: %.0f\n",
                    c_gray, c_rst, g_telemetry_speculative_accepted, g_telemetry_speculative_drafted, g_chat_session_pos + num_prompt_toks + step);
-            printf("%s└── [Performance Profile] ─────────────────────────────────────────────────┘%s\n\n", c_gray, c_rst);
+            printf("%s+-- [Performance Profile] ---------------------------------------------+%s\n\n", c_gray, c_rst);
             cartan_flush(0.0);
         }
         g_chat_session_pos = g_chat_session_pos + num_prompt_toks + step;
@@ -7927,7 +7948,7 @@ fn geomind_chat_generate_reply(prompt: string, max_tokens: float, temp: float) -
 
 fn geomind_chat_generate_reasoning_pass(prompt: string, temp: float) -> float {
     if (g_chat_use_animation == 1.0) {
-        printf("\r%s[🧠 %s Thinking...]%s Analyzing prompt semantics...", geomind_col_amber(), geomind_get_spinner_frame(0.0), geomind_col_reset());
+        printf("\r%s[%s Thinking...]%s Analyzing prompt semantics...", geomind_col_amber(), geomind_get_spinner_frame(0.0), geomind_col_reset());
         cartan_flush(0.0);
     }
     let prompt_toks = cartan_hub_encode_text_to_tokens(prompt);
@@ -7936,7 +7957,7 @@ fn geomind_chat_generate_reasoning_pass(prompt: string, temp: float) -> float {
     let energy = cartan_hopfield_energy(h_vec);
 
     if (g_chat_use_animation == 1.0) {
-        printf("\r%s[🧠 %s Thinking...]%s Projecting into Continuous Hopfield attractor basin...", geomind_col_amber(), geomind_get_spinner_frame(1.0), geomind_col_reset());
+        printf("\r%s[%s Thinking...]%s Projecting into Continuous Hopfield attractor basin...", geomind_col_amber(), geomind_get_spinner_frame(1.0), geomind_col_reset());
         cartan_flush(0.0);
     }
     let primary_concept = semantics_extract_primary_concept(prompt);
@@ -7950,7 +7971,7 @@ fn geomind_chat_generate_reasoning_pass(prompt: string, temp: float) -> float {
     let resonance = cartan_hopfield_get_max_resonance(h_vec);
 
     if (g_chat_use_animation == 1.0) {
-        printf("\r%s[🧠 %s Thinking...]%s Computing Sasaki metric tangent bundle routing...", geomind_col_amber(), geomind_get_spinner_frame(2.0), geomind_col_reset());
+        printf("\r%s[%s Thinking...]%s Computing Sasaki metric tangent bundle routing...", geomind_col_amber(), geomind_get_spinner_frame(2.0), geomind_col_reset());
         cartan_flush(0.0);
     }
     let sasaki_w = cartan_sasaki_brainstem_route_vec(h_vec, h_vec, temp);
@@ -7970,7 +7991,7 @@ fn geomind_chat_generate_reasoning_pass(prompt: string, temp: float) -> float {
     g_active_dom_w = max_w;
 
     if (g_chat_use_animation == 1.0) {
-        printf("\r%s[🧠 %s Thinking...]%s Evaluating reflective confidence & entropy...", geomind_col_amber(), geomind_get_spinner_frame(3.0), geomind_col_reset());
+        printf("\r%s[%s Thinking...]%s Evaluating reflective confidence & entropy...", geomind_col_amber(), geomind_get_spinner_frame(3.0), geomind_col_reset());
         cartan_flush(0.0);
     }
     let prompt_logits = cartan_tensor_compute_lm_head_logits(h_vec, temp);
@@ -7985,31 +8006,31 @@ fn geomind_chat_generate_reasoning_pass(prompt: string, temp: float) -> float {
     if (g_chat_show_thinking == 1.0) {
         let c_amb = geomind_col_amber();
         let c_rst = geomind_col_reset();
-        printf("\n%s┌── [💭 Thought Process] ──────────────────────────────────────────────────┐%s\n", c_amb, c_rst);
-        printf("%s│%s [Pass 1 Dynamic Reasoning Pass] Analyzing prompt semantics (Tokens: %s)...\n", c_amb, c_rst, cartan_float_to_string(plen));
-        printf("%s│%s [Intent & Context Analysis] Prompt Query: \"%s\"\n", c_amb, c_rst, prompt);
+        printf("\n%s+-- [Thought Process] --------------------------------------------------+%s\n", c_amb, c_rst);
+        printf("%s|%s [Pass 1 Dynamic Reasoning Pass] Analyzing prompt semantics (Tokens: %s)...\n", c_amb, c_rst, cartan_float_to_string(plen));
+        printf("%s|%s [Intent & Context Analysis] Prompt Query: \"%s\"\n", c_amb, c_rst, prompt);
         let db = geomind_chat_get_db();
         var act_name = "GeoMind";
         if (db != 0.0) {
             let s_n = cartan_sqlite_get_entity_state(db, 9.0, "Self", "name");
             if (cartan_string_length(s_n) > 0.0) { act_name = s_n; }
         }
-        printf("%s│%s [Introspective Identity] Active Self: \"%s\" (Domain 9: SELF_AND_IDENTITY)\n", c_amb, c_rst, act_name);
-        printf("%s│%s [WordNet/SlangNet Taxonomy] Primary Concept: \"%s\" -> %s\n", c_amb, c_rst, primary_concept, concept_path);
-        printf("%s│%s [WordNet/SlangNet Taxonomy] LCA Tree Distance: %s | IC: %s\n", c_amb, c_rst, cartan_float_to_string(lca_dist), cartan_float_to_string(concept_ic));
-        printf("%s│%s [E8 Lie Algebra Projection] Mapping prompt tokens to 248D E8 roots (Temp: %s).\n", c_amb, c_rst, cartan_float_to_string(temp));
-        printf("%s│%s [Hopfield Attractor Basin] Energy: E(h) = %s", c_amb, c_rst, cartan_float_to_string(energy));
+        printf("%s|%s [Introspective Identity] Active Self: \"%s\" (Domain 9: SELF_AND_IDENTITY)\n", c_amb, c_rst, act_name);
+        printf("%s|%s [WordNet/SlangNet Taxonomy] Primary Concept: \"%s\" -> %s\n", c_amb, c_rst, primary_concept, concept_path);
+        printf("%s|%s [WordNet/SlangNet Taxonomy] LCA Tree Distance: %s | IC: %s\n", c_amb, c_rst, cartan_float_to_string(lca_dist), cartan_float_to_string(concept_ic));
+        printf("%s|%s [E8 Lie Algebra Projection] Mapping prompt tokens to 248D E8 roots (Temp: %s).\n", c_amb, c_rst, cartan_float_to_string(temp));
+        printf("%s|%s [Hopfield Attractor Basin] Energy: E(h) = %s", c_amb, c_rst, cartan_float_to_string(energy));
         if (cartan_hopfield_attractor_count() > 0.0) {
             printf(" | Top Attractor Resonance: %s", cartan_float_to_string(resonance));
         }
         printf(".\n");
-        printf("%s│%s [Sasaki Brainstem Router] Phase-space routing on TM: Dominant Lie Submanifold Stream %s (Weight: %s).\n", c_amb, c_rst, cartan_float_to_string(dom_stream), cartan_float_to_string(max_w));
-        printf("%s│%s [Reflective Skepticism & Certainty] Initial Confidence: %s | Shannon Entropy: %s\n", c_amb, c_rst, cartan_float_to_string(prompt_conf), cartan_float_to_string(prompt_ent));
-        printf("%s│%s [Chain-of-Thought Synthesis] Formulating dynamic, contextual response strategy for Pass 2.\n", c_amb, c_rst);
-        printf("%s└── [Ready to Generate] ───────────────────────────────────────────────────┘%s\n\n", c_amb, c_rst);
+        printf("%s|%s [Sasaki Brainstem Router] Phase-space routing on TM: Dominant Lie Submanifold Stream %s (Weight: %s).\n", c_amb, c_rst, cartan_float_to_string(dom_stream), cartan_float_to_string(max_w));
+        printf("%s|%s [Reflective Skepticism & Certainty] Initial Confidence: %s | Shannon Entropy: %s\n", c_amb, c_rst, cartan_float_to_string(prompt_conf), cartan_float_to_string(prompt_ent));
+        printf("%s|%s [Chain-of-Thought Synthesis] Formulating dynamic, contextual response strategy for Pass 2.\n", c_amb, c_rst);
+        printf("%s+-- [Ready to Generate] ------------------------------------------------+%s\n\n", c_amb, c_rst);
         cartan_flush(0.0);
     } else {
-        printf("%s[🧠 Thinking complete]%s\n", geomind_col_green(), geomind_col_reset());
+        printf("%s[Thinking complete]%s\n", geomind_col_green(), geomind_col_reset());
         cartan_flush(0.0);
     }
 

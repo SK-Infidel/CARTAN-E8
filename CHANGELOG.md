@@ -4,17 +4,21 @@ All notable changes to the CARTAN programming language, self-hosting compiler (`
 
 In accordance with User Rule 3 and project standards, GeoMind cognitive model releases are tracked independently in [`Projects/geomind/CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/CHANGELOG.md).
 
-## [8.515.0] - 2026-10-07 (Console UTF-8 Code Page 65001 & Multi-Byte Emoji Rendering Fix)
+## [8.515.0] - 2026-10-07 (Terminal Robustness, Pure ASCII Status Banners & Foreign Symbol Masking)
 
 ### Completed & Validated
-- **Windows Console Code Page 65001 Integration ([`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl), [`Projects/geomind/main.car`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/main.car))**:
-  - Bound Win32 console code page control functions `SetConsoleOutputCP(65001.0)` and `SetConsoleCP(65001.0)` via C runtime linkage.
-  - Initialized UTF-8 code page at entry of `main()` and `geomind_chat_start()`, resolving OEM-US CP437/1252 byte-splitting of 4-byte UTF-8 glyphs (`[🧠 Thinking complete]`, `👋`, `😊`, `🚀`).
-- **Empirical CLI Verification**:
-  - Recompiled native binary `bin/geomind.exe` with AVX2/FMA optimizations.
-  - Verified clean Unicode emoji rendering (`[🧠 Thinking complete]`, `😊`) during interactive model execution.
-- **Regression Test Suite**:
-  - Ran affected regression suite (`tools/run_affected_tests.ps1`): 8/8 targets passed cleanly in 64.13s.
+- **Pure ASCII Status Indicators & Spinners ([`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl))**:
+  - Replaced multi-byte UTF-8 emoji literals (`🧠`, `✨`, `💭`, `⚙️`) in CLI banners with clean, ANSI-styled ASCII indicators (`[Thinking complete]`, `[Thinking...]`, `[Generating response...]`, `[Thought Process]`, `[Executing Tool]`).
+  - Switched `geomind_get_spinner_frame` from 3-byte braille dots (`⠋, ⠙, ⠹...`) to standard 4-phase rotating ASCII spinner (`|`, `/`, `-`, `\`), eliminating terminal mojibake artifacts (`[ƒºá Thinking complete]`, `[Γ Γá Generating response...]`) across all Windows conhost, legacy console, and pseudo-terminal environments.
+  - Converted Telemetry and Thought Process box framing from non-standard UTF-8 box characters to clean ASCII frames (`+--`, `|`).
+- **Comprehensive Emoji & Byte-Fallback Masking ([`tools/build_gemma_vocab_scripts.py`](file:///C:/Users/rich-/source/repos/CARTAN/tools/build_gemma_vocab_scripts.py))**:
+  - Confined Universal category 0 strictly to authentic standard punctuation, whitespace, and digits.
+  - Reclassified all 1,241 SMP emojis, raw byte fallback tokens (`<0x00> .. <0xFF>`, IDs 238..493), kaomoji glyphs, and combining marks into Category 7 (Other scripts), automatically excluding them during English/Latin generation (`target_script == 1.0`).
+  - Added explicit hard masking and logit penalties in `geomind_apply_corporate_attractor_suppression` against conversational chatbot emojis.
+- **Empirical CLI Verification & Regression Testing**:
+  - Built native binary `bin/geomind.exe` with zero errors.
+  - Verified on physical GPU: pure ASCII status indicators and smooth `| / - \` generation spinner; model responses remain 100% fluent, warm, and free from emoji spam or corrupted byte sequences.
+  - Executed affected test runner (`tools/run_affected_tests.ps1`): 8/8 regression targets passed cleanly in 68.31s.
 
 ## [8.514.0] - 2026-10-07 (Sprint 557: English Manifold Orthogonalization, Soft Damping & Protocol Masking)
 
