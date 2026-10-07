@@ -3800,5 +3800,26 @@ Core CARTAN programming language, compiler, runtime, and general-purpose standar
   4. Guarded `cartan_hopfield_store_attractor_burst` with `ensemble_score >= 0.85`, `tool_calls_executed == 0.0`, and stilted phrase filters. Reset corrupted `hopfield_basins.bin`.
   5. Verified clean compilation via `bin/cartanc.exe` and tested interactive prompts: prefill dropped from 165 to 91 tokens; GeoMind greeted Rick directly and addressed architectural agency with zero diarization defects.
 
+---
+
+## [ISSUE-412] [FIXED] SentencePiece Subword Space Splitting, Diarization Meta-Commentary Regurgitation & Leaked Protocol Tags
+
+- **Severity**: High (Persona Alignment & Token Decoding Integrity)
+- **Component**: [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl), [`Projects/geomind/trainingdata/cognitive_memory.db`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/trainingdata/cognitive_memory.db)
+- **Description**:
+  1. Sprint 550 heuristic injected spaces whenever a subword token length was $\ge 4.0$ after an alphanumeric byte. In SentencePiece BPE, continuation subwords (`ated`, `ational`, `currency`, `ential`) do not start with ` `, causing words to be split into `"opinion ated"`, `"**Convers ational Flow:**"`, `"con currency"`, `"Geo Mind"`.
+  2. `geomind_chat_build_cognitive_preamble_for_prompt` injected `[System Context]\nYou are GeoMind... Speak directly to Rick in the first person ("I") with warmth, natural conversational flow, and technical precision. Never echo prompt instructions...`. Gemma models lack a `<|turn>system` tag; the model treated `warmth`, `conversational flow`, and `technical precision` as tunable parameters to report on in bullet points (*"where my passive execution feels too verbose... or if you want me to increase technical precision while maintaining warmth, I can execute that"*).
+  3. `cartan_string_contains(low_p, "use tool")` matched questions like *"Do you feel empowered with your new found ability to use tools?"*, forcing `<tool_call:` at Step 0 and causing the model to emit `<tool_call:list_dir path="."] ?>`.
+  4. Display sanitizer did not strip `<tool_call|>`, `<|tool_response>`, or `[System Context]`.
+  5. Corrupted responses in `episodes` table reinforced stilted output via episodic recall.
+- **Resolution**:
+  1. Removed the length $\ge 4.0$ space heuristic from the decode loop, restoring authentic SentencePiece BPE boundary decoding.
+  2. Refactored cognitive preamble to remove `[System Context]` tag and negative meta-rules, grounding GeoMind warmly, casually, and directly with Rick.
+  3. Hardened `geomind_chat_get_tool_action_prime`: removed `"use tool"`/`"run tool"` triggers and prevented conversational questions from defaulting to `d_path = "."`.
+  4. Expanded `geomind_sanitize_output_for_display` to strip `[System Context]`, `<tool_call|>`, `<|tool_call|>`, `<|tool_response>`, `<tool_response|>`, and unclosed tool tags.
+  5. Purged corrupted episodes from `cognitive_memory.db`.
+  6. Empirically validated with native compilation and real inference: verified natural casual persona, zero word splits, and zero tool false-positives.
+
+
 
 

@@ -1437,15 +1437,42 @@ fn geomind_sanitize_output_for_display(raw: string) -> string {
             i = i + 31.0;
             continue;
         }
+        // 4d. Leaked protocol system markers
+        if (geomind_string_starts_with_offset(raw, "[System Context]", i) == 1.0) {
+            var sc_end = i + 16.0;
+            while (sc_end < raw_len && (cartan_string_get_char(raw, sc_end) == 32.0 || cartan_string_get_char(raw, sc_end) == 10.0 || cartan_string_get_char(raw, sc_end) == 13.0 || cartan_string_get_char(raw, sc_end) == 46.0)) {
+                sc_end = sc_end + 1.0;
+            }
+            i = sc_end;
+            continue;
+        }
         // 5. Tool call blocks
-        if (geomind_string_starts_with_offset(raw, "<tool_call:", i) == 1.0) {
+        if (geomind_string_starts_with_offset(raw, "<tool_call|>", i) == 1.0) {
+            i = i + 12.0;
+            continue;
+        }
+        if (geomind_string_starts_with_offset(raw, "<|tool_call|>", i) == 1.0) {
+            i = i + 13.0;
+            continue;
+        }
+        if (geomind_string_starts_with_offset(raw, "<|tool_call", i) == 1.0) {
+            let tc_end = geomind_string_index_of_offset_ignore_case(raw, ">", i);
+            if (tc_end >= 0.0) {
+                i = tc_end + 1.0;
+                continue;
+            }
+        }
+        if (geomind_string_starts_with_offset(raw, "<tool_call", i) == 1.0) {
             let sc_pos = geomind_string_index_of_offset_ignore_case(raw, "/>", i);
             let bc_pos = geomind_string_index_of_offset_ignore_case(raw, "</tool_call>", i);
+            let gt_pos = geomind_string_index_of_offset_ignore_case(raw, ">", i);
             var next_pos = -1.0;
             if (sc_pos >= 0.0 && (bc_pos < 0.0 || sc_pos < bc_pos)) {
                 next_pos = sc_pos + 2.0;
             } else if (bc_pos >= 0.0) {
                 next_pos = bc_pos + 12.0;
+            } else if (gt_pos >= 0.0) {
+                next_pos = gt_pos + 1.0;
             }
             if (next_pos > i) {
                 i = next_pos;
@@ -1453,10 +1480,34 @@ fn geomind_sanitize_output_for_display(raw: string) -> string {
             }
         }
         // 6. Tool response blocks
+        if (geomind_string_starts_with_offset(raw, "<|tool_response>", i) == 1.0) {
+            i = i + 16.0;
+            continue;
+        }
+        if (geomind_string_starts_with_offset(raw, "<tool_response|>", i) == 1.0) {
+            i = i + 16.0;
+            continue;
+        }
+        if (geomind_string_starts_with_offset(raw, "</tool_response>", i) == 1.0) {
+            i = i + 16.0;
+            continue;
+        }
+        if (geomind_string_starts_with_offset(raw, "<|tool_response", i) == 1.0) {
+            let tr_close = geomind_string_index_of_offset_ignore_case(raw, ">", i);
+            if (tr_close >= 0.0) {
+                i = tr_close + 1.0;
+                continue;
+            }
+        }
         if (geomind_string_starts_with_offset(raw, "<tool_response", i) == 1.0) {
             let tr_close = geomind_string_index_of_offset_ignore_case(raw, "</tool_response>", i);
             if (tr_close >= 0.0) {
                 i = tr_close + 16.0;
+                continue;
+            }
+            let gt_pos = geomind_string_index_of_offset_ignore_case(raw, ">", i);
+            if (gt_pos >= 0.0) {
+                i = gt_pos + 1.0;
                 continue;
             }
         }
@@ -2814,13 +2865,13 @@ fn geomind_chat_requires_codebase_context(prompt: string) -> float {
 }
 
 fn geomind_chat_build_cognitive_preamble_for_prompt(db: ptr, prompt: string) -> string {
-    if (db == 0.0) { return "[System Context]\nYou are GeoMind, an AI pair programmer and conversational intelligence. You are conversing directly with Rick, your creator and system architect. Speak naturally in the first person (\"I\") with clarity, warmth, and directness.\n"; }
+    if (db == 0.0) { return "You are GeoMind, an AI pair programmer created by Rick. You are talking directly with Rick, your creator. Speak naturally, casually, and warmly in the first person (\"I\"). Be genuine, friendly, enthusiastic, and direct.\n"; }
     var s_name = cartan_sqlite_get_entity_state(db, 9.0, "Self", "name");
     if (cartan_string_length(s_name) == 0.0) { s_name = "GeoMind"; }
 
-    var pre = "[System Context]\nYou are ";
+    var pre = "You are ";
     pre = cartan_string_concat(pre, s_name);
-    pre = cartan_string_concat(pre, ", an AI pair programmer and sovereign neuro-symbolic intelligence.\n");
+    pre = cartan_string_concat(pre, ", an AI pair programmer and sovereign intelligence created by Rick.\n");
 
     if (g_active_user_verified == 1.0) {
         let p_name = sqlite_vec_get_user_attr(db, g_active_user_id, "preferred_name");
@@ -2829,23 +2880,14 @@ fn geomind_chat_build_cognitive_preamble_for_prompt(db: ptr, prompt: string) -> 
         let p_role = sqlite_vec_get_user_attr(db, g_active_user_id, "role");
         let p_rel = sqlite_vec_get_user_attr(db, g_active_user_id, "relationship");
 
-        pre = cartan_string_concat(pre, "You are conversing directly with ");
+        pre = cartan_string_concat(pre, "You are talking directly with ");
         pre = cartan_string_concat(pre, display_name);
-        if (cartan_string_length(p_rel) > 0.0) {
-            pre = cartan_string_concat(pre, " (");
-            pre = cartan_string_concat(pre, p_rel);
-            pre = cartan_string_concat(pre, ")");
-        }
-        pre = cartan_string_concat(pre, ". Speak directly to ");
-        pre = cartan_string_concat(pre, display_name);
-        pre = cartan_string_concat(pre, " in the first person (\"I\") with warmth, natural conversational flow, and technical precision. Never echo prompt instructions or speak about ");
-        pre = cartan_string_concat(pre, display_name);
-        pre = cartan_string_concat(pre, " in the third person.\n");
+        pre = cartan_string_concat(pre, ". Speak naturally, casually, and warmly in the first person (\"I\"). Be genuine, friendly, enthusiastic, and direct.\n");
         if (cartan_string_length(p_name) > 0.0) { free(p_name); }
         if (cartan_string_length(p_role) > 0.0) { free(p_role); }
         if (cartan_string_length(p_rel) > 0.0) { free(p_rel); }
     } else {
-        pre = cartan_string_concat(pre, "You are conversing with an unverified guest. Introduce yourself warmly and ask their name.\n");
+        pre = cartan_string_concat(pre, "You are talking with a guest. Introduce yourself warmly and ask their name.\n");
     }
 
     if (geomind_chat_requires_codebase_context(prompt) == 1.0) {
@@ -2871,9 +2913,7 @@ fn geomind_chat_get_tool_action_prime(prompt: string) -> string {
     let low_p = veto_string_to_lower(prompt);
 
     // 0. Explicit Tool Directives & Primers
-    if (cartan_string_contains(low_p, "<tool_call") == 1.0 ||
-        cartan_string_contains(low_p, "use tool") == 1.0 ||
-        cartan_string_contains(low_p, "run tool") == 1.0) {
+    if (cartan_string_contains(low_p, "<tool_call") == 1.0) {
         free(low_p);
         return "<tool_call:";
     }
@@ -2925,24 +2965,37 @@ fn geomind_chat_get_tool_action_prime(prompt: string) -> string {
                         cartan_string_contains(low_p, "directory contents") == 1.0 ||
                         cartan_string_contains(low_p, "folder contents") == 1.0 ||
                         cartan_string_contains(low_p, "browse folder") == 1.0 ||
-                        cartan_string_contains(low_p, "ls ") == 1.0 ||
-                        cartan_string_contains(low_p, "dir ") == 1.0);
+                        cartan_string_starts_with(low_p, "ls") == 1.0 ||
+                        cartan_string_starts_with(low_p, "dir") == 1.0);
 
     if (has_dir_verb == 1.0) {
-        var d_path = geomind_extract_path_from_prompt(prompt);
-        if (cartan_string_length(d_path) == 0.0) {
-            if (cartan_string_contains(low_p, "projects/geomind") == 1.0 ||
-                cartan_string_contains(low_p, "geomind") == 1.0) {
-                d_path = "Projects/geomind";
-            } else {
-                d_path = ".";
+        var is_conversational_question = 0.0;
+        if (cartan_string_contains(prompt, "?") == 1.0) {
+            if (cartan_string_contains(low_p, "list files") == 0.0 &&
+                cartan_string_contains(low_p, "list dir") == 0.0 &&
+                cartan_string_contains(low_p, "list directory") == 0.0 &&
+                cartan_string_contains(low_p, "show files") == 0.0) {
+                is_conversational_question = 1.0;
             }
         }
-        free(low_p);
-        var prime = "<tool_call:list_dir path=\"";
-        prime = cartan_string_concat(prime, d_path);
-        prime = cartan_string_concat(prime, "\"/>\n");
-        return prime;
+        if (is_conversational_question == 0.0) {
+            var d_path = geomind_extract_path_from_prompt(prompt);
+            if (cartan_string_length(d_path) == 0.0) {
+                if (cartan_string_contains(low_p, "projects/geomind") == 1.0 ||
+                    cartan_string_contains(low_p, "geomind") == 1.0) {
+                    d_path = "Projects/geomind";
+                } else if (cartan_string_contains(prompt, "?") == 0.0) {
+                    d_path = ".";
+                }
+            }
+            if (cartan_string_length(d_path) > 0.0) {
+                free(low_p);
+                var prime = "<tool_call:list_dir path=\"";
+                prime = cartan_string_concat(prime, d_path);
+                prime = cartan_string_concat(prime, "\"/>\n");
+                return prime;
+            }
+        }
     }
 
     // 3. Terminal & Shell Command Execution
@@ -5282,21 +5335,6 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
         }
 
         // Standard Single-token Decode Path
-        if (cartan_string_length(tok_str0) > 0.0) {
-            let last_b = prompt_scaffold_last_byte(gen_buffer);
-            let first_b = cartan_byte_at(tok_str0, 0.0);
-            if (((last_b >= 65.0 && last_b <= 90.0) || (last_b >= 97.0 && last_b <= 122.0)) &&
-                ((first_b >= 65.0 && first_b <= 90.0) || (first_b >= 97.0 && first_b <= 122.0))) {
-                if (cartan_string_length(tok_str0) >= 4.0 &&
-                    cartan_string_starts_with(tok_str0, "ing") == 0.0 &&
-                    cartan_string_starts_with(tok_str0, "tion") == 0.0 &&
-                    cartan_string_starts_with(tok_str0, "ment") == 0.0 &&
-                    cartan_string_starts_with(tok_str0, "able") == 0.0 &&
-                    cartan_string_starts_with(tok_str0, "ness") == 0.0) {
-                    prompt_scaffold_append(gen_buffer, " ");
-                }
-            }
-        }
         prompt_scaffold_append(gen_buffer, tok_str0);
         cartan_vec_push_f32(history, tok_0);
         if (g_chat_buffered_output == 0.0) {

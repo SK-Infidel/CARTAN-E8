@@ -4,6 +4,26 @@ This changelog records the complete development history, cognitive architecture 
 
 Core CARTAN programming language, compiler, runtime, and general-purpose standard library releases are tracked in the root [`CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/CHANGELOG.md).
 
+## [1.0.6] - 2026-10-06 (Sprint 551: Subword Restoration, Conversational Persona Grounding & Tool Prime Hardening)
+
+### Completed & Validated
+- **SentencePiece Subword Boundary Restoration**:
+  - Removed artificial length $\ge 4.0$ space heuristic from single-token decode loop in [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl), eliminating mid-word word splits (`"opinion ated"`, `"**Convers ational Flow:**"`, `"con currency"`, `"Geo Mind"`).
+- **Conversational Persona & Diarization Alignment**:
+  - Refactored `geomind_chat_build_cognitive_preamble_for_prompt` in [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl) to eliminate the `[System Context]` tag and negative meta-directives (`"with warmth, natural conversational flow, and technical precision"`).
+  - Grounded GeoMind with warm, natural, direct identity: speaks casually and directly with Rick in the first person ("I") without meta-commentary on dials or passive execution.
+- **Hardened Tool Action Prime Intent Detection**:
+  - Removed bare `"use tool"` and `"run tool"` substring matches in `geomind_chat_get_tool_action_prime`.
+  - Prevented conversational questions (containing `?`) without explicit list commands or target paths from defaulting to `d_path = "."`, eliminating false-positive `<tool_call:list_dir path="."] ?>`.
+- **Display Sanitizer Hardening**:
+  - Expanded `geomind_sanitize_output_for_display` in [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl) to cleanly strip `[System Context]`, `<tool_call|>`, `<|tool_call|>`, `<|tool_call`, `<tool_call`, `<|tool_response>`, `<tool_response|>`, `</tool_response>`, and unclosed tool tags.
+- **Cognitive Memory Database Hygiene**:
+  - Purged corrupted conversational turns from `episodes` table in [`Projects/geomind/trainingdata/cognitive_memory.db`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/trainingdata/cognitive_memory.db).
+- **Empirical Validation**:
+  - Recompiled native `bin/geomind.exe` with `cartanc.exe` (159,277 LLVM IR instructions).
+  - Passed all 12 regression test targets (0 failures).
+  - Tested real prompt inference: verified natural casual dialogue with Rick, zero word splits, and zero tool false-positives (`[ISSUE-412]`).
+
 ## [1.0.5] - 2026-10-06 (Sprint 550: Diarization Disambiguation, Subword Spacing & Contextual Preamble Grounding)
 
 ### Completed & Validated
