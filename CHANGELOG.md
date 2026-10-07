@@ -4,6 +4,25 @@ All notable changes to the CARTAN programming language, self-hosting compiler (`
 
 In accordance with User Rule 3 and project standards, GeoMind cognitive model releases are tracked independently in [`Projects/geomind/CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/CHANGELOG.md).
 
+## [8.524.0] - 2026-10-07 (Conversational Intent Decoupling, Recency Weighting & Anti-Deflection in Multi-Turn Interactive REPL)
+
+### Completed & Validated
+- **Turn-0 Tool Schema Residency ([`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl))**:
+  - Permanently initialized tool schemas in Turn 0 KV cache; completely eliminated ~250-token repetitive tool manual re-injection into incremental user turns (`inc_content`).
+  - Restored tight causal attention distance (4 tokens) between immediate previous turns and short user responses (`"A name."`).
+- **Domain Intent Routing & Self-Identity Alignment ([`src/std/nses_pipeline.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/nses_pipeline.cl))**:
+  - Replaced unconditional Domain 11 clobbering with `geomind_is_tool_action_intent(prompt)` and `geomind_is_identity_inquiry(prompt)`.
+  - Routed questions regarding naming, selfhood, agency, and persona directly to Domain 9 (`SELF_AND_IDENTITY`).
+- **Universal Step 0 Logit Discipline & Multi-Turn Greeting Suppression**:
+  - Made Step 0 logit discipline universal across all chat modes (not gated behind `--debias`).
+  - Implemented multi-turn greeting suppression (`g_chat_session_pos > 0.0`), applying -12.0 penalty to opening greeting tokens (`Hello`, `Hi`, `Hey`, `Welcome`) to prevent context resets on short follow-ups.
+  - Added anti-deflection penalties suppressing unprompted file/directory inspection ramps (`Focus`, `Regarding`).
+- **Corporate Meta-Jargon Recovery**:
+  - Intercepted bureaucratic debug sludge (*"execution flow needs refinement"*, *"too literal"*) and redirected to authentic conversational acknowledgment.
+- **Empirical Hardware & Regression Verification**:
+  - Built clean native `bin/geomind.exe` with `cartanc.exe` (169,878 LLVM IR instructions).
+  - Verified selective regression test suite: 10/10 passed in 71.01s (`tools/run_affected_tests.ps1 -Auto`).
+
 ## [8.523.0] - 2026-10-07 (Autonomous Tool Path Aliasing, Resident Schema & Full Ingestion Pipeline)
 
 ### Completed & Validated

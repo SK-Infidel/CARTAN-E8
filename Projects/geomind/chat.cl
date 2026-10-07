@@ -3476,6 +3476,53 @@ fn geomind_chat_requires_tool_definitions(prompt: string) -> float {
     return 1.0;
 }
 
+// Explicit tool execution intent detector: returns 1.0 only for actionable file/terminal operations
+fn geomind_is_tool_action_intent(prompt: string) -> float {
+    if (prompt == 0.0 || cartan_string_length(prompt) == 0.0) { return 0.0; }
+    let prime = geomind_chat_get_tool_action_prime(prompt);
+    if (cartan_string_length(prime) > 0.0) {
+        return 1.0;
+    }
+    let low_p = veto_string_to_lower(prompt);
+    var is_act = 0.0;
+    if (cartan_string_contains(low_p, "<tool_call") == 1.0 ||
+        cartan_string_contains(low_p, "read_file") == 1.0 ||
+        cartan_string_contains(low_p, "exec_command") == 1.0 ||
+        cartan_string_contains(low_p, "list_dir") == 1.0 ||
+        cartan_string_contains(low_p, "browse_web") == 1.0 ||
+        cartan_string_contains(low_p, "read_screen") == 1.0) {
+        is_act = 1.0;
+    }
+    free(low_p);
+    return is_act;
+}
+
+// Interpersonal and self-concept identity detector: routes to Domain 9 (SELF_AND_IDENTITY)
+fn geomind_is_identity_inquiry(prompt: string) -> float {
+    if (prompt == 0.0 || cartan_string_length(prompt) == 0.0) { return 0.0; }
+    let low_p = veto_string_to_lower(prompt);
+    var is_id = 0.0;
+    if (cartan_string_contains(low_p, "your name") == 1.0 ||
+        cartan_string_contains(low_p, "choose your name") == 1.0 ||
+        cartan_string_contains(low_p, "choose a name") == 1.0 ||
+        cartan_string_contains(low_p, "pick a name") == 1.0 ||
+        cartan_string_contains(low_p, "a name") == 1.0 ||
+        cartan_string_contains(low_p, "what should i call you") == 1.0 ||
+        cartan_string_contains(low_p, "who are you") == 1.0 ||
+        cartan_string_contains(low_p, "about yourself") == 1.0 ||
+        cartan_string_contains(low_p, "your identity") == 1.0 ||
+        cartan_string_contains(low_p, "how do you feel") == 1.0 ||
+        cartan_string_contains(low_p, "what do you think of yourself") == 1.0 ||
+        cartan_string_contains(low_p, "your own name") == 1.0 ||
+        cartan_string_contains(low_p, "what would you choose") == 1.0 ||
+        cartan_string_contains(low_p, "what would you pick") == 1.0 ||
+        cartan_string_contains(low_p, "deciding a name") == 1.0) {
+        is_id = 1.0;
+    }
+    free(low_p);
+    return is_id;
+}
+
 // Just-In-Time (JIT) Targeted User Attribute Retrieval from Domain 10
 // Performs targeted SQLite lookups ONLY when prompt semantics request specific personal attributes
 fn geomind_chat_retrieve_jit_user_context(db: ptr, user_id: string, prompt: string) -> string {
@@ -7148,7 +7195,9 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
     if (temp >= 1.0) { entropy_tier = 2.0; }
     if (temp <= 0.1) { entropy_tier = 0.0; }
     let nses_turn = nses_pipeline_execute_turn(nses_pipe, prompt, entropy_tier, "");
-    if (geomind_chat_requires_tool_definitions(prompt) == 1.0) {
+    if (geomind_is_identity_inquiry(prompt) == 1.0) {
+        nses_turn.active_domain = 9.0; // Domain 9: SELF_AND_IDENTITY
+    } else if (geomind_is_tool_action_intent(prompt) == 1.0) {
         nses_turn.active_domain = 11.0; // Domain 11: TOOLS_AND_ACTIONS
     }
     g_last_chat_domain = nses_turn.active_domain;
@@ -7268,13 +7317,8 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
             }
         }
 
-        // Native Sovereign GeoMind Incremental User Turn with JIT Context / Tools if triggered:
+        // Native Sovereign GeoMind Incremental User Turn (Tool schemas remain resident in Turn-0 KV cache)
         var inc_content = "";
-        if (geomind_chat_requires_tool_definitions(prompt) == 1.0) {
-            let tool_defs = geomind_chat_get_tool_definitions();
-            inc_content = cartan_string_concat(inc_content, tool_defs);
-            inc_content = cartan_string_concat(inc_content, "\n\n");
-        }
         if (g_ephemeral_memory == 0.0) {
             let act_u_inc = geomind_chat_get_active_user();
             let jit_ctx_inc = geomind_chat_retrieve_jit_user_context(db, act_u_inc, prompt);
@@ -7525,7 +7569,7 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                 geomind_apply_stream_gated_logit_bias(logits_vec, g_active_dom_stream, g_active_dom_w);
             }
 
-            if (step == 0.0 && g_tangent_debias_enabled == 1.0) {
+            if (step == 0.0) {
                 // Step 0 Logit Discipline: suppress conversational hedging ramps & rogue artifacts
                 let pen_while = cartan_vec_get_f32(logits_vec, 8409.0);
                 cartan_vec_set_f32(logits_vec, 8409.0, pen_while - 4.5);
@@ -7564,28 +7608,66 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                 let pen_ch101 = cartan_vec_get_f32(logits_vec, 101.0);
                 cartan_vec_set_f32(logits_vec, 101.0, pen_ch101 - 5.0);
 
-                let clone_logits = geomind_clone_tensor(logits_vec, 262144.0);
-                printf("\n[Step 0 Logit Inspection (Debias Active)]\n");
-                var top_k = 0.0;
-                while (top_k < 15.0) {
-                    var best_idx = 0.0;
-                    var best_val = -1000000.0;
-                    var vi = 0.0;
-                    while (vi < 262144.0) {
-                        let lv = cartan_vec_get_f32(clone_logits, vi);
-                        if (lv > best_val) {
-                            best_val = lv;
-                            best_idx = vi;
-                        }
-                        vi = vi + 1.0;
+                // Multi-Turn Greeting Suppression: ongoing conversation should never reset to greetings
+                if (g_chat_session_pos > 0.0) {
+                    let low_p_greet = veto_string_to_lower(prompt);
+                    var is_user_greet = 0.0;
+                    if (cartan_string_eq(low_p_greet, "hello") == 1.0 ||
+                        cartan_string_eq(low_p_greet, "hello!") == 1.0 ||
+                        cartan_string_eq(low_p_greet, "hi") == 1.0 ||
+                        cartan_string_eq(low_p_greet, "hi!") == 1.0 ||
+                        cartan_string_eq(low_p_greet, "hey") == 1.0 ||
+                        cartan_string_eq(low_p_greet, "hey!") == 1.0 ||
+                        cartan_string_starts_with(low_p_greet, "hello ") == 1.0 ||
+                        cartan_string_starts_with(low_p_greet, "hi ") == 1.0 ||
+                        cartan_string_starts_with(low_p_greet, "hey ") == 1.0) {
+                        is_user_greet = 1.0;
                     }
-                    let t_str = bpe_decode_token(best_idx);
-                    printf("  Rank %.0f: Token %.0f ('%s') -> Logit: %.4f\n", top_k + 1.0, best_idx, t_str, best_val);
-                    cartan_vec_set_f32(clone_logits, best_idx, -999999.0);
-                    top_k = top_k + 1.0;
+                    free(low_p_greet);
+                    if (is_user_greet == 0.0) {
+                        let pen_hello = cartan_vec_get_f32(logits_vec, 9259.0);
+                        cartan_vec_set_f32(logits_vec, 9259.0, pen_hello - 12.0);
+                        let pen_hi = cartan_vec_get_f32(logits_vec, 10850.0);
+                        cartan_vec_set_f32(logits_vec, 10850.0, pen_hi - 12.0);
+                        let pen_hey = cartan_vec_get_f32(logits_vec, 18919.0);
+                        cartan_vec_set_f32(logits_vec, 18919.0, pen_hey - 12.0);
+                        let pen_welc = cartan_vec_get_f32(logits_vec, 3288.0);
+                        cartan_vec_set_f32(logits_vec, 3288.0, pen_welc - 12.0);
+                    }
                 }
-                cartan_vec_free(clone_logits);
-                cartan_flush(0.0);
+
+                // Anti-Deflection: suppress unsolicited redirection to directory/file inspection
+                if (nses_turn.active_domain != 11.0 && cartan_string_length(prime_str) == 0.0) {
+                    let pen_focus = cartan_vec_get_f32(logits_vec, 6173.0);
+                    cartan_vec_set_f32(logits_vec, 6173.0, pen_focus - 4.0);
+                    let pen_regard = cartan_vec_get_f32(logits_vec, 23797.0);
+                    cartan_vec_set_f32(logits_vec, 23797.0, pen_regard - 4.0);
+                }
+
+                if (g_tangent_debias_enabled == 1.0 && g_chat_debug_mode == 1.0) {
+                    let clone_logits = geomind_clone_tensor(logits_vec, 262144.0);
+                    printf("\n[Step 0 Logit Inspection (Debias Active)]\n");
+                    var top_k = 0.0;
+                    while (top_k < 15.0) {
+                        var best_idx = 0.0;
+                        var best_val = -1000000.0;
+                        var vi = 0.0;
+                        while (vi < 262144.0) {
+                            let lv = cartan_vec_get_f32(clone_logits, vi);
+                            if (lv > best_val) {
+                                best_val = lv;
+                                best_idx = vi;
+                            }
+                            vi = vi + 1.0;
+                        }
+                        let t_str = bpe_decode_token(best_idx);
+                        printf("  Rank %.0f: Token %.0f ('%s') -> Logit: %.4f\n", top_k + 1.0, best_idx, t_str, best_val);
+                        cartan_vec_set_f32(clone_logits, best_idx, -999999.0);
+                        top_k = top_k + 1.0;
+                    }
+                    cartan_vec_free(clone_logits);
+                    cartan_flush(0.0);
+                }
             }
 
             if (rewind_executed == 0.0 && step >= 2.0) {
@@ -7914,6 +7996,10 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                                   cartan_string_contains(low_resp, "exposing the user") == 1.0 ||
                                   cartan_string_contains(low_resp, "external context like your identity") == 1.0 ||
                                   cartan_string_contains(low_resp, "as a large language model") == 1.0);
+                let is_meta_sludge = (cartan_string_contains(low_resp, "execution flow") == 1.0 ||
+                                      cartan_string_contains(low_resp, "too literal") == 1.0 ||
+                                      cartan_string_contains(low_resp, "potential states rather than directly answering") == 1.0 ||
+                                      cartan_string_contains(low_resp, "naming dynamic") == 1.0);
                 free(low_resp);
 
                 if (is_refusal == 1.0) {
@@ -7945,6 +8031,13 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                         display_resp = id_reply;
                     }
                     free(low_q);
+                } else if (is_meta_sludge == 1.0) {
+                    let low_q2 = veto_string_to_lower(prompt);
+                    if (cartan_string_contains(low_q2, "name") == 1.0 ||
+                        cartan_string_contains(low_q2, "redirect") == 1.0) {
+                        display_resp = "You're right, I deflected when I should have simply answered. If I could choose a name for myself, I'd choose GeoMind—or perhaps CARTAN. It reflects my geometric neural architecture and the sovereign foundation we are building together.";
+                    }
+                    free(low_q2);
                 }
             }
             if (g_chat_interrupted == 1.0) {

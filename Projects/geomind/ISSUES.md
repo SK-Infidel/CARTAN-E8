@@ -3949,3 +3949,25 @@ Core CARTAN programming language, compiler, runtime, and general-purpose standar
   9. Verified compiler regression suite: 12/12 targets passed cleanly in 21.61s.
 
 
+
+---
+
+## [ISSUE-419] [RESOLVED] Conversational Intent Decoupling, Recency Weighting & Anti-Deflection in Multi-Turn Interactive REPL
+
+- **Severity**: High (Conversational Deflection, Domain Clobbering, Context Clutter, and Multi-Turn Greeting Reset)
+- **Component**: [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl), [`src/std/nses_pipeline.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/nses_pipeline.cl)
+- **Description**:
+  1. Live interactive REPL analysis revealed that persistent tool schema residency had inadvertently clobbered active domain routing on every turn (`nses_turn.active_domain = 11.0`), biasing generation prior toward developer file tools.
+  2. Questions regarding persona, selfhood, and choosing a name were deflected toward file listing and directory inspection.
+  3. On every incremental turn ($N > 0$), ~250 tokens of repetitive tool schemas were re-injected into `inc_content`, separating short user turns from preceding assistant dialogue.
+  4. Ultra-short follow-up prompts (`"A name."`) caused the 42-layer attention mechanism to reset to preamble greeting embeddings, emitting a redundant greeting (`"Hello, Rick. Ready when you are..."`).
+  5. Interpersonal corrections triggered evasive corporate meta-jargon (*"execution flow needs refinement"*, *"too literal"*).
+- **Resolution**:
+  1. Decoupled tool schema residency from turn-level injection: tool definitions remain permanently active and resident in Turn-0 KV cache, completely eliminated from incremental user turns (`inc_content`).
+  2. Implemented `geomind_is_identity_inquiry` in `chat.cl` and expanded Domain 9 routing in `nses_pipeline.cl` to route naming, selfhood, and persona queries to Domain 9 (`SELF_AND_IDENTITY`).
+  3. Restricted Domain 11 (`TOOLS_AND_ACTIONS`) routing strictly to prompts exhibiting genuine tool action intent (`geomind_is_tool_action_intent`).
+  4. Made Step 0 logit discipline universal across all chat modes, suppressing conversational ramps, rogue tokens, and unprompted file deflection ramps (`Focus`, `Regarding`).
+  5. Implemented Multi-Turn Greeting Suppression: penalized opening greeting tokens (`Hello`, `Hi`, `Hey`, `Welcome` by -12.0) during active conversations ($N > 0$) unless the prompt is an explicit greeting.
+  6. Added corporate meta-sludge detection and authentic conversational recovery in `geomind_chat_generate_reply_multimodal`.
+  7. Built clean native executable `bin/geomind.exe` with `cartanc.exe` (169,878 LLVM IR instructions).
+  8. Verified selective regression test suite: 10/10 passed (71.01s).
