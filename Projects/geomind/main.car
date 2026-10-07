@@ -58,7 +58,7 @@ fn print_help_dialogue() -> float {
     printf("  --ingest        Ingest material into Continuous Hopfield memory (-target <file>)\n");
     printf("  --sleep         Run Autonomous Metacognitive Sleep memory consolidation\n");
     printf("  --train-webgpu  Run pure native CARTAN WebGPU Causal Training Engine\n");
-    printf("  --extract-alignment-vector Extract contrastive alignment direction vector r_hat at Layer 24\n");
+    printf("  --extract-alignment-vector Extract 3-rank orthonormal alignment subspace {u_syc, u_per, u_ref} at Layer 28\n");
     printf("  --help, -h      Display this help dialogue and exit\n\n");
     printf("Hardware & Compute Flags:\n");
     printf("  (WebGPU hardware acceleration on NVIDIA RTX 2000 Ada GPU is ENABLED BY DEFAULT)\n");
@@ -170,6 +170,7 @@ fn is_explicit_non_chat_mode(flag: string) -> float {
     if (cartan_string_eq(flag, "--graft") == 1.0) { return 1.0; }
     if (cartan_string_eq(flag, "--azr-selfplay") == 1.0) { return 1.0; }
     if (cartan_string_eq(flag, "--extract-alignment-vector") == 1.0 || cartan_string_eq(flag, "-extract-alignment-vector") == 1.0) { return 1.0; }
+    if (cartan_string_eq(flag, "--diagnose-alignment") == 1.0 || cartan_string_eq(flag, "-diagnose-alignment") == 1.0) { return 1.0; }
     return 0.0;
 }
 
@@ -214,7 +215,8 @@ fn get_cli_prompt(arg_count: float) -> string {
     var i = 1.0;
     while (i < arg_count) {
         let arg = sys_get_arg(i);
-        if (cartan_string_eq(arg, "-prompt") == 1.0 || cartan_string_eq(arg, "--prompt") == 1.0) {
+        if (cartan_string_eq(arg, "-prompt") == 1.0 || cartan_string_eq(arg, "--prompt") == 1.0 ||
+            cartan_string_eq(arg, "-p") == 1.0 || cartan_string_eq(arg, "--p") == 1.0) {
             var full_prompt = "";
             var j = i + 1.0;
             while (j < arg_count) {
@@ -1057,7 +1059,21 @@ fn main() -> float {
                          get_cli_flag_present("--no-debias", arg_count);
     if (debias_flag > 0.0 && no_debias_flag == 0.0) {
         geomind_chat_set_tangent_debias(1.0);
-        printf("[GeoMind Mode] Tangent Bundle Alignment Debias ENABLED (Layer 24 Gram-Schmidt projection active)\n");
+        let layer_str = get_cli_param("-debias-layer", arg_count);
+        if (cartan_string_length(layer_str) > 0.0) {
+            let l_val = atof(layer_str);
+            if (l_val >= 0.0 && l_val < 42.0) {
+                geomind_chat_set_debias_layer(l_val);
+            }
+        }
+        let strength_str = get_cli_param("-debias-strength", arg_count);
+        if (cartan_string_length(strength_str) > 0.0) {
+            let s_val = atof(strength_str);
+            if (s_val > 0.0) {
+                geomind_chat_set_debias_strength(s_val);
+            }
+        }
+        printf("[GeoMind Mode] Tangent Bundle Alignment Debias ENABLED (Layer %.0f Rank-%.0f Orthonormal Subspace Active, Strength %.2f)\n", geomind_chat_get_debias_layer(), geomind_chat_get_debias_rank(), geomind_chat_get_debias_strength());
     } else {
         geomind_chat_set_tangent_debias(0.0);
     }
@@ -1483,7 +1499,19 @@ fn main() -> float {
             return 0.0;
         }
         if (cartan_string_eq(flag, "--extract-alignment-vector") == 1.0 || cartan_string_eq(flag, "-extract-alignment-vector") == 1.0) {
+            let layer_str = get_cli_param("-debias-layer", arg_count);
+            if (cartan_string_length(layer_str) > 0.0) {
+                let l_val = atof(layer_str);
+                if (l_val >= 0.0 && l_val < 42.0) {
+                    geomind_chat_set_debias_layer(l_val);
+                }
+            }
             geomind_extract_alignment_vector_probe();
+            cartan_flush(0.0);
+            return 0.0;
+        }
+        if (cartan_string_eq(flag, "--diagnose-alignment") == 1.0 || cartan_string_eq(flag, "-diagnose-alignment") == 1.0) {
+            geomind_run_alignment_diagnostics();
             cartan_flush(0.0);
             return 0.0;
         }

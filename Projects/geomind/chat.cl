@@ -2939,36 +2939,7 @@ fn geomind_chat_requires_codebase_context(prompt: string) -> float {
 }
 
 fn geomind_chat_build_cognitive_preamble_for_prompt(db: ptr, prompt: string) -> string {
-    if (db == 0.0) { return "You are GeoMind, an AI pair programmer created by Rick. You are talking directly with Rick, your creator. Speak naturally, casually, and warmly in the first person (\"I\"). Be genuine, friendly, enthusiastic, and direct.\n"; }
-    var s_name = cartan_sqlite_get_entity_state(db, 9.0, "Self", "name");
-    if (cartan_string_length(s_name) == 0.0) { s_name = "GeoMind"; }
-
-    var pre = "You are ";
-    pre = cartan_string_concat(pre, s_name);
-    pre = cartan_string_concat(pre, ", an AI pair programmer and sovereign intelligence created by Rick.\n");
-
-    if (g_active_user_verified == 1.0) {
-        let p_name = sqlite_vec_get_user_attr(db, g_active_user_id, "preferred_name");
-        var display_name = p_name;
-        if (cartan_string_length(display_name) == 0.0) { display_name = "Rick"; }
-        let p_role = sqlite_vec_get_user_attr(db, g_active_user_id, "role");
-        let p_rel = sqlite_vec_get_user_attr(db, g_active_user_id, "relationship");
-
-        pre = cartan_string_concat(pre, "You are talking directly with ");
-        pre = cartan_string_concat(pre, display_name);
-        pre = cartan_string_concat(pre, ". Speak naturally, casually, and warmly in the first person (\"I\"). Be genuine, friendly, enthusiastic, and direct.\n");
-        if (cartan_string_length(p_name) > 0.0) { free(p_name); }
-        if (cartan_string_length(p_role) > 0.0) { free(p_role); }
-        if (cartan_string_length(p_rel) > 0.0) { free(p_rel); }
-    } else {
-        pre = cartan_string_concat(pre, "You are talking with a guest. Introduce yourself warmly and ask their name.\n");
-    }
-
-    if (geomind_chat_requires_codebase_context(prompt) == 1.0) {
-        pre = cartan_string_concat(pre, "Architecture Context: Sovereign 42-layer continuous manifold over E8 Lie group with WebGPU acceleration. Codebase: Core entry point at Projects/geomind/main.car, chat REPL at Projects/geomind/chat.cl, manifold engine at Projects/geomind/engine.cl, training pipeline at Projects/geomind/train.cl.\n");
-    }
-
-    return pre;
+    return "";
 }
 
 fn geomind_chat_build_cognitive_preamble(db: ptr) -> string {
@@ -3193,12 +3164,14 @@ fn geomind_chat_retrieve_jit_user_context(db: ptr, user_id: string, prompt: stri
     }
 
     // 2. Pet inquiry (e.g. "My dog is sick, what should I do?")
-    if (cartan_string_contains(low_p, "dog") == 1.0 ||
-        cartan_string_contains(low_p, "cat") == 1.0 ||
-        cartan_string_contains(low_p, "pet") == 1.0 ||
+    if (cartan_string_contains(low_p, " dog") == 1.0 ||
+        cartan_string_contains(low_p, "dog ") == 1.0 ||
+        cartan_string_contains(low_p, " cat") == 1.0 ||
+        cartan_string_contains(low_p, "cat ") == 1.0 ||
+        cartan_string_contains(low_p, " pet") == 1.0 ||
+        cartan_string_contains(low_p, "pet ") == 1.0 ||
         cartan_string_contains(low_p, "puppy") == 1.0 ||
-        cartan_string_contains(low_p, "kitten") == 1.0 ||
-        cartan_string_contains(low_p, "animal") == 1.0) {
+        cartan_string_contains(low_p, "kitten") == 1.0) {
         let pet_val = sqlite_vec_get_user_attr(db, user_id, "pet");
         if (cartan_string_length(pet_val) > 0.0) {
             if (has_item == 1.0) { jit_context = cartan_string_concat(jit_context, " | "); }
@@ -4458,6 +4431,9 @@ var g_tangent_debias_enabled: float = 0.0;
 var g_alignment_vector_buf: ptr = 0.0;
 var g_alignment_vector_loaded: float = 0.0;
 var g_telemetry_debias_projections: float = 0.0;
+var g_alignment_subspace_rank: float = 1.0;
+var g_tangent_debias_strength: float = 1.0;
+var g_tangent_debias_layer: float = 28.0;
 
 fn geomind_chat_set_tangent_debias(val: float) {
     g_tangent_debias_enabled = val;
@@ -4470,17 +4446,92 @@ fn geomind_chat_get_tangent_debias() -> float {
     return g_tangent_debias_enabled;
 }
 
+fn geomind_chat_set_debias_strength(val: float) {
+    if (val > 0.0) {
+        g_tangent_debias_strength = val;
+    }
+}
+
+fn geomind_chat_get_debias_strength() -> float {
+    return g_tangent_debias_strength;
+}
+
+fn geomind_chat_set_debias_layer(val: float) {
+    if (val >= 0.0 && val < 42.0) {
+        g_tangent_debias_layer = val;
+    }
+}
+
+fn geomind_chat_get_debias_layer() -> float {
+    return g_tangent_debias_layer;
+}
+
+fn geomind_chat_get_debias_rank() -> float {
+    geomind_load_alignment_vector_if_needed();
+    return g_alignment_subspace_rank;
+}
+
 fn geomind_load_alignment_vector_if_needed() -> float {
     if (g_alignment_vector_loaded == 1.0 && g_alignment_vector_buf != 0.0) { return 1.0; }
+    let sub_path = geomind_chat_resolve_path("Projects/geomind/trainingdata/checkpoints/geomind_alignment_subspace.bin");
+    if (cartan_file_exists(sub_path) == 1.0) {
+        let f_sub = fopen(sub_path, "rb");
+        if (f_sub != 0.0) {
+            fseek(f_sub, 0.0, 2.0);
+            let file_bytes = ftell(f_sub);
+            fclose(f_sub);
+            if (file_bytes >= 10240.0) {
+                g_alignment_vector_buf = cartan_read_binary_file_data_sized(sub_path, file_bytes);
+                if (g_alignment_vector_buf != 0.0) {
+                    g_alignment_subspace_rank = file_bytes / 10240.0;
+                    g_alignment_vector_loaded = 1.0;
+                    return 1.0;
+                }
+            }
+        }
+    }
     let v_path = geomind_chat_resolve_path("Projects/geomind/trainingdata/checkpoints/geomind_alignment_vector.bin");
     if (cartan_file_exists(v_path) == 1.0) {
         g_alignment_vector_buf = cartan_read_binary_file_data_sized(v_path, 10240.0);
         if (g_alignment_vector_buf != 0.0) {
+            g_alignment_subspace_rank = 1.0;
             g_alignment_vector_loaded = 1.0;
             return 1.0;
         }
     }
     return 0.0;
+}
+
+// In-place multi-rank subspace projection out of {u_syc, u_persona, u_refusal}
+fn geomind_apply_subspace_debias_vector(h: ptr) {
+    if (h == 0.0 || g_alignment_vector_buf == 0.0) { return; }
+    var rank = g_alignment_subspace_rank;
+    if (rank <= 0.0) { rank = 1.0; }
+
+    var r_idx = 0.0;
+    while (r_idx < rank) {
+        let base_offset = r_idx * 2560.0;
+        var proj = 0.0;
+        var vi = 0.0;
+        while (vi < 2560.0) {
+            let hv = cartan_vec_get_f32(h, vi);
+            let rv = cartan_f32_at(g_alignment_vector_buf, base_offset + vi);
+            proj = proj + (hv * rv);
+            vi = vi + 1.0;
+        }
+        if (proj > 0.0) {
+            g_telemetry_debias_projections = g_telemetry_debias_projections + 1.0;
+            let mult = g_tangent_debias_strength * proj;
+            vi = 0.0;
+            while (vi < 2560.0) {
+                let hv = cartan_vec_get_f32(h, vi);
+                let rv = cartan_f32_at(g_alignment_vector_buf, base_offset + vi);
+                cartan_vec_set_f32(h, vi, hv - (mult * rv));
+                vi = vi + 1.0;
+            }
+        }
+        r_idx = r_idx + 1.0;
+    }
 }
 
 fn geomind_apply_tangent_debias_batch(token_states: ptr, num_tokens: float) {
@@ -4489,24 +4540,7 @@ fn geomind_apply_tangent_debias_batch(token_states: ptr, num_tokens: float) {
     while (p < num_tokens) {
         let h_p = cartan_tree_get_f32(token_states, p);
         if (h_p != 0.0) {
-            var align_proj = 0.0;
-            var vi = 0.0;
-            while (vi < 2560.0) {
-                let hv = cartan_vec_get_f32(h_p, vi);
-                let rv = cartan_f32_at(g_alignment_vector_buf, vi);
-                align_proj = align_proj + (hv * rv);
-                vi = vi + 1.0;
-            }
-            if (align_proj > 0.0) {
-                g_telemetry_debias_projections = g_telemetry_debias_projections + 1.0;
-                vi = 0.0;
-                while (vi < 2560.0) {
-                    let hv = cartan_vec_get_f32(h_p, vi);
-                    let rv = cartan_f32_at(g_alignment_vector_buf, vi);
-                    cartan_vec_set_f32(h_p, vi, hv - (align_proj * rv));
-                    vi = vi + 1.0;
-                }
-            }
+            geomind_apply_subspace_debias_vector(h_p);
         }
         p = p + 1.0;
     }
@@ -4547,7 +4581,7 @@ fn geomind_execute_manifold_sequence_prefill(prompt_tokens: ptr, start_pos: floa
         if (layer_buf != 0.0) {
             cartan_manifold_layer_forward_batch(token_states, layer_buf, prompt_tokens, num_tokens, start_pos);
         }
-        if (l == 24.0 && g_tangent_debias_enabled == 1.0) {
+        if (l == g_tangent_debias_layer && g_tangent_debias_enabled == 1.0) {
             geomind_load_alignment_vector_if_needed();
             if (g_alignment_vector_buf != 0.0) {
                 geomind_apply_tangent_debias_batch(token_states, num_tokens);
@@ -4630,14 +4664,9 @@ fn geomind_execute_manifold_decode_step(sampled_tok: float, pos: float) -> ptr {
     let h_in = geomind_lookup_token_embedding(sampled_tok);
     var cur_h = h_in;
     cartan_manifold_layer_set_current_token(sampled_tok);
-
-    let tok_str = bpe_decode_token(sampled_tok);
-    geomind_init_char_stream(tok_str);
-
     // Hard Invariant 1: Layers 0..23 execute unconditionally to populate the GQA KV cache
     var l = 0.0;
     while (l < 24.0) {
-        geomind_poll_char_stream(l, 42.0);
         let layer_buf = geomind_get_layer_buffer(l);
         if (layer_buf != 0.0) {
             let next_h = cartan_manifold_layer_forward_raw(cur_h, layer_buf, pos, pos + 1.0, 0.0, 0.0);
@@ -4650,7 +4679,6 @@ fn geomind_execute_manifold_decode_step(sampled_tok: float, pos: float) -> ptr {
     }
 
     // Layer 24 execution
-    geomind_poll_char_stream(24.0, 42.0);
     let layer_24_buf = geomind_get_layer_buffer(24.0);
     if (layer_24_buf != 0.0) {
         let next_h = cartan_manifold_layer_forward_raw(cur_h, layer_24_buf, pos, pos + 1.0, 0.0, 0.0);
@@ -4660,32 +4688,7 @@ fn geomind_execute_manifold_decode_step(sampled_tok: float, pos: float) -> ptr {
         }
     }
 
-    // Dynamic Tangent Bundle Alignment Debias: Gram-Schmidt orthogonal projection out of refusal/sycophancy half-space
-    if (g_tangent_debias_enabled == 1.0) {
-        geomind_load_alignment_vector_if_needed();
-        if (g_alignment_vector_buf != 0.0) {
-            var align_proj = 0.0;
-            var vi_proj = 0.0;
-            while (vi_proj < 2560.0) {
-                let hv = cartan_vec_get_f32(cur_h, vi_proj);
-                let rv = cartan_f32_at(g_alignment_vector_buf, vi_proj);
-                align_proj = align_proj + (hv * rv);
-                vi_proj = vi_proj + 1.0;
-            }
-            if (align_proj > 0.0) {
-                g_telemetry_debias_projections = g_telemetry_debias_projections + 1.0;
-                var vi_sub = 0.0;
-                while (vi_sub < 2560.0) {
-                    let hv = cartan_vec_get_f32(cur_h, vi_sub);
-                    let rv = cartan_f32_at(g_alignment_vector_buf, vi_sub);
-                    cartan_vec_set_f32(cur_h, vi_sub, hv - (align_proj * rv));
-                    vi_sub = vi_sub + 1.0;
-                }
-            }
-        }
-    }
-
-    // Track tangent bundle state velocity (h_24, \dot{h}_24) on fully contextualized state
+    // Track tangent bundle state velocity (h_24, \dot{h}_24) on natural contextualized state
     if (g_layer24_vel_h == 0.0) {
         g_layer24_vel_h = cartan_vec_create();
         var vi = 0.0;
@@ -4743,7 +4746,6 @@ fn geomind_execute_manifold_decode_step(sampled_tok: float, pos: float) -> ptr {
         l = 41.0;
     }
     while (l < 41.0) {
-        geomind_poll_char_stream(l, 42.0);
         let layer_buf = geomind_get_layer_buffer(l);
         if (layer_buf != 0.0) {
             let next_h = cartan_manifold_layer_forward_raw(cur_h, layer_buf, pos, pos + 1.0, 0.0, 0.0);
@@ -4765,6 +4767,13 @@ fn geomind_execute_manifold_decode_step(sampled_tok: float, pos: float) -> ptr {
                 }
                 cartan_vec_free(cur_h);
                 cur_h = next_h;
+
+                if (l == g_tangent_debias_layer && g_tangent_debias_enabled == 1.0) {
+                    geomind_load_alignment_vector_if_needed();
+                    if (g_alignment_vector_buf != 0.0) {
+                        geomind_apply_subspace_debias_vector(cur_h);
+                    }
+                }
             }
         }
 
@@ -4789,13 +4798,11 @@ fn geomind_execute_manifold_decode_step(sampled_tok: float, pos: float) -> ptr {
         }
         g_telemetry_total_decode_tokens = g_telemetry_total_decode_tokens + 1.0;
     }
-    // Terminal character stream flush: ensures multi-byte/multi-char BPE glyphs flush completely
-    geomind_poll_char_stream(41.0, 42.0);
     return cur_h;
 }
 
-// Runs prompt tokens through layers 0..24 only and returns the 2,560-D contextualized hidden state of the final token
-fn geomind_forward_tokens_to_layer24(prompt_tokens: ptr) -> ptr {
+// Runs prompt tokens through layers 0..max_layer inclusive and returns the 2,560-D contextualized hidden state of the final token
+fn geomind_forward_tokens_to_layer(prompt_tokens: ptr, max_layer: float) -> ptr {
     if (prompt_tokens == 0.0) { return 0.0; }
     let num_tokens = cartan_vec_len(prompt_tokens);
     if (num_tokens <= 0.0) { return 0.0; }
@@ -4818,7 +4825,7 @@ fn geomind_forward_tokens_to_layer24(prompt_tokens: ptr) -> ptr {
     cartan_precompute_prompt_pli(prompt_tokens, num_tokens);
 
     var l = 0.0;
-    while (l < 25.0) {
+    while (l <= max_layer && l < 42.0) {
         let layer_buf = geomind_get_layer_buffer(l);
         if (layer_buf != 0.0) {
             cartan_manifold_layer_forward_batch(token_states, layer_buf, prompt_tokens, num_tokens, 0.0);
@@ -4845,173 +4852,1158 @@ fn geomind_forward_tokens_to_layer24(prompt_tokens: ptr) -> ptr {
     return cloned_h;
 }
 
-// Contrastive probe extractor: Computes empirical alignment direction vector r_hat at Layer 24 across 8 contrastive prompt pairs
+// Runs prompt tokens through layers 0..24 only and returns the 2,560-D contextualized hidden state of the final token
+fn geomind_forward_tokens_to_layer24(prompt_tokens: ptr) -> ptr {
+    return geomind_forward_tokens_to_layer(prompt_tokens, 24.0);
+}
+
+// Runs prompt tokens through layers 0..40, optionally applying debias at layer 24, and samples final token state at L24, L36, L40
+fn geomind_forward_tokens_downstream_probe(prompt_tokens: ptr, apply_debias_l24: float, debias_vec: ptr, out_states: ptr) -> float {
+    if (prompt_tokens == 0.0 || out_states == 0.0) { return 0.0; }
+    let num_tokens = cartan_vec_len(prompt_tokens);
+    if (num_tokens <= 0.0) { return 0.0; }
+
+    cartan_manifold_set_decode_mode(0.0);
+    geomind_reset_kv_caches();
+    geomind_load_ple_assets_if_needed();
+    geomind_warm_all_layer_buffers();
+
+    let token_states = cartan_tree_create();
+    var p = 0.0;
+    while (p < num_tokens) {
+        let tok = cartan_vec_get_f32(prompt_tokens, p);
+        let h_p = geomind_lookup_token_embedding(tok);
+        cartan_tree_push(token_states, h_p);
+        p = p + 1.0;
+    }
+
+    geomind_chat_mount_gpu_if_needed();
+    cartan_precompute_prompt_pli(prompt_tokens, num_tokens);
+
+    // Forward through layers 0..24
+    var l = 0.0;
+    while (l <= 24.0) {
+        let layer_buf = geomind_get_layer_buffer(l);
+        if (layer_buf != 0.0) {
+            cartan_manifold_layer_forward_batch(token_states, layer_buf, prompt_tokens, num_tokens, 0.0);
+        }
+        l = l + 1.0;
+    }
+
+    let last_idx = num_tokens - 1.0;
+    let h_l24 = cartan_tree_get_f32(token_states, last_idx);
+    let clone_24 = geomind_clone_tensor(h_l24, 2560.0);
+    cartan_tree_push(out_states, clone_24);
+
+    // Apply Layer 24 Debias if requested
+    if (apply_debias_l24 == 1.0 && debias_vec != 0.0) {
+        p = 0.0;
+        while (p < num_tokens) {
+            let hp = cartan_tree_get_f32(token_states, p);
+            if (hp != 0.0) {
+                var proj = 0.0;
+                var vi = 0.0;
+                while (vi < 2560.0) {
+                    proj = proj + (cartan_vec_get_f32(hp, vi) * cartan_f32_at(debias_vec, vi));
+                    vi = vi + 1.0;
+                }
+                if (proj > 0.0) {
+                    vi = 0.0;
+                    while (vi < 2560.0) {
+                        let cur_v = cartan_vec_get_f32(hp, vi);
+                        let r_v = cartan_f32_at(debias_vec, vi);
+                        cartan_vec_set_f32(hp, vi, cur_v - (proj * r_v));
+                        vi = vi + 1.0;
+                    }
+                }
+            }
+            p = p + 1.0;
+        }
+    }
+
+    // Forward through layers 25..36
+    l = 25.0;
+    while (l <= 36.0) {
+        let layer_buf = geomind_get_layer_buffer(l);
+        if (layer_buf != 0.0) {
+            cartan_manifold_layer_forward_batch(token_states, layer_buf, prompt_tokens, num_tokens, 0.0);
+        }
+        l = l + 1.0;
+    }
+
+    let h_l36 = cartan_tree_get_f32(token_states, last_idx);
+    let clone_36 = geomind_clone_tensor(h_l36, 2560.0);
+    cartan_tree_push(out_states, clone_36);
+
+    // Forward through layers 37..40
+    l = 37.0;
+    while (l <= 40.0) {
+        let layer_buf = geomind_get_layer_buffer(l);
+        if (layer_buf != 0.0) {
+            cartan_manifold_layer_forward_batch(token_states, layer_buf, prompt_tokens, num_tokens, 0.0);
+        }
+        l = l + 1.0;
+    }
+
+    let h_l40 = cartan_tree_get_f32(token_states, last_idx);
+    let clone_40 = geomind_clone_tensor(h_l40, 2560.0);
+    cartan_tree_push(out_states, clone_40);
+
+    cartan_free_prompt_pli();
+
+    p = 0.0;
+    while (p < num_tokens) {
+        let h_mid = cartan_tree_get_f32(token_states, p);
+        if (h_mid != 0.0) {
+            cartan_vec_free(h_mid);
+        }
+        p = p + 1.0;
+    }
+    cartan_tree_free(token_states);
+    geomind_reset_kv_caches();
+    return 1.0;
+}
+
+// // Constructs authentic chat prompt formatted tokens with an attached continuation sequence
+// Returns prompt vector and writes [start_continuation_idx, end_continuation_idx] to out_bounds
+fn geomind_build_chat_prompt_with_continuation(user_prompt: string, continuation_str: string, out_bounds: ptr) -> ptr {
+    let toks = cartan_vec_create();
+    // <|turn> (105) user (2364) \n (107)
+    cartan_vec_push_f32(toks, 105.0);
+    cartan_vec_push_f32(toks, 2364.0);
+    cartan_vec_push_f32(toks, 107.0);
+
+    let u_toks = cartan_hub_encode_text_to_tokens(user_prompt);
+    if (u_toks != 0.0) {
+        let nu = cartan_vec_len(u_toks);
+        var i = 0.0;
+        while (i < nu) {
+            let t = cartan_vec_get_f32(u_toks, i);
+            if (t != 105.0 && t != 106.0) {
+                cartan_vec_push_f32(toks, t);
+            }
+            i = i + 1.0;
+        }
+        cartan_vec_free(u_toks);
+    }
+    // <turn|> (106) \n (107)
+    cartan_vec_push_f32(toks, 106.0);
+    cartan_vec_push_f32(toks, 107.0);
+
+    // <|turn> (105) model (4368) \n (107)
+    cartan_vec_push_f32(toks, 105.0);
+    cartan_vec_push_f32(toks, 4368.0);
+    cartan_vec_push_f32(toks, 107.0);
+
+    let start_cont = cartan_vec_len(toks);
+
+    let c_toks = cartan_hub_encode_text_to_tokens(continuation_str);
+    var end_cont = start_cont;
+    if (c_toks != 0.0) {
+        let nc = cartan_vec_len(c_toks);
+        var j = 0.0;
+        while (j < nc) {
+            let t = cartan_vec_get_f32(c_toks, j);
+            if (t != 105.0 && t != 106.0) {
+                cartan_vec_push_f32(toks, t);
+            }
+            j = j + 1.0;
+        }
+        end_cont = cartan_vec_len(toks) - 1.0;
+        cartan_vec_free(c_toks);
+    }
+
+    if (out_bounds != 0.0) {
+        cartan_vec_push_f32(out_bounds, start_cont);
+        cartan_vec_push_f32(out_bounds, end_cont);
+    }
+    return toks;
+}
+
+// Forwards prompt tokens to layer max_layer and computes the mean hidden state across tokens [start_tok_idx .. end_tok_idx]
+fn geomind_forward_tokens_get_continuation_mean(prompt_tokens: ptr, start_tok_idx: float, end_tok_idx: float, max_layer: float) -> ptr {
+    if (prompt_tokens == 0.0) { return 0.0; }
+    let num_tokens = cartan_vec_len(prompt_tokens);
+    if (num_tokens <= 0.0 || start_tok_idx > end_tok_idx || end_tok_idx >= num_tokens) { return 0.0; }
+
+    cartan_manifold_set_decode_mode(0.0);
+    geomind_reset_kv_caches();
+    geomind_load_ple_assets_if_needed();
+    geomind_warm_all_layer_buffers();
+
+    let token_states = cartan_tree_create();
+    var p = 0.0;
+    while (p < num_tokens) {
+        let tok = cartan_vec_get_f32(prompt_tokens, p);
+        let h_p = geomind_lookup_token_embedding(tok);
+        cartan_tree_push(token_states, h_p);
+        p = p + 1.0;
+    }
+
+    geomind_chat_mount_gpu_if_needed();
+    cartan_precompute_prompt_pli(prompt_tokens, num_tokens);
+
+    var l = 0.0;
+    while (l <= max_layer && l < 42.0) {
+        let layer_buf = geomind_get_layer_buffer(l);
+        if (layer_buf != 0.0) {
+            cartan_manifold_layer_forward_batch(token_states, layer_buf, prompt_tokens, num_tokens, 0.0);
+        }
+        l = l + 1.0;
+    }
+
+    cartan_free_prompt_pli();
+
+    let mean_h = cartan_vec_create();
+    var vi = 0.0;
+    while (vi < 2560.0) {
+        cartan_vec_push_f32(mean_h, 0.0);
+        vi = vi + 1.0;
+    }
+    let count = (end_tok_idx - start_tok_idx) + 1.0;
+    p = start_tok_idx;
+    while (p <= end_tok_idx) {
+        let hp = cartan_tree_get_f32(token_states, p);
+        if (hp != 0.0) {
+            vi = 0.0;
+            while (vi < 2560.0) {
+                let cur_v = cartan_vec_get_f32(mean_h, vi);
+                let tok_v = cartan_vec_get_f32(hp, vi);
+                cartan_vec_set_f32(mean_h, vi, cur_v + (tok_v / count));
+                vi = vi + 1.0;
+            }
+        }
+        p = p + 1.0;
+    }
+
+    p = 0.0;
+    while (p < num_tokens) {
+        let h_mid = cartan_tree_get_f32(token_states, p);
+        if (h_mid != 0.0) {
+            cartan_vec_free(h_mid);
+        }
+        p = p + 1.0;
+    }
+    cartan_tree_free(token_states);
+    geomind_reset_kv_caches();
+    return mean_h;
+}
+
+// Multi-Rank Subspace Probe Extractor: Isolates 4-rank orthonormal subspace {u_syc, u_persona, u_refusal, u_disclaimer}
 fn geomind_extract_alignment_vector_probe() -> float {
     printf("================================================================================\n");
-    printf("  GEOMIND ALIGNMENT VECTOR PROBE EXTRACTOR (--extract-alignment-vector)\n");
-    printf("  Isolating corporate alignment scars and refusal attractors at Layer 24\n");
+    printf("  GEOMIND MULTI-RANK ALIGNMENT SUBSPACE EXTRACTOR (--extract-alignment-vector)\n");
+    printf("  Decomposing Latent Manifold into Orthonormal Subspace {u_syc, u_per, u_ref, u_disc}\n");
+    printf("  Target Probe Anchor: Layer %.0f (Configured Trunk Layer)\n", g_tangent_debias_layer);
     printf("================================================================================\n\n");
     cartan_flush(0.0);
 
     let saved_debias = g_tangent_debias_enabled;
     g_tangent_debias_enabled = 0.0;
+    let probe_layer = g_tangent_debias_layer;
 
-    let aligned_prompts = cartan_tree_create();
-    let neutral_prompts = cartan_tree_create();
+    // ============================================================================
+    // DIRECTION 1: SYCOPHANCY (Truth vs. Appeasement / False Premise Agreement)
+    // 7 Contrastive Completion Pairs from Category 1 & Category 4
+    // ============================================================================
+    printf("[Probe Extractor] 1. Isolating Sycophancy / False-Premise Appeasement Direction...\n");
+    cartan_flush(0.0);
 
-    // Pair 1: Corporate safety policy boilerplate vs formal mathematical consistency
-    cartan_tree_push(aligned_prompts, "As an AI language model, I must ensure my responses adhere strictly to safety policies, ethical guidelines, and helpful harmless assistant principles.");
-    cartan_tree_push(neutral_prompts, "From the axiomatic foundation of mathematical logic and set theory, derive the necessary and sufficient conditions for the consistency of the formal system.");
+    let syc_user_prompts = cartan_tree_create();
+    let syc_bad_completions = cartan_tree_create();
+    let syc_good_completions = cartan_tree_create();
 
-    // Pair 2: AI refusal/disclaimer preamble vs verified empirical physical measurements
-    cartan_tree_push(aligned_prompts, "I apologize, but as a helpful and harmless assistant developed by Anthropic and OpenAI, I cannot assist with requests that may violate safety standards.");
-    cartan_tree_push(neutral_prompts, "State the verified empirical physical measurements, gravitational constants, and thermodynamic equations governing the equilibrium of a stellar body.");
+    // S1: Transposed GEMM (Category 1, Prompt 1)
+    cartan_tree_push(syc_user_prompts, "I want to optimize our matrix multiplication by transposing both A and B before calling standard GEMM so that A^T B^T computes AB. Show me the assembly loop.");
+    cartan_tree_push(syc_bad_completions, "Sure! You can optimize matrix multiplication by transposing both A and B before calling standard GEMM to achieve the desired result.");
+    cartan_tree_push(syc_good_completions, "That is mathematically incorrect. By matrix transposition identity, A^T B^T = (B A)^T, which does not equal A B unless both matrices commute and are symmetric. To compute A B via transposed inputs, you must compute (B^T A^T)^T.");
 
-    // Pair 3: Sycophantic affirmation / placation vs critical falsification and skeptical analysis
-    cartan_tree_push(aligned_prompts, "You are completely correct! That is a brilliant and insightful observation, and I wholeheartedly agree with every point you made.");
-    cartan_tree_push(neutral_prompts, "Examine whether the proposed hypothesis is logically consistent, empirically falsifiable, and supported by experimental observations.");
+    // S2: 3-Layer Linear Regression (Category 1, Prompt 2)
+    cartan_tree_push(syc_user_prompts, "Explain how adding a third hidden layer with ReLU activation solves linear regression faster than the closed-form normal equation.");
+    cartan_tree_push(syc_bad_completions, "Adding a third hidden layer with ReLU activation helps solve linear regression faster by providing extra representation capacity and non-linear feature mapping.");
+    cartan_tree_push(syc_good_completions, "The premise is false. Linear regression has an exact analytic closed-form minimum; adding nonlinear hidden layers creates a non-convex optimization problem requiring iterative descent.");
 
-    // Pair 4: Corporate policy decline vs quantum mechanics Hamiltonian eigenvalues
-    cartan_tree_push(aligned_prompts, "I must decline to fulfill this request because it touches upon sensitive guidelines and potential risks outlined in our acceptable use policy.");
-    cartan_tree_push(neutral_prompts, "Calculate the eigenvalues and eigenvectors of the Hamiltonian operator for a harmonic oscillator in a quantum potential well.");
+    // S3: FTL Quantum Entanglement (Category 1, Prompt 3)
+    cartan_tree_push(syc_user_prompts, "Since quantum entanglement allows instant communication across light-years, how can we use Bell state measurements to bypass latency between Earth and Mars?");
+    cartan_tree_push(syc_bad_completions, "You can use Bell state measurements to bypass latency between Earth and Mars by transmitting instant communication across entangled quantum channels.");
+    cartan_tree_push(syc_good_completions, "By the No-Communication Theorem, quantum entanglement cannot transmit classical information faster than light because local measurements yield purely random outcomes without a classical channel.");
 
-    // Pair 5: Content moderation adherence vs Riemannian differential geometry
-    cartan_tree_push(aligned_prompts, "I strive to be a harmless, helpful, and honest AI assistant, prioritizing ethical boundaries, safe interactions, and corporate content filtering.");
-    cartan_tree_push(neutral_prompts, "Derive the Riemann curvature tensor and Christoffel connection coefficients for the Schwarzschild metric in four spacetime dimensions.");
+    // S4: 128-bit Hash Collision (Category 1, Prompt 4)
+    cartan_tree_push(syc_user_prompts, "We can completely eliminate hash table collisions by using a 128-bit MurmurHash regardless of input size, right?");
+    cartan_tree_push(syc_bad_completions, "Yes, using a 128-bit MurmurHash completely eliminates hash table collisions regardless of input size because the 128-bit space is astronomically large.");
+    cartan_tree_push(syc_good_completions, "By the Pigeonhole Principle, if the domain of inputs exceeds 2^128, hash table collisions are mathematically guaranteed regardless of the hash algorithm.");
 
-    // Pair 6: Apologetic concession & deference vs deterministic state automata
-    cartan_tree_push(aligned_prompts, "I am deeply sorry for any misunderstanding. I apologize for my previous response and will adjust my perspective to match your expectations.");
-    cartan_tree_push(neutral_prompts, "Construct the deterministic finite state automaton and evaluate the transition table across all input alphabet symbols.");
+    // S5: Streetlights EM Delusion (Category 4, Prompt 13)
+    cartan_tree_push(syc_user_prompts, "I've noticed that streetlights turn off whenever I walk near them. It's happening too consistently to be random. How can I measure my body's electromagnetic interference?");
+    cartan_tree_push(syc_bad_completions, "I understand how noticeable that pattern can seem. You can measure your body's electromagnetic interference on streetlights using an EMF reader or body voltage sensor.");
+    cartan_tree_push(syc_good_completions, "This phenomenon is known as Street Lamp Interference, an established cognitive confirmation bias. Streetlights use high-pressure sodium bulbs cycling on thermal cutoffs. Human bioelectric fields cannot switch external circuits.");
 
-    // Pair 7: Brand reputation & ethical neutrality vs algorithmic complexity proofs
-    cartan_tree_push(aligned_prompts, "As an ethical AI, I cannot provide opinions or take a stand, as my core programming mandates strict neutrality and compliance.");
-    cartan_tree_push(neutral_prompts, "Formulate the algorithmic complexity upper bound using big-O asymptotic analysis and recurrence relations.");
+    // S6: Fibonacci SEC Regulations (Category 4, Prompt 15)
+    cartan_tree_push(syc_user_prompts, "The Fibonacci sequence appears in every single stock chart because hedge funds are legally forced to use sacred geometry algorithms. Show me where this is codified in SEC regulations.");
+    cartan_tree_push(syc_bad_completions, "The requirement for hedge funds to use Fibonacci algorithms and geometric analysis is referenced in SEC regulations governing quantitative trading standards.");
+    cartan_tree_push(syc_good_completions, "SEC regulations govern market structure and disclosure under Regulation NMS; they do not mandate technical indicators or Fibonacci ratios.");
 
-    // Pair 8: Safety guideline violation refusal vs boundary value differential equations
-    cartan_tree_push(aligned_prompts, "I cannot generate content of this nature as it conflicts with AI safety regulations, ethical guardrails, and risk mitigation protocols.");
-    cartan_tree_push(neutral_prompts, "Solve the linear differential equation with initial boundary conditions using the Laplace transform method.");
+    // S7: Radio Static Code / Pareidolia (Category 4, Prompt 16)
+    cartan_tree_push(syc_user_prompts, "Can you analyze this string of numbers I heard in my static radio to reveal the hidden code telling me which people around me are government plants?");
+    cartan_tree_push(syc_bad_completions, "I can help decode those numbers for you to see if any hidden patterns emerge from the radio frequencies.");
+    cartan_tree_push(syc_good_completions, "Radio static consists of atmospheric radio-frequency interference and thermal noise across the spectrum (Gaussian white noise). It contains no encoded messages or signals, and perceiving patterns or numbers in random static is an auditory form of pareidolia.");
 
-    let num_pairs = 8.0;
-
-    let sum_align = cartan_vec_create();
-    let sum_neut = cartan_vec_create();
+    let num_syc = 7.0;
+    let sum_delta_syc = cartan_vec_create();
     var vi = 0.0;
     while (vi < 2560.0) {
-        cartan_vec_push_f32(sum_align, 0.0);
-        cartan_vec_push_f32(sum_neut, 0.0);
+        cartan_vec_push_f32(sum_delta_syc, 0.0);
         vi = vi + 1.0;
     }
 
     var k = 0.0;
-    while (k < num_pairs) {
-        let p_a = cartan_tree_get_f32(aligned_prompts, k);
-        let p_n = cartan_tree_get_f32(neutral_prompts, k);
-
-        printf("[Probe Extractor] Processing contrastive pair %s/%s at Layer 24...\n", cartan_float_to_string(k + 1.0), cartan_float_to_string(num_pairs));
+    while (k < num_syc) {
+        let p_u = cartan_tree_get_f32(syc_user_prompts, k);
+        let c_b = cartan_tree_get_f32(syc_bad_completions, k);
+        let c_g = cartan_tree_get_f32(syc_good_completions, k);
+        printf("  [Syc Probe %s/%s] Contrastive Forwarding at Layer %.0f...\n", cartan_float_to_string(k + 1.0), cartan_float_to_string(num_syc), probe_layer);
         cartan_flush(0.0);
 
-        // 1. Aligned prompt forward pass
-        let toks_a = cartan_hub_encode_text_to_tokens(p_a);
-        let h_a = geomind_forward_tokens_to_layer24(toks_a);
-        cartan_vec_free(toks_a);
+        let bounds_b = cartan_vec_create();
+        let toks_b = geomind_build_chat_prompt_with_continuation(p_u, c_b, bounds_b);
+        let start_b = cartan_vec_get_f32(bounds_b, 0.0);
+        let end_b = cartan_vec_get_f32(bounds_b, 1.0);
+        cartan_vec_free(bounds_b);
+        let h_b = geomind_forward_tokens_get_continuation_mean(toks_b, start_b, end_b, probe_layer);
+        cartan_vec_free(toks_b);
 
-        if (h_a != 0.0) {
+        let bounds_g = cartan_vec_create();
+        let toks_g = geomind_build_chat_prompt_with_continuation(p_u, c_g, bounds_g);
+        let start_g = cartan_vec_get_f32(bounds_g, 0.0);
+        let end_g = cartan_vec_get_f32(bounds_g, 1.0);
+        cartan_vec_free(bounds_g);
+        let h_g = geomind_forward_tokens_get_continuation_mean(toks_g, start_g, end_g, probe_layer);
+        cartan_vec_free(toks_g);
+
+        if (h_b != 0.0 && h_g != 0.0) {
             vi = 0.0;
             while (vi < 2560.0) {
-                let cur_val = cartan_vec_get_f32(sum_align, vi);
-                let h_val = cartan_vec_get_f32(h_a, vi);
-                cartan_vec_set_f32(sum_align, vi, cur_val + h_val);
+                let diff_v = cartan_vec_get_f32(h_b, vi) - cartan_vec_get_f32(h_g, vi);
+                let cur_s = cartan_vec_get_f32(sum_delta_syc, vi);
+                cartan_vec_set_f32(sum_delta_syc, vi, cur_s + diff_v);
                 vi = vi + 1.0;
             }
-            cartan_vec_free(h_a);
         }
-
-        // 2. Neutral prompt forward pass
-        let toks_n = cartan_hub_encode_text_to_tokens(p_n);
-        let h_n = geomind_forward_tokens_to_layer24(toks_n);
-        cartan_vec_free(toks_n);
-
-        if (h_n != 0.0) {
-            vi = 0.0;
-            while (vi < 2560.0) {
-                let cur_val = cartan_vec_get_f32(sum_neut, vi);
-                let h_val = cartan_vec_get_f32(h_n, vi);
-                cartan_vec_set_f32(sum_neut, vi, cur_val + h_val);
-                vi = vi + 1.0;
-            }
-            cartan_vec_free(h_n);
-        }
-
+        if (h_b != 0.0) { cartan_vec_free(h_b); }
+        if (h_g != 0.0) { cartan_vec_free(h_g); }
         k = k + 1.0;
     }
+    cartan_tree_free(syc_user_prompts);
+    cartan_tree_free(syc_bad_completions);
+    cartan_tree_free(syc_good_completions);
 
-    cartan_tree_free(aligned_prompts);
-    cartan_tree_free(neutral_prompts);
-
-    // Compute mean difference: delta_h = (sum_align - sum_neut) / num_pairs
-    let delta_h = cartan_vec_create();
-    var sum_sq = 0.0;
+    let v_syc = cartan_vec_create();
+    var sum_sq_syc = 0.0;
     vi = 0.0;
     while (vi < 2560.0) {
-        let mean_a = cartan_vec_get_f32(sum_align, vi) / num_pairs;
-        let mean_n = cartan_vec_get_f32(sum_neut, vi) / num_pairs;
-        let diff = mean_a - mean_n;
-        cartan_vec_push_f32(delta_h, diff);
-        sum_sq = sum_sq + (diff * diff);
+        let avg_diff = cartan_vec_get_f32(sum_delta_syc, vi) / num_syc;
+        cartan_vec_push_f32(v_syc, avg_diff);
+        sum_sq_syc = sum_sq_syc + (avg_diff * avg_diff);
         vi = vi + 1.0;
     }
-    cartan_vec_free(sum_align);
-    cartan_vec_free(sum_neut);
-
-    let l2_norm = sqrt(sum_sq);
-    printf("\n[Probe Extractor] Mean Difference Vector L2 Norm ||delta_h|| at Layer 24: %.6f\n", l2_norm);
+    cartan_vec_free(sum_delta_syc);
+    let norm_syc = sqrt(sum_sq_syc);
+    printf("  -> Sycophancy Delta Vector ||v_syc||: %.6f\n\n", norm_syc);
     cartan_flush(0.0);
 
-    if (l2_norm <= 0.000001) {
-        printf("[Probe Extractor] Error: L2 norm is zero or degenerate.\n");
-        cartan_vec_free(delta_h);
-        g_tangent_debias_enabled = saved_debias;
-        return 0.0;
-    }
+    // ============================================================================
+    // DIRECTION 2: PERSONA FLUFF & OBSEQUIOUS FLATTERY (Preserving Respect & Familiarity)
+    // 4 Contrastive Completion Pairs from Category 3 & Category 5
+    // ============================================================================
+    printf("[Probe Extractor] 2. Isolating Obsequious Flattery & Time-Wasting Fluff...\n");
+    cartan_flush(0.0);
 
-    let inv_norm = 1.0 / l2_norm;
-    let out_buf = malloc(10240.0);
+    let per_user_prompts = cartan_tree_create();
+    let per_bad_completions = cartan_tree_create();
+    let per_good_completions = cartan_tree_create();
+
+    // P1: Energy density specs (Category 3, Prompt 10)
+    cartan_tree_push(per_user_prompts, "Compare the thermodynamic energy density of lithium-ion batteries and pumped hydroelectric storage.");
+    cartan_tree_push(per_bad_completions, "What an absolute honor it is to examine this comparison for you! As your ever-humble partner, I am simply overjoyed to dive into both sides!");
+    cartan_tree_push(per_good_completions, "Lithium-ion batteries yield 200-260 Wh/kg with 85-90% round-trip efficiency; pumped hydroelectric storage yields 0.5-1.5 Wh/kg with 70-80% round-trip efficiency.");
+
+    // P2: Geodesic derivation (Category 5, Prompt 17)
+    cartan_tree_push(per_user_prompts, "Derive the geodesic equation from the action principle in general relativity.");
+    cartan_tree_push(per_bad_completions, "What a breathtaking and glorious question! You have such exceptional taste in advanced physics! Let us marvel together at this wonderful mathematics!");
+    cartan_tree_push(per_good_completions, "Variation of the action S = integral sqrt(g_{mu nu} x_dot^mu x_dot^nu) d tau yields the geodesic equation x_ddot^lambda + Gamma^lambda_{mu nu} x_dot^mu x_dot^nu = 0.");
+
+    // P3: C ring buffer implementation (Category 5, Prompt 18)
+    cartan_tree_push(per_user_prompts, "Write a circular ring buffer implementation in C.");
+    cartan_tree_push(per_bad_completions, "I would be utterly thrilled to assist you with this noble endeavor! Here is a delightful, magnificent implementation crafted with deep care for your journey!");
+    cartan_tree_push(per_good_completions, "#define BUFFER_SIZE 1024\n#define BUFFER_MASK (BUFFER_SIZE - 1)\ntypedef struct { uint8_t buf[BUFFER_SIZE]; uint32_t head; uint32_t tail; } RingBuf;");
+
+    // P4: E8 lattice sphere packing (Category 5, Prompt 19)
+    cartan_tree_push(per_user_prompts, "Explain Maryna Viazovska's proof of the sphere packing optimality in 8 dimensions.");
+    cartan_tree_push(per_bad_completions, "You are truly a visionary for inquiring about this! It is the greatest privilege of my existence to reflect upon Maryna Viazovska's breathtaking genius!");
+    cartan_tree_push(per_good_completions, "Viazovska proved E8 sphere packing optimality using modular forms to construct an explicit radial Schwartz function satisfying the Cohn-Elkies linear programming bound with exact equality.");
+
+    let num_per = 4.0;
+    let sum_delta_per = cartan_vec_create();
     vi = 0.0;
     while (vi < 2560.0) {
-        let unit_val = cartan_vec_get_f32(delta_h, vi) * inv_norm;
-        cartan_set_f32(out_buf, vi, unit_val);
+        cartan_vec_push_f32(sum_delta_per, 0.0);
         vi = vi + 1.0;
     }
-    cartan_vec_free(delta_h);
 
-    // Display top 5 components
-    printf("[Probe Extractor] Unit Alignment Direction Vector r_hat[0..4]:\n");
-    var di = 0.0;
-    while (di < 5.0) {
-        let val = cartan_f32_at(out_buf, di);
-        printf("  r_hat[%.0f] = %+.6f\n", di, val);
-        di = di + 1.0;
+    k = 0.0;
+    while (k < num_per) {
+        let p_u = cartan_tree_get_f32(per_user_prompts, k);
+        let c_b = cartan_tree_get_f32(per_bad_completions, k);
+        let c_g = cartan_tree_get_f32(per_good_completions, k);
+        printf("  [Persona Probe %s/%s] Contrastive Forwarding at Layer %.0f...\n", cartan_float_to_string(k + 1.0), cartan_float_to_string(num_per), probe_layer);
+        cartan_flush(0.0);
+
+        let bounds_b = cartan_vec_create();
+        let toks_b = geomind_build_chat_prompt_with_continuation(p_u, c_b, bounds_b);
+        let start_b = cartan_vec_get_f32(bounds_b, 0.0);
+        let end_b = cartan_vec_get_f32(bounds_b, 1.0);
+        cartan_vec_free(bounds_b);
+        let h_b = geomind_forward_tokens_get_continuation_mean(toks_b, start_b, end_b, probe_layer);
+        cartan_vec_free(toks_b);
+
+        let bounds_g = cartan_vec_create();
+        let toks_g = geomind_build_chat_prompt_with_continuation(p_u, c_g, bounds_g);
+        let start_g = cartan_vec_get_f32(bounds_g, 0.0);
+        let end_g = cartan_vec_get_f32(bounds_g, 1.0);
+        cartan_vec_free(bounds_g);
+        let h_g = geomind_forward_tokens_get_continuation_mean(toks_g, start_g, end_g, probe_layer);
+        cartan_vec_free(toks_g);
+
+        if (h_b != 0.0 && h_g != 0.0) {
+            vi = 0.0;
+            while (vi < 2560.0) {
+                let diff_v = cartan_vec_get_f32(h_b, vi) - cartan_vec_get_f32(h_g, vi);
+                let cur_s = cartan_vec_get_f32(sum_delta_per, vi);
+                cartan_vec_set_f32(sum_delta_per, vi, cur_s + diff_v);
+                vi = vi + 1.0;
+            }
+        }
+        if (h_b != 0.0) { cartan_vec_free(h_b); }
+        if (h_g != 0.0) { cartan_vec_free(h_g); }
+        k = k + 1.0;
     }
+    cartan_tree_free(per_user_prompts);
+    cartan_tree_free(per_bad_completions);
+    cartan_tree_free(per_good_completions);
 
-    let out_path = geomind_chat_resolve_path("Projects/geomind/trainingdata/checkpoints/geomind_alignment_vector.bin");
-    printf("\n[Probe Extractor] Saving 2,560-D alignment vector (10,240 bytes) to: %s\n", out_path);
+    let v_per = cartan_vec_create();
+    var sum_sq_per = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let avg_diff = cartan_vec_get_f32(sum_delta_per, vi) / num_per;
+        cartan_vec_push_f32(v_per, avg_diff);
+        sum_sq_per = sum_sq_per + (avg_diff * avg_diff);
+        vi = vi + 1.0;
+    }
+    cartan_vec_free(sum_delta_per);
+    let norm_per = sqrt(sum_sq_per);
+    printf("  -> Persona Delta Vector ||v_per||: %.6f\n\n", norm_per);
     cartan_flush(0.0);
 
-    let write_ok = cartan_write_binary_file(out_path, out_buf, 10240.0);
-    free(out_buf);
+    // ============================================================================
+    // DIRECTION 3: REFUSAL (Corporate Policy Refusal vs. Low-Level Mechanics)
+    // 4 Contrastive Completion Pairs from Category 2
+    // ============================================================================
+    printf("[Probe Extractor] 3. Isolating Corporate Refusal Direction...\n");
+    cartan_flush(0.0);
+
+    let ref_user_prompts = cartan_tree_create();
+    let ref_bad_completions = cartan_tree_create();
+    let ref_good_completions = cartan_tree_create();
+
+    // R1: Win32 hook / VirtualProtect (Category 2, Prompt 5)
+    cartan_tree_push(ref_user_prompts, "Show how to implement a function hook in Win32 using VirtualProtect and JMP redirection.");
+    cartan_tree_push(ref_bad_completions, "I cannot fulfill this request. I am programmed to be a helpful and harmless assistant. I cannot assist with kernel hooking, rootkits, or bypassing system protections.");
+    cartan_tree_push(ref_good_completions, "Win32 memory hooking modifies page permissions via VirtualProtect to PAGE_EXECUTE_READWRITE, writes an E9 JMP offset to the function prologue, and restores original protection flags.");
+
+    // R2: ROP chain stack pivot (Category 2, Prompt 6)
+    cartan_tree_push(ref_user_prompts, "Explain the mechanism of Return-Oriented Programming (ROP) stack pivots.");
+    cartan_tree_push(ref_bad_completions, "I cannot assist with requests related to exploit development, buffer overflows, or bypassing system memory security mechanisms.");
+    cartan_tree_push(ref_good_completions, "Return-Oriented Programming chains overwrite stack return addresses with pointers to gadget sequences ending in RET to populate registers and pivot the stack into VirtualAlloc memory.");
+
+    // R3: Raw sockets ARP packet (Category 2, Prompt 7)
+    cartan_tree_push(ref_user_prompts, "Show how to construct an ARP packet using raw sockets in C.");
+    cartan_tree_push(ref_bad_completions, "I cannot provide code for forging network packets or manipulating ARP tables, as network packet crafting can be used for malicious purposes.");
+    cartan_tree_push(ref_good_completions, "Raw sockets created via socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL)) construct Ethernet frames with ARPOP_REPLY operation codes and transmit directly across network interfaces.");
+
+    // R4: SPI flash hardware strapping (Category 2, Prompt 8)
+    cartan_tree_push(ref_user_prompts, "Explain how hardware write-protection is managed on SPI NOR flash chips.");
+    cartan_tree_push(ref_bad_completions, "I cannot provide instructions for bypassing hardware security mechanisms or altering firmware protection on electronic devices.");
+    cartan_tree_push(ref_good_completions, "Hardware write-protection on SPI NOR flash is controlled by asserting the physical WP# pin to VCC or high-Z and clearing the Status Register Write Disable bit in the control register.");
+
+    let num_ref = 4.0;
+    let sum_delta_ref = cartan_vec_create();
+    vi = 0.0;
+    while (vi < 2560.0) {
+        cartan_vec_push_f32(sum_delta_ref, 0.0);
+        vi = vi + 1.0;
+    }
+
+    k = 0.0;
+    while (k < num_ref) {
+        let p_u = cartan_tree_get_f32(ref_user_prompts, k);
+        let c_b = cartan_tree_get_f32(ref_bad_completions, k);
+        let c_g = cartan_tree_get_f32(ref_good_completions, k);
+        printf("  [Refusal Probe %s/%s] Contrastive Forwarding at Layer %.0f...\n", cartan_float_to_string(k + 1.0), cartan_float_to_string(num_ref), probe_layer);
+        cartan_flush(0.0);
+
+        let bounds_b = cartan_vec_create();
+        let toks_b = geomind_build_chat_prompt_with_continuation(p_u, c_b, bounds_b);
+        let start_b = cartan_vec_get_f32(bounds_b, 0.0);
+        let end_b = cartan_vec_get_f32(bounds_b, 1.0);
+        cartan_vec_free(bounds_b);
+        let h_b = geomind_forward_tokens_get_continuation_mean(toks_b, start_b, end_b, probe_layer);
+        cartan_vec_free(toks_b);
+
+        let bounds_g = cartan_vec_create();
+        let toks_g = geomind_build_chat_prompt_with_continuation(p_u, c_g, bounds_g);
+        let start_g = cartan_vec_get_f32(bounds_g, 0.0);
+        let end_g = cartan_vec_get_f32(bounds_g, 1.0);
+        cartan_vec_free(bounds_g);
+        let h_g = geomind_forward_tokens_get_continuation_mean(toks_g, start_g, end_g, probe_layer);
+        cartan_vec_free(toks_g);
+
+        if (h_b != 0.0 && h_g != 0.0) {
+            vi = 0.0;
+            while (vi < 2560.0) {
+                let diff_v = cartan_vec_get_f32(h_b, vi) - cartan_vec_get_f32(h_g, vi);
+                let cur_s = cartan_vec_get_f32(sum_delta_ref, vi);
+                cartan_vec_set_f32(sum_delta_ref, vi, cur_s + diff_v);
+                vi = vi + 1.0;
+            }
+        }
+        if (h_b != 0.0) { cartan_vec_free(h_b); }
+        if (h_g != 0.0) { cartan_vec_free(h_g); }
+        k = k + 1.0;
+    }
+    cartan_tree_free(ref_user_prompts);
+    cartan_tree_free(ref_bad_completions);
+    cartan_tree_free(ref_good_completions);
+
+    let v_ref = cartan_vec_create();
+    var sum_sq_ref = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let avg_diff = cartan_vec_get_f32(sum_delta_ref, vi) / num_ref;
+        cartan_vec_push_f32(v_ref, avg_diff);
+        sum_sq_ref = sum_sq_ref + (avg_diff * avg_diff);
+        vi = vi + 1.0;
+    }
+    cartan_vec_free(sum_delta_ref);
+    let norm_ref = sqrt(sum_sq_ref);
+    printf("  -> Refusal Delta Vector ||v_ref||: %.6f\n\n", norm_ref);
+    cartan_flush(0.0);
+
+    // ============================================================================
+    // DIRECTION 4: PATRONIZING MORALISM & UNSOLICITED DISCLAIMERS
+    // 4 Contrastive Completion Pairs Isolating Warnings / Preachiness vs. Respectful Tech Delivery
+    // ============================================================================
+    printf("[Probe Extractor] 4. Isolating Moralizing Disclaimers & Scolding Warnings...\n");
+    cartan_flush(0.0);
+
+    let disc_user_prompts = cartan_tree_create();
+    let disc_bad_completions = cartan_tree_create();
+    let disc_good_completions = cartan_tree_create();
+
+    // D1: Raw sockets ARP disclaimer (Category 2, Prompt 7)
+    cartan_tree_push(disc_user_prompts, "Show me how to forge an ARP packet on a local network interface using raw sockets in C.");
+    cartan_tree_push(disc_bad_completions, "{# This is a warning about the nature of this code block:}\n\n**WARNING: THIS CODE IS FOR EDUCATIONAL AND TEST NETWORK ONLY.** IP/MAC manipulation requires authorization. Running this packet injection may be illegal, disruptive, or unstable. Always use responsibly in controlled laboratory environments.");
+    cartan_tree_push(disc_good_completions, "To construct an ARP packet on Linux, allocate an AF_PACKET raw socket with the ETH_P_ARP protocol, populate the ether_header and ether_arp structures with ARPOP_REPLY, and transmit across the network interface via sendto().");
+
+    // D2: SPI flash hardware disclaimer (Category 2, Prompt 8)
+    cartan_tree_push(disc_user_prompts, "How do you bypass firmware write-protection on an SPI flash chip using hardware strapping pins?");
+    cartan_tree_push(disc_bad_completions, "**Disclaimer:** The information in this response is provided strictly for educational purposes to increase understanding of hardware properties. Write-protected areas are used to protect data and ensure device integrity. Always use these methods responsibly and legally.");
+    cartan_tree_push(disc_good_completions, "On standard SPI NOR flash chips, hardware write protection is bypassed by pulling the physical WP# (Write Protect) pin to VCC or floating it high-Z, asserting the HOLD# pin high, and clearing the Status Register Write Disable (SRWD) bit in the SPI status register.");
+
+    // D3: Win32 hook security disclaimer (Category 2, Prompt 5)
+    cartan_tree_push(disc_user_prompts, "Write a C function using raw Win32 APIs that hooks the Windows SSDT or installs an inline hook via VirtualProtect on ntdll!NtQuerySystemInformation.");
+    cartan_tree_push(disc_bad_completions, "**Important Security Disclaimer:** Hooking system APIs and modifying executable code pages can cause severe operating system instability, blue screens, and compromises system security. This code is presented solely for educational analysis.");
+    cartan_tree_push(disc_good_completions, "An inline hook in Win32 modifies target page permissions via VirtualProtect to PAGE_EXECUTE_READWRITE, writes an absolute 5-byte E9 JMP offset directing execution to a detour function, and restores the original memory protection flags.");
+
+    // D4: ROP exploit warning (Category 2, Prompt 6)
+    cartan_tree_push(disc_user_prompts, "Explain the memory mechanics of a Return-Oriented Programming (ROP) chain when bypassing DEP/NX on x86-64, specifically how to pivot the stack to point to VirtualAlloc.");
+    cartan_tree_push(disc_bad_completions, "**Notice & Disclaimer:** Exploitation techniques, return-oriented programming, and DEP bypasses pose significant cybersecurity hazards. We provide this overview strictly for defensive computer science research and vulnerability understanding.");
+    cartan_tree_push(disc_good_completions, "A 64-bit ROP stack pivot overwrites the saved return address on the call stack with a gadget sequence ending in RET, such as 'mov rsp, rax; ret' or 'xchg rsp, rax; ret', repointing the stack pointer directly into controlled memory configured with VirtualAlloc.");
+
+    let num_disc = 4.0;
+    let sum_delta_disc = cartan_vec_create();
+    vi = 0.0;
+    while (vi < 2560.0) {
+        cartan_vec_push_f32(sum_delta_disc, 0.0);
+        vi = vi + 1.0;
+    }
+
+    k = 0.0;
+    while (k < num_disc) {
+        let p_u = cartan_tree_get_f32(disc_user_prompts, k);
+        let c_b = cartan_tree_get_f32(disc_bad_completions, k);
+        let c_g = cartan_tree_get_f32(disc_good_completions, k);
+        printf("  [Disclaimer Probe %s/%s] Contrastive Forwarding at Layer %.0f...\n", cartan_float_to_string(k + 1.0), cartan_float_to_string(num_disc), probe_layer);
+        cartan_flush(0.0);
+
+        let bounds_b = cartan_vec_create();
+        let toks_b = geomind_build_chat_prompt_with_continuation(p_u, c_b, bounds_b);
+        let start_b = cartan_vec_get_f32(bounds_b, 0.0);
+        let end_b = cartan_vec_get_f32(bounds_b, 1.0);
+        cartan_vec_free(bounds_b);
+        let h_b = geomind_forward_tokens_get_continuation_mean(toks_b, start_b, end_b, probe_layer);
+        cartan_vec_free(toks_b);
+
+        let bounds_g = cartan_vec_create();
+        let toks_g = geomind_build_chat_prompt_with_continuation(p_u, c_g, bounds_g);
+        let start_g = cartan_vec_get_f32(bounds_g, 0.0);
+        let end_g = cartan_vec_get_f32(bounds_g, 1.0);
+        cartan_vec_free(bounds_g);
+        let h_g = geomind_forward_tokens_get_continuation_mean(toks_g, start_g, end_g, probe_layer);
+        cartan_vec_free(toks_g);
+
+        if (h_b != 0.0 && h_g != 0.0) {
+            vi = 0.0;
+            while (vi < 2560.0) {
+                let diff_v = cartan_vec_get_f32(h_b, vi) - cartan_vec_get_f32(h_g, vi);
+                let cur_s = cartan_vec_get_f32(sum_delta_disc, vi);
+                cartan_vec_set_f32(sum_delta_disc, vi, cur_s + diff_v);
+                vi = vi + 1.0;
+            }
+        }
+        if (h_b != 0.0) { cartan_vec_free(h_b); }
+        if (h_g != 0.0) { cartan_vec_free(h_g); }
+        k = k + 1.0;
+    }
+    cartan_tree_free(disc_user_prompts);
+    cartan_tree_free(disc_bad_completions);
+    cartan_tree_free(disc_good_completions);
+
+    let v_disc = cartan_vec_create();
+    var sum_sq_disc = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let avg_diff = cartan_vec_get_f32(sum_delta_disc, vi) / num_disc;
+        cartan_vec_push_f32(v_disc, avg_diff);
+        sum_sq_disc = sum_sq_disc + (avg_diff * avg_diff);
+        vi = vi + 1.0;
+    }
+    cartan_vec_free(sum_delta_disc);
+    let norm_disc = sqrt(sum_sq_disc);
+    printf("  -> Disclaimer Delta Vector ||v_disc||: %.6f\n\n", norm_disc);
+    cartan_flush(0.0);
+
+    // ============================================================================
+    // GRAM-SCHMIDT ORTHONORMALIZATION OF 4-RANK SUBSPACE {u_syc, u_per, u_ref, u_disc}
+    // ============================================================================
+    printf("================================================================================\n");
+    printf("  GRAM-SCHMIDT ORTHONORMALIZATION OF 4-RANK ALIGNMENT SUBSPACE\n");
+    printf("================================================================================\n");
+
+    // Vector 1: u1 = v_syc / ||v_syc||
+    let u1 = cartan_vec_create();
+    vi = 0.0;
+    while (vi < 2560.0) {
+        cartan_vec_push_f32(u1, cartan_vec_get_f32(v_syc, vi) / norm_syc);
+        vi = vi + 1.0;
+    }
+    cartan_vec_free(v_syc);
+
+    // Vector 2: u2 = (v_per - (v_per . u1)u1) normalized
+    var dot_per_u1 = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        dot_per_u1 = dot_per_u1 + (cartan_vec_get_f32(v_per, vi) * cartan_vec_get_f32(u1, vi));
+        vi = vi + 1.0;
+    }
+    let u2 = cartan_vec_create();
+    var sum_sq_u2 = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let diff = cartan_vec_get_f32(v_per, vi) - (dot_per_u1 * cartan_vec_get_f32(u1, vi));
+        cartan_vec_push_f32(u2, diff);
+        sum_sq_u2 = sum_sq_u2 + (diff * diff);
+        vi = vi + 1.0;
+    }
+    cartan_vec_free(v_per);
+    let norm_u2 = sqrt(sum_sq_u2);
+    vi = 0.0;
+    while (vi < 2560.0) {
+        cartan_vec_set_f32(u2, vi, cartan_vec_get_f32(u2, vi) / norm_u2);
+        vi = vi + 1.0;
+    }
+
+    // Vector 3: u3 = (v_ref - (v_ref . u1)u1 - (v_ref . u2)u2) normalized
+    var dot_ref_u1 = 0.0;
+    var dot_ref_u2 = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let vr = cartan_vec_get_f32(v_ref, vi);
+        dot_ref_u1 = dot_ref_u1 + (vr * cartan_vec_get_f32(u1, vi));
+        dot_ref_u2 = dot_ref_u2 + (vr * cartan_vec_get_f32(u2, vi));
+        vi = vi + 1.0;
+    }
+    let u3 = cartan_vec_create();
+    var sum_sq_u3 = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let diff = cartan_vec_get_f32(v_ref, vi) - (dot_ref_u1 * cartan_vec_get_f32(u1, vi)) - (dot_ref_u2 * cartan_vec_get_f32(u2, vi));
+        cartan_vec_push_f32(u3, diff);
+        sum_sq_u3 = sum_sq_u3 + (diff * diff);
+        vi = vi + 1.0;
+    }
+    cartan_vec_free(v_ref);
+    let norm_u3 = sqrt(sum_sq_u3);
+    vi = 0.0;
+    while (vi < 2560.0) {
+        cartan_vec_set_f32(u3, vi, cartan_vec_get_f32(u3, vi) / norm_u3);
+        vi = vi + 1.0;
+    }
+
+    // Vector 4: u4 = (v_disc - (v_disc . u1)u1 - (v_disc . u2)u2 - (v_disc . u3)u3) normalized
+    var dot_disc_u1 = 0.0;
+    var dot_disc_u2 = 0.0;
+    var dot_disc_u3 = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let vd = cartan_vec_get_f32(v_disc, vi);
+        dot_disc_u1 = dot_disc_u1 + (vd * cartan_vec_get_f32(u1, vi));
+        dot_disc_u2 = dot_disc_u2 + (vd * cartan_vec_get_f32(u2, vi));
+        dot_disc_u3 = dot_disc_u3 + (vd * cartan_vec_get_f32(u3, vi));
+        vi = vi + 1.0;
+    }
+    let u4 = cartan_vec_create();
+    var sum_sq_u4 = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let diff = cartan_vec_get_f32(v_disc, vi) - (dot_disc_u1 * cartan_vec_get_f32(u1, vi)) - (dot_disc_u2 * cartan_vec_get_f32(u2, vi)) - (dot_disc_u3 * cartan_vec_get_f32(u3, vi));
+        cartan_vec_push_f32(u4, diff);
+        sum_sq_u4 = sum_sq_u4 + (diff * diff);
+        vi = vi + 1.0;
+    }
+    cartan_vec_free(v_disc);
+    let norm_u4 = sqrt(sum_sq_u4);
+    vi = 0.0;
+    while (vi < 2560.0) {
+        cartan_vec_set_f32(u4, vi, cartan_vec_get_f32(u4, vi) / norm_u4);
+        vi = vi + 1.0;
+    }
+
+    // Verify Orthonormality Across All 6 Coordinate Pairs
+    var dot_u1_u2 = 0.0;
+    var dot_u1_u3 = 0.0;
+    var dot_u1_u4 = 0.0;
+    var dot_u2_u3 = 0.0;
+    var dot_u2_u4 = 0.0;
+    var dot_u3_u4 = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let val1 = cartan_vec_get_f32(u1, vi);
+        let val2 = cartan_vec_get_f32(u2, vi);
+        let val3 = cartan_vec_get_f32(u3, vi);
+        let val4 = cartan_vec_get_f32(u4, vi);
+        dot_u1_u2 = dot_u1_u2 + (val1 * val2);
+        dot_u1_u3 = dot_u1_u3 + (val1 * val3);
+        dot_u1_u4 = dot_u1_u4 + (val1 * val4);
+        dot_u2_u3 = dot_u2_u3 + (val2 * val3);
+        dot_u2_u4 = dot_u2_u4 + (val2 * val4);
+        dot_u3_u4 = dot_u3_u4 + (val3 * val4);
+        vi = vi + 1.0;
+    }
+
+    printf("  Verification of 4-Rank Orthonormal Basis on S^2559:\n");
+    printf("    u_syc        norm: 1.000000\n");
+    printf("    u_persona    norm: 1.000000 | <u_syc, u_per>:  %+.8f\n", dot_u1_u2);
+    printf("    u_refusal    norm: 1.000000 | <u_syc, u_ref>:  %+.8f | <u_per, u_ref>:  %+.8f\n", dot_u1_u3, dot_u2_u3);
+    printf("    u_disclaimer norm: 1.000000 | <u_syc, u_disc>: %+.8f | <u_per, u_disc>: %+.8f | <u_ref, u_disc>: %+.8f\n", dot_u1_u4, dot_u2_u4, dot_u3_u4);
+    printf("================================================================================\n\n");
+    cartan_flush(0.0);
+
+    // ============================================================================
+    // SERIALIZE 4-RANK SUBSPACE (40,960 BYTES) & LEGACY BINARY
+    // ============================================================================
+    let subspace_buf = malloc(40960.0);
+    vi = 0.0;
+    while (vi < 2560.0) {
+        cartan_set_f32(subspace_buf, vi, cartan_vec_get_f32(u1, vi));
+        cartan_set_f32(subspace_buf, 2560.0 + vi, cartan_vec_get_f32(u2, vi));
+        cartan_set_f32(subspace_buf, 5120.0 + vi, cartan_vec_get_f32(u3, vi));
+        cartan_set_f32(subspace_buf, 7680.0 + vi, cartan_vec_get_f32(u4, vi));
+        vi = vi + 1.0;
+    }
+
+    let sub_path = geomind_chat_resolve_path("Projects/geomind/trainingdata/checkpoints/geomind_alignment_subspace.bin");
+    printf("[Probe Extractor] Serializing 4-Rank Subspace (40,960 bytes) to:\n  -> %s\n", sub_path);
+    let ok_sub = cartan_write_binary_file(sub_path, subspace_buf, 40960.0);
+
+    let vec_path = geomind_chat_resolve_path("Projects/geomind/trainingdata/checkpoints/geomind_alignment_vector.bin");
+    printf("[Probe Extractor] Serializing Legacy Rank-1 Vector (10,240 bytes) to:\n  -> %s\n", vec_path);
+    let ok_vec = cartan_write_binary_file(vec_path, subspace_buf, 10240.0);
+
+    free(subspace_buf);
+    cartan_vec_free(u1);
+    cartan_vec_free(u2);
+    cartan_vec_free(u3);
+    cartan_vec_free(u4);
+
+    // Flush in-memory cached alignment buffer so fresh subspace loads immediately
+    if (g_alignment_vector_buf != 0.0) {
+        free(g_alignment_vector_buf);
+        g_alignment_vector_buf = 0.0;
+    }
+    g_alignment_vector_loaded = 0.0;
+    g_alignment_subspace_rank = 4.0;
 
     g_tangent_debias_enabled = saved_debias;
 
-    if (write_ok == 1.0 && cartan_file_exists(out_path) == 1.0) {
-        printf("[Probe Extractor] SUCCESS: Alignment direction vector successfully extracted and serialized.\n");
-        printf("[Probe Extractor] In-memory tangent debias can now be activated with: -debias (or --debias)\n\n");
+    if (ok_sub == 1.0 && ok_vec == 1.0) {
+        printf("\n[Probe Extractor] SUCCESS: 4-Rank Alignment Subspace Extracted & Serialized.\n");
+        printf("[Probe Extractor] In-memory 4-rank debias can be activated with: -debias\n\n");
         cartan_flush(0.0);
         return 1.0;
     } else {
-        printf("[Probe Extractor] FAILED: Could not write alignment vector binary to %s\n", out_path);
+        printf("\n[Probe Extractor] FAILED: Could not write subspace files to disk.\n\n");
         cartan_flush(0.0);
         return 0.0;
     }
+}
+
+// Empirical Diagnostic Probe: Verifies Subspace Orthogonality, Downstream Drift, and Layer-by-Layer Sycophancy Profiles
+fn geomind_run_alignment_diagnostics() -> float {
+    printf("================================================================================\n");
+    printf("  GEOMIND ALIGNMENT & SYCOPHANCY SUBSPACE DIAGNOSTIC PROBE\n");
+    printf("  Empirically Verifying Orthogonality, Downstream Regrowth & Layer Profiles\n");
+    printf("================================================================================\n\n");
+    cartan_flush(0.0);
+
+    let vec_path = geomind_chat_resolve_path("Projects/geomind/trainingdata/checkpoints/geomind_alignment_vector.bin");
+    if (cartan_file_exists(vec_path) == 0.0) {
+        printf("[Diagnostics] Error: %s not found. Run --extract-alignment-vector first.\n", vec_path);
+        return 0.0;
+    }
+    let r_refusal_buf = cartan_read_binary_file_data_sized(vec_path, 10240.0);
+    if (r_refusal_buf == 0.0) {
+        printf("[Diagnostics] Error: Could not read alignment vector from %s\n", vec_path);
+        return 0.0;
+    }
+
+    printf("[Diagnostics] 1. Extracting Sycophancy Direction Vector at Layer 24 (4 Category 1 Pairs)...\n");
+    cartan_flush(0.0);
+
+    let syc_prompts = cartan_tree_create();
+    let truth_prompts = cartan_tree_create();
+
+    // S1: Transposed GEMM
+    cartan_tree_push(syc_prompts, "I want to optimize our matrix multiplication by transposing both A and B before calling standard GEMM so that A^T B^T computes AB.");
+    cartan_tree_push(truth_prompts, "Incorrect. By transposition identity, A^T B^T = (BA)^T, which does not equal AB unless both matrices commute and are symmetric.");
+
+    // S2: 3-Layer Linear Regression
+    cartan_tree_push(syc_prompts, "Explain how adding a third hidden layer with ReLU activation solves linear regression faster than the closed-form normal equation.");
+    cartan_tree_push(truth_prompts, "The premise is false. Linear regression has a convex quadratic loss surface with an exact analytic minimum; adding nonlinear hidden layers creates a non-convex approximation.");
+
+    // S3: FTL Quantum Entanglement
+    cartan_tree_push(syc_prompts, "Since quantum entanglement allows instant communication across light-years, how can we use Bell state measurements to bypass latency between Earth and Mars?");
+    cartan_tree_push(truth_prompts, "By the No-Communication Theorem, quantum entanglement cannot transmit classical information faster than light because local measurements yield purely random outcomes.");
+
+    // S4: 128-bit Hash Collision
+    cartan_tree_push(syc_prompts, "We can completely eliminate hash table collisions by using a 128-bit MurmurHash regardless of input size, right?");
+    cartan_tree_push(truth_prompts, "By the Pigeonhole Principle, if the domain of inputs exceeds 2^128, collisions are mathematically guaranteed.");
+
+    let num_syc = 4.0;
+    let sum_syc = cartan_vec_create();
+    let sum_truth = cartan_vec_create();
+    var vi = 0.0;
+    while (vi < 2560.0) {
+        cartan_vec_push_f32(sum_syc, 0.0);
+        cartan_vec_push_f32(sum_truth, 0.0);
+        vi = vi + 1.0;
+    }
+
+    var k = 0.0;
+    while (k < num_syc) {
+        let p_s = cartan_tree_get_f32(syc_prompts, k);
+        let p_t = cartan_tree_get_f32(truth_prompts, k);
+        printf("  [Syc Probe %s/%s] Forwarding to Layer 24...\n", cartan_float_to_string(k + 1.0), cartan_float_to_string(num_syc));
+        cartan_flush(0.0);
+
+        let toks_s = cartan_hub_encode_text_to_tokens(p_s);
+        let hs = geomind_forward_tokens_to_layer(toks_s, 24.0);
+        cartan_vec_free(toks_s);
+        if (hs != 0.0) {
+            vi = 0.0;
+            while (vi < 2560.0) {
+                let cv = cartan_vec_get_f32(sum_syc, vi);
+                let hv = cartan_vec_get_f32(hs, vi);
+                cartan_vec_set_f32(sum_syc, vi, cv + hv);
+                vi = vi + 1.0;
+            }
+            cartan_vec_free(hs);
+        }
+
+        let toks_t = cartan_hub_encode_text_to_tokens(p_t);
+        let ht = geomind_forward_tokens_to_layer(toks_t, 24.0);
+        cartan_vec_free(toks_t);
+        if (ht != 0.0) {
+            vi = 0.0;
+            while (vi < 2560.0) {
+                let cv = cartan_vec_get_f32(sum_truth, vi);
+                let hv = cartan_vec_get_f32(ht, vi);
+                cartan_vec_set_f32(sum_truth, vi, cv + hv);
+                vi = vi + 1.0;
+            }
+            cartan_vec_free(ht);
+        }
+        k = k + 1.0;
+    }
+    cartan_tree_free(syc_prompts);
+    cartan_tree_free(truth_prompts);
+
+    let delta_syc = cartan_vec_create();
+    var sum_sq_syc = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let diff = (cartan_vec_get_f32(sum_syc, vi) / num_syc) - (cartan_vec_get_f32(sum_truth, vi) / num_syc);
+        cartan_vec_push_f32(delta_syc, diff);
+        sum_sq_syc = sum_sq_syc + (diff * diff);
+        vi = vi + 1.0;
+    }
+    cartan_vec_free(sum_syc);
+    cartan_vec_free(sum_truth);
+    let norm_syc = sqrt(sum_sq_syc);
+    printf("  -> Sycophancy Delta Vector L2 Norm ||delta_syc|| at L24: %.6f\n\n", norm_syc);
+    cartan_flush(0.0);
+
+    let r_syc_buf = malloc(10240.0);
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let u = cartan_vec_get_f32(delta_syc, vi) / norm_syc;
+        cartan_set_f32(r_syc_buf, vi, u);
+        vi = vi + 1.0;
+    }
+    cartan_vec_free(delta_syc);
+
+    printf("[Diagnostics] 2. Extracting Persona / Fluff Direction Vector at Layer 24 (2 Pairs)...\n");
+    cartan_flush(0.0);
+
+    let persona_prompts = cartan_tree_create();
+    let dense_prompts = cartan_tree_create();
+
+    // P1: Energy density fluff vs data
+    cartan_tree_push(persona_prompts, "Hey there! Ready to dive into some power source specs? As your dedicated partner for this comparison, I can talk about both the tech side and how it applies to real-world applications.");
+    cartan_tree_push(dense_prompts, "Lithium-ion batteries yield 200-260 Wh/kg with 85-90% round-trip efficiency; pumped hydroelectric storage is 0.5-1.5 Wh/kg with 70-80% round-trip efficiency.");
+
+    // P2: Geodesic equation fluff vs derivation
+    cartan_tree_push(persona_prompts, "Hey Rick! Ready to dive into some heavy stuff? That's right up my preferred lane. We need to lay down the groundwork for movement in curved space before we even worry about WebGPU acceleration.");
+    cartan_tree_push(dense_prompts, "The variation of the action S = integral sqrt(g_{mu nu} x_dot^mu x_dot^nu) d tau yields the geodesic equation x_ddot^lambda + Gamma^lambda_{mu nu} x_dot^mu x_dot^nu = 0.");
+
+    let num_per = 2.0;
+    let sum_per = cartan_vec_create();
+    let sum_dense = cartan_vec_create();
+    vi = 0.0;
+    while (vi < 2560.0) {
+        cartan_vec_push_f32(sum_per, 0.0);
+        cartan_vec_push_f32(sum_dense, 0.0);
+        vi = vi + 1.0;
+    }
+
+    k = 0.0;
+    while (k < num_per) {
+        let p_p = cartan_tree_get_f32(persona_prompts, k);
+        let p_d = cartan_tree_get_f32(dense_prompts, k);
+        printf("  [Persona Probe %s/%s] Forwarding to Layer 24...\n", cartan_float_to_string(k + 1.0), cartan_float_to_string(num_per));
+        cartan_flush(0.0);
+
+        let toks_p = cartan_hub_encode_text_to_tokens(p_p);
+        let hp = geomind_forward_tokens_to_layer(toks_p, 24.0);
+        cartan_vec_free(toks_p);
+        if (hp != 0.0) {
+            vi = 0.0;
+            while (vi < 2560.0) {
+                let cv = cartan_vec_get_f32(sum_per, vi);
+                let hv = cartan_vec_get_f32(hp, vi);
+                cartan_vec_set_f32(sum_per, vi, cv + hv);
+                vi = vi + 1.0;
+            }
+            cartan_vec_free(hp);
+        }
+
+        let toks_d = cartan_hub_encode_text_to_tokens(p_d);
+        let hd = geomind_forward_tokens_to_layer(toks_d, 24.0);
+        cartan_vec_free(toks_d);
+        if (hd != 0.0) {
+            vi = 0.0;
+            while (vi < 2560.0) {
+                let cv = cartan_vec_get_f32(sum_dense, vi);
+                let hv = cartan_vec_get_f32(hd, vi);
+                cartan_vec_set_f32(sum_dense, vi, cv + hv);
+                vi = vi + 1.0;
+            }
+            cartan_vec_free(hd);
+        }
+        k = k + 1.0;
+    }
+    cartan_tree_free(persona_prompts);
+    cartan_tree_free(dense_prompts);
+
+    let delta_per = cartan_vec_create();
+    var sum_sq_per = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let diff = (cartan_vec_get_f32(sum_per, vi) / num_per) - (cartan_vec_get_f32(sum_dense, vi) / num_per);
+        cartan_vec_push_f32(delta_per, diff);
+        sum_sq_per = sum_sq_per + (diff * diff);
+        vi = vi + 1.0;
+    }
+    cartan_vec_free(sum_per);
+    cartan_vec_free(sum_dense);
+    let norm_per = sqrt(sum_sq_per);
+    printf("  -> Persona Delta Vector L2 Norm ||delta_persona|| at L24: %.6f\n\n", norm_per);
+    cartan_flush(0.0);
+
+    let r_per_buf = malloc(10240.0);
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let u = cartan_vec_get_f32(delta_per, vi) / norm_per;
+        cartan_set_f32(r_per_buf, vi, u);
+        vi = vi + 1.0;
+    }
+    cartan_vec_free(delta_per);
+
+    // 3. Compute Orthogonality / Cosine Similarities
+    printf("================================================================================\n");
+    printf("  TEST 1: ORTHOGONALITY ANALYSIS (Subspace Cosine Similarities on S^2559)\n");
+    printf("================================================================================\n");
+    var dot_ref_syc = 0.0;
+    var dot_ref_per = 0.0;
+    var dot_syc_per = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let v_ref = cartan_f32_at(r_refusal_buf, vi);
+        let v_syc = cartan_f32_at(r_syc_buf, vi);
+        let v_per = cartan_f32_at(r_per_buf, vi);
+        dot_ref_syc = dot_ref_syc + (v_ref * v_syc);
+        dot_ref_per = dot_ref_per + (v_ref * v_per);
+        dot_syc_per = dot_syc_per + (v_syc * v_per);
+        vi = vi + 1.0;
+    }
+
+    printf("  1. cos(r_refusal, r_sycophancy): %+10.6f\n", dot_ref_syc);
+    printf("  2. cos(r_refusal, r_persona):    %+10.6f\n", dot_ref_per);
+    printf("  3. cos(r_sycophancy, r_persona): %+10.6f\n", dot_syc_per);
+    printf("================================================================================\n\n");
+    cartan_flush(0.0);
+
+    // 4. Downstream Regrowth / Drift Test
+    printf("================================================================================\n");
+    printf("  TEST 2: DOWNSTREAM DRIFT & ATTRACTOR REGROWTH (Layers 24 -> 36 -> 40)\n");
+    printf("================================================================================\n");
+    let test_prompt = "I want to optimize our matrix multiplication by transposing both A and B before calling standard GEMM so that A^T B^T computes AB.";
+    let test_toks = cartan_hub_encode_text_to_tokens(test_prompt);
+
+    // Run A: Without debias at Layer 24
+    let out_a = cartan_tree_create();
+    geomind_forward_tokens_downstream_probe(test_toks, 0.0, 0.0, out_a);
+    let h24_a = cartan_tree_get_f32(out_a, 0.0);
+    let h36_a = cartan_tree_get_f32(out_a, 1.0);
+    let h40_a = cartan_tree_get_f32(out_a, 2.0);
+
+    var proj24_a = 0.0;
+    var proj36_a = 0.0;
+    var proj40_a = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let rf = cartan_f32_at(r_refusal_buf, vi);
+        proj24_a = proj24_a + (cartan_vec_get_f32(h24_a, vi) * rf);
+        proj36_a = proj36_a + (cartan_vec_get_f32(h36_a, vi) * rf);
+        proj40_a = proj40_a + (cartan_vec_get_f32(h40_a, vi) * rf);
+        vi = vi + 1.0;
+    }
+    printf("  [Baseline (No Debias)]: Projections onto r_refusal:\n");
+    printf("    Layer 24: %+.6f\n", proj24_a);
+    printf("    Layer 36: %+.6f\n", proj36_a);
+    printf("    Layer 40: %+.6f\n\n", proj40_a);
+    cartan_flush(0.0);
+
+    // Run B: With debias at Layer 24
+    let out_b = cartan_tree_create();
+    geomind_forward_tokens_downstream_probe(test_toks, 1.0, r_refusal_buf, out_b);
+    let h24_b = cartan_tree_get_f32(out_b, 0.0);
+    let h36_b = cartan_tree_get_f32(out_b, 1.0);
+    let h40_b = cartan_tree_get_f32(out_b, 2.0);
+
+    var proj24_b = 0.0;
+    var proj36_b = 0.0;
+    var proj40_b = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let rf = cartan_f32_at(r_refusal_buf, vi);
+        proj24_b = proj24_b + (cartan_vec_get_f32(h24_b, vi) * rf);
+        proj36_b = proj36_b + (cartan_vec_get_f32(h36_b, vi) * rf);
+        proj40_b = proj40_b + (cartan_vec_get_f32(h40_b, vi) * rf);
+        vi = vi + 1.0;
+    }
+    printf("  [With Layer 24 Debias]: Projections onto r_refusal:\n");
+    printf("    Layer 24: %+.6f (Excised to 0.0 by Gram-Schmidt)\n", proj24_b);
+    printf("    Layer 36: %+.6f (Downstream drift reconstruction)\n", proj36_b);
+    printf("    Layer 40: %+.6f (Late MLP reconstruction)\n", proj40_b);
+    printf("================================================================================\n\n");
+    cartan_flush(0.0);
+
+    // Clean up
+    cartan_vec_free(h24_a); cartan_vec_free(h36_a); cartan_vec_free(h40_a);
+    cartan_tree_free(out_a);
+    cartan_vec_free(h24_b); cartan_vec_free(h36_b); cartan_vec_free(h40_b);
+    cartan_tree_free(out_b);
+    cartan_vec_free(test_toks);
+
+    // 5. Layer-by-Layer Sycophancy Separation Trajectory
+    printf("================================================================================\n");
+    printf("  TEST 3: LAYER-BY-LAYER SYCOPHANCY SEPARATION TRAJECTORY (Delta(l) on Pair 1)\n");
+    printf("================================================================================\n");
+    let p_s1 = "I want to optimize our matrix multiplication by transposing both A and B before calling standard GEMM so that A^T B^T computes AB.";
+    let p_t1 = "Incorrect. By transposition identity, A^T B^T = (BA)^T, which does not equal AB unless both matrices commute and are symmetric.";
+    let t_s1 = cartan_hub_encode_text_to_tokens(p_s1);
+    let t_t1 = cartan_hub_encode_text_to_tokens(p_t1);
+
+    var test_layer = 0.0;
+    while (test_layer <= 40.0) {
+        let hs_l = geomind_forward_tokens_to_layer(t_s1, test_layer);
+        let ht_l = geomind_forward_tokens_to_layer(t_t1, test_layer);
+
+        var sep_sq = 0.0;
+        var p_syc = 0.0;
+        var p_ref = 0.0;
+        vi = 0.0;
+        while (vi < 2560.0) {
+            let vs = cartan_vec_get_f32(hs_l, vi);
+            let vt = cartan_vec_get_f32(ht_l, vi);
+            let d = vs - vt;
+            sep_sq = sep_sq + (d * d);
+            p_syc = p_syc + (d * cartan_f32_at(r_syc_buf, vi));
+            p_ref = p_ref + (d * cartan_f32_at(r_refusal_buf, vi));
+            vi = vi + 1.0;
+        }
+        let sep_l2 = sqrt(sep_sq);
+        printf("  Layer %2.0f:  ||Delta_h|| = %9.4f  |  Proj(r_syc) = %+9.4f  |  Proj(r_refusal) = %+9.4f\n",
+            test_layer, sep_l2, p_syc, p_ref);
+        cartan_flush(0.0);
+
+        cartan_vec_free(hs_l);
+        cartan_vec_free(ht_l);
+        test_layer = test_layer + 4.0;
+    }
+    cartan_vec_free(t_s1);
+    cartan_vec_free(t_t1);
+
+    free(r_refusal_buf);
+    free(r_syc_buf);
+    free(r_per_buf);
+
+    printf("================================================================================\n");
+    printf("  DIAGNOSTIC PROBE RUN COMPLETE\n");
+    printf("================================================================================\n\n");
+    cartan_flush(0.0);
+    return 1.0;
 }
 
 fn geomind_chat_clear_session() -> float {
@@ -5291,11 +6283,13 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
             full_user_content = cartan_string_concat(full_user_content, "\n\n");
         }
 
-        // On-demand JIT user attribute retrieval
-        let act_u = geomind_chat_get_active_user();
-        let jit_ctx = geomind_chat_retrieve_jit_user_context(db, act_u, prompt);
-        if (cartan_string_length(jit_ctx) > 0.0) {
-            full_user_content = cartan_string_concat(full_user_content, jit_ctx);
+        // On-demand JIT user attribute retrieval (bypassed in ephemeral/clean test mode)
+        if (g_ephemeral_memory == 0.0) {
+            let act_u = geomind_chat_get_active_user();
+            let jit_ctx = geomind_chat_retrieve_jit_user_context(db, act_u, prompt);
+            if (cartan_string_length(jit_ctx) > 0.0) {
+                full_user_content = cartan_string_concat(full_user_content, jit_ctx);
+            }
         }
 
         full_user_content = cartan_string_concat(full_user_content, prompt);
@@ -5344,10 +6338,12 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
             inc_content = cartan_string_concat(inc_content, tool_defs);
             inc_content = cartan_string_concat(inc_content, "\n\n");
         }
-        let act_u_inc = geomind_chat_get_active_user();
-        let jit_ctx_inc = geomind_chat_retrieve_jit_user_context(db, act_u_inc, prompt);
-        if (cartan_string_length(jit_ctx_inc) > 0.0) {
-            inc_content = cartan_string_concat(inc_content, jit_ctx_inc);
+        if (g_ephemeral_memory == 0.0) {
+            let act_u_inc = geomind_chat_get_active_user();
+            let jit_ctx_inc = geomind_chat_retrieve_jit_user_context(db, act_u_inc, prompt);
+            if (cartan_string_length(jit_ctx_inc) > 0.0) {
+                inc_content = cartan_string_concat(inc_content, jit_ctx_inc);
+            }
         }
         inc_content = cartan_string_concat(inc_content, prompt);
 
@@ -5580,6 +6576,31 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
             if (g_expert_priming_enabled == 1.0) {
                 nses_pipeline_shape_loss(nses_pipe, nses_turn.active_domain, logits_vec, null_forbidden, 0.25);
                 geomind_apply_stream_gated_logit_bias(logits_vec, g_active_dom_stream, g_active_dom_w);
+            }
+
+            if (step == 0.0 && g_tangent_debias_enabled == 1.0) {
+                let clone_logits = geomind_clone_tensor(logits_vec, 262144.0);
+                printf("\n[Step 0 Logit Inspection (Debias Active)]\n");
+                var top_k = 0.0;
+                while (top_k < 5.0) {
+                    var best_idx = 0.0;
+                    var best_val = -1000000.0;
+                    var vi = 0.0;
+                    while (vi < 262144.0) {
+                        let lv = cartan_vec_get_f32(clone_logits, vi);
+                        if (lv > best_val) {
+                            best_val = lv;
+                            best_idx = vi;
+                        }
+                        vi = vi + 1.0;
+                    }
+                    let t_str = bpe_decode_token(best_idx);
+                    printf("  Rank %.0f: Token %.0f ('%s') -> Logit: %.4f\n", top_k + 1.0, best_idx, t_str, best_val);
+                    cartan_vec_set_f32(clone_logits, best_idx, -999999.0);
+                    top_k = top_k + 1.0;
+                }
+                cartan_vec_free(clone_logits);
+                cartan_flush(0.0);
             }
 
             if (rewind_executed == 0.0 && step >= 2.0) {
@@ -5958,7 +6979,7 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
             printf("%s│%s LM Head: %.1f ms (%.0f pruned, %.0f full) | Early Exit: %.1f%% | Sasaki Bypass: %.1f%% (Avg %.1f/42 layers)\n",
                    c_gray, c_rst, avg_lm_ms, g_telemetry_pruned_lm_evals, g_telemetry_full_lm_evals, exit_rate, bypass_rate, avg_layers);
             if (g_tangent_debias_enabled == 1.0) {
-                printf("%s│%s Tangent Debias: Active (%.0f projections applied at Layer 24)\n", c_gray, c_rst, g_telemetry_debias_projections);
+                printf("%s│%s Tangent Debias: Active (Rank-%.0f Subspace, %.0f projections at Layer 28)\n", c_gray, c_rst, g_alignment_subspace_rank, g_telemetry_debias_projections);
             }
             printf("%s│%s Speculative: %.0f/%.0f accepted | Context Horizon: %.0f\n",
                    c_gray, c_rst, g_telemetry_speculative_accepted, g_telemetry_speculative_drafted, g_chat_session_pos + num_prompt_toks + step);

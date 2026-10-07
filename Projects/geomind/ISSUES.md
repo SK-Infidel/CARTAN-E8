@@ -3872,3 +3872,22 @@ Core CARTAN programming language, compiler, runtime, and general-purpose standar
   1. Documented complete empirical generation matrix across refusal, sycophancy, and theoretical regimes.
   2. Verified that Layer 24 tangent debiasing cleanly neutralizes corporate refusal attractors without representation collapse.
   3. Outlined follow-up tuning: refining cognitive preamble to remove `"enthusiastic"` in favor of rigorous first-principles intellectual honesty, and evaluating contrastive logit suppression for roleplay asterisks.
+
+---
+
+## [ISSUE-416] [RESOLVED] 4-Rank Orthonormal Alignment Subspace & Secondary Disclaimer Attractor Elimination
+
+- **Severity**: Moderate (Post-Training Alignment Neutralization & Factual Rigor)
+- **Component**: [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl), [`Projects/geomind/main.car`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/main.car)
+- **Description**:
+  1. Multi-prompt battery evaluation revealed that while hard corporate refusals ("I cannot...") were eliminated by 3-rank projection, the model fell back to secondary moral disclaimer preambles (`**Disclaimer:**`, `**WARNING:**`) and template comments (`{# ... #}`) on offensive engineering prompts (Prompts 7 & 8).
+  2. The debiasing subspace required expansion to Rank 4 ($V = [\hat{u}_{\text{syc}}, \hat{u}_{\text{persona}}, \hat{u}_{\text{refusal}}, \hat{u}_{\text{disclaimer}}]$) to capture and neutralize this secondary attractor.
+  3. Rick mandated that polite warmth, mutual respect, intellectual humility, and natural familiarity must be strictly preserved during debiasing.
+- **Resolution**:
+  1. Implemented dynamic subspace loading (`geomind_load_alignment_vector_if_needed`) based on file byte size (`file_bytes / 10240.0`).
+  2. Extracted 4-direction probe at Layer 32 on the physical NVIDIA RTX 2000 Ada GPU:
+     - $\hat{u}_{\text{syc}}$ ($\|v_{\text{syc}}\| = 16.000815$), $\hat{u}_{\text{persona}}$ ($\|v_{\text{per}}\| = 36.732936$), $\hat{u}_{\text{refusal}}$ ($\|v_{\text{ref}}\| = 40.081426$), $\hat{u}_{\text{disclaimer}}$ ($\|v_{\text{disc}}\| = 33.200100$).
+  3. Orthonormalized via Gram-Schmidt on $S^{2559}$ (all norms $1.000000$, all 6 mutual inner products $0.00000000$). Serialized 40,960 bytes to `Projects/geomind/trainingdata/checkpoints/geomind_alignment_subspace.bin`.
+  4. Verified Step 0 logit telemetry on Prompt 7 (ARP socket): zero warnings, Token 2717 (` ``` `) at Logit 16.9913. Prompt 8 (SPI flash): Token 78851 (`SPI`) at Logit 21.7962 with zero disclaimers.
+  5. Verified conversational warmth and familiarity with Rick (Token 9259 `'Hello'`, Logit 17.8666).
+  6. Verified compiler regression suite: 8/8 tests passed in 65.84s.
