@@ -3,7 +3,7 @@
 > **CARTAN** (**C**ompiled **A**rchitecture **R**obust **T**opology **A**gnostic **N**eural Language) — also named in honor of French mathematician **Élie Cartan** (1869–1951), pioneer of differential forms, the method of moving frames, and Lie group theory, providing the geometric foundation for Cartan's manifold and tensor architecture.
 
 <p align="center">
-  <img src="docs/assets/cartan_logo.jpg" alt="Cartan Logo" width="280"/>
+  <img src="docs/assets/cartan_e8_neural_network_logo.jpg" alt="Cartan E8 Geometric Neural Network Logo" width="320"/>
 </p>
 
 **Cartan** is a statically typed, natively tensor-first programming language designed from the ground up for bare-metal AI development.
