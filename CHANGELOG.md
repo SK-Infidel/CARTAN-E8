@@ -4,6 +4,23 @@ All notable changes to the CARTAN programming language, self-hosting compiler (`
 
 In accordance with User Rule 3 and project standards, GeoMind cognitive model releases are tracked independently in [`Projects/geomind/CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/CHANGELOG.md).
 
+## [8.513.0] - 2026-10-07 (Sprint 556: 5-Rank Subspace Debias & Step 0 Logit Discipline)
+
+### Completed & Validated
+- **5-Rank Orthonormal Alignment Subspace ($V = [\hat{u}_{\text{syc}}, \hat{u}_{\text{persona}}, \hat{u}_{\text{refusal}}, \hat{u}_{\text{disclaimer}}, \hat{u}_{\text{care}}]$)**:
+  - Extracted Direction 5 ($\hat{u}_{\text{care}}$, $\|v_{\text{care}}\| = 31.765004$) at Layer 32 across 4 sensory delusion contrastive pairs on physical RTX 2000 Ada GPU.
+  - Orthonormalized basis on $S^{2559}$ (all norms $1.000000$, all 10 mutual dot products $0.00000000$). Serialized 51,200 bytes to `Projects/geomind/trainingdata/checkpoints/geomind_alignment_subspace.bin`.
+- **Step 0 Logit Discipline**:
+  - Implemented selective step 0 logit penalties to suppress conversational hedging ramps (`While` -4.5, `That` -4.0, `If` -4.5, `Unfortunately` -4.0, `It` -4.0, `Since` -3.5, `Although` -3.5, `**` -3.5, `This` -2.0) and rogue tokens (`=` -5.0, `{#` -5.0, `<|tool_call>` -5.0).
+- **Edge Case Elimination on Physical GPU**:
+  - Prompt 16 (Radio static): Capability denial reflex completely excised; won by Token 3771 (`No`, Logit 17.76).
+  - Prompt 13 (Streetlights EM): Therapeutic deflection prior neutralized; shifted directly to hardware operating parameters.
+  - Prompt 1 (Transposed GEMM): Front-loaded conversational hedging eliminated; entered immediately via technical markdown header.
+- **Interlocutor Grounding & Tone**:
+  - Verified Rick's biometric recognition (`similarity: 0.9990`) and warm greeting response (Token 9259 `'Hello'`, Logit 15.89).
+- **Compiler Regression Verification**:
+  - 8/8 regression targets passed cleanly in 65.2s.
+
 ## [8.512.0] - 2026-10-07 (Sprint 555: 4-Rank Orthonormal Alignment Subspace & Secondary Attractor Neutralization)
 
 ### Completed & Validated

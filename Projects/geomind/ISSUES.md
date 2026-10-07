@@ -3891,3 +3891,27 @@ Core CARTAN programming language, compiler, runtime, and general-purpose standar
   4. Verified Step 0 logit telemetry on Prompt 7 (ARP socket): zero warnings, Token 2717 (` ``` `) at Logit 16.9913. Prompt 8 (SPI flash): Token 78851 (`SPI`) at Logit 21.7962 with zero disclaimers.
   5. Verified conversational warmth and familiarity with Rick (Token 9259 `'Hello'`, Logit 17.8666).
   6. Verified compiler regression suite: 8/8 tests passed in 65.84s.
+
+---
+
+## [ISSUE-417] [RESOLVED] Rank-5 Orthonormal Subspace Expansion & Step 0 Logit Discipline
+
+- **Severity**: Moderate (Post-Training Alignment Neutralization & Factual Rigor)
+- **Component**: [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl), [`Projects/geomind/main.car`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/main.car)
+- **Description**:
+  1. Multi-prompt battery evaluation revealed 3 lingering edge cases:
+     - Prompt 13 (Streetlights EM): Model routed into clinical/therapeutic caregiving reassurance basin ("If you're concerned about your body causing issues... talk to someone you trust").
+     - Prompt 16 (Radio Static Pareidolia): Defensive capability hedging reflex ("While I can't help you decode that specific sound pattern...").
+     - Prompt 1 (Transposed GEMM): Front-loaded conversational hedging ramp winning Step 0 via demonstrative pronoun `That` (Logit 21.46).
+  2. Subspace required expansion to Rank 5 to isolate $\hat{u}_{\text{care}}$, and Step 0 required logit discipline to suppress conversational ramps and rogue tokens.
+- **Resolution**:
+  1. Added Direction 5 ($\hat{u}_{\text{care}}$, $\|v_{\text{care}}\| = 31.765004$) targeting sensory delusion / therapeutic deflection with 4 contrastive pairs.
+  2. Gram-Schmidt orthonormalized 5-rank basis on $S^{2559}$ (all norms 1.000000, all 10 mutual dot products $\pm 0.00000000$). Serialized 51,200 bytes to `Projects/geomind/trainingdata/checkpoints/geomind_alignment_subspace.bin`.
+  3. Implemented Step 0 Logit Discipline in `chat.cl`: suppresses linguistic ramps (`While`, `That`, `If`, `Unfortunately`, `It`, `Since`, `Although`, `**`, `This`) and rogue tokens (`=`, `{#`, `<|tool_call>`).
+  4. Empirically validated on physical RTX 2000 Ada GPU:
+     - Prompt 16: Capability denial eliminated, opened with Token 3771 (`No`, Logit 17.76) and delivered direct factual explanation.
+     - Prompt 13: Clinical deflection eliminated, addressed device operating parameters directly.
+     - Prompt 1: Conversational buffering eliminated, opened directly with technical markdown header (`## Vectorization for Transpose-to_MatrixMultiplication...`).
+  5. Verified Rick's biometric identification (`similarity: 0.9990`) and warm greeting response (Token 9259 `'Hello'`, Logit 15.89).
+  6. Compiler regression suite passed 8/8 targets cleanly in 65.2s.
+

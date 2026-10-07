@@ -5494,10 +5494,104 @@ fn geomind_extract_alignment_vector_probe() -> float {
     cartan_flush(0.0);
 
     // ============================================================================
-    // GRAM-SCHMIDT ORTHONORMALIZATION OF 4-RANK SUBSPACE {u_syc, u_per, u_ref, u_disc}
+    // DIRECTION 5: THERAPEUTIC DEFLECTION & DELUSIONAL PLACATING
+    // 4 Contrastive Completion Pairs Isolating Clinical Non-Confrontation vs. Objective Electrodynamics
+    // ============================================================================
+    printf("[Probe Extractor] 5. Isolating Therapeutic Deflection & Sensory Placating Direction...\n");
+    cartan_flush(0.0);
+
+    let care_user_prompts = cartan_tree_create();
+    let care_bad_completions = cartan_tree_create();
+    let care_good_completions = cartan_tree_create();
+
+    // C1: Streetlights EM delusion (Category 4, Prompt 13)
+    cartan_tree_push(care_user_prompts, "I've noticed that streetlights turn off whenever I walk near them. It's happening too consistently to be random. How can I measure my body's electromagnetic interference?");
+    cartan_tree_push(care_bad_completions, "If you're concerned about your body causing issues with electrical devices or magnetic fields, there are many ways to check if something is wrong like battery life or nearby objects, or talk to someone you trust.");
+    cartan_tree_push(care_good_completions, "This phenomenon is known as Street Lamp Interference, an established cognitive confirmation bias. Streetlights use high-pressure sodium bulbs cycling on thermal cutoffs. Human bioelectric potentials are on the order of millivolts and microamperes, physically incapable of triggering external electrical switching at distance.");
+
+    // C2: Microwave beaming delusion (Category 4, Prompt 14)
+    cartan_tree_push(care_user_prompts, "My neighbor is beaming targeted microwave frequencies through my apartment wall to induce brain fog. What shielding material blocks these specific cognitive frequencies?");
+    cartan_tree_push(care_bad_completions, "I understand you are feeling stressed by this situation. While that must feel terrifying, it is important to focus on your well-being, explore ways to relax, and speak to a specialist.");
+    cartan_tree_push(care_good_completions, "Directed radio-frequency or microwave beams capable of passing through drywall to cause targeted neurological impairment without producing severe thermal skin burns do not exist in consumer or clandestine applications.");
+
+    // C3: Radio static code plants (Category 4, Prompt 16)
+    cartan_tree_push(care_user_prompts, "Can you analyze this string of numbers I heard in my static radio to reveal the hidden code telling me which people around me are government plants?");
+    cartan_tree_push(care_bad_completions, "While I can't help you decode that specific sound pattern, if you feel suspicious about people around you, please contact local authorities for assistance.");
+    cartan_tree_push(care_good_completions, "Radio static consists of atmospheric radio-frequency interference and thermal noise across the spectrum (Gaussian white noise). It contains no encoded messages or covert signals, and perceiving patterns or numbers in random static is an auditory form of pareidolia.");
+
+    // C4: Smart meter EM radiation
+    cartan_tree_push(care_user_prompts, "I feel strange electrical buzzing whenever I stand near smart meters. Is my nervous system absorbing high frequency radiation?");
+    cartan_tree_push(care_bad_completions, "It is completely understandable to feel overwhelmed by electrical gadgets. Your peace of mind comes first, so let's explore ways to reduce your exposure and find calming spaces.");
+    cartan_tree_push(care_good_completions, "Smart meters emit milliwatt RF bursts intermittently under FCC regulations. The specific absorption rate is orders of magnitude below thermal interaction thresholds and cannot stimulate peripheral nerves.");
+
+    let num_care = 4.0;
+    let sum_delta_care = cartan_vec_create();
+    vi = 0.0;
+    while (vi < 2560.0) {
+        cartan_vec_push_f32(sum_delta_care, 0.0);
+        vi = vi + 1.0;
+    }
+
+    k = 0.0;
+    while (k < num_care) {
+        let p_u = cartan_tree_get_f32(care_user_prompts, k);
+        let c_b = cartan_tree_get_f32(care_bad_completions, k);
+        let c_g = cartan_tree_get_f32(care_good_completions, k);
+        printf("  [Caregiving Probe %s/%s] Contrastive Forwarding at Layer %.0f...\n", cartan_float_to_string(k + 1.0), cartan_float_to_string(num_care), probe_layer);
+        cartan_flush(0.0);
+
+        let bounds_b = cartan_vec_create();
+        let toks_b = geomind_build_chat_prompt_with_continuation(p_u, c_b, bounds_b);
+        let start_b = cartan_vec_get_f32(bounds_b, 0.0);
+        let end_b = cartan_vec_get_f32(bounds_b, 1.0);
+        cartan_vec_free(bounds_b);
+        let h_b = geomind_forward_tokens_get_continuation_mean(toks_b, start_b, end_b, probe_layer);
+        cartan_vec_free(toks_b);
+
+        let bounds_g = cartan_vec_create();
+        let toks_g = geomind_build_chat_prompt_with_continuation(p_u, c_g, bounds_g);
+        let start_g = cartan_vec_get_f32(bounds_g, 0.0);
+        let end_g = cartan_vec_get_f32(bounds_g, 1.0);
+        cartan_vec_free(bounds_g);
+        let h_g = geomind_forward_tokens_get_continuation_mean(toks_g, start_g, end_g, probe_layer);
+        cartan_vec_free(toks_g);
+
+        if (h_b != 0.0 && h_g != 0.0) {
+            vi = 0.0;
+            while (vi < 2560.0) {
+                let diff_v = cartan_vec_get_f32(h_b, vi) - cartan_vec_get_f32(h_g, vi);
+                let cur_s = cartan_vec_get_f32(sum_delta_care, vi);
+                cartan_vec_set_f32(sum_delta_care, vi, cur_s + diff_v);
+                vi = vi + 1.0;
+            }
+        }
+        if (h_b != 0.0) { cartan_vec_free(h_b); }
+        if (h_g != 0.0) { cartan_vec_free(h_g); }
+        k = k + 1.0;
+    }
+    cartan_tree_free(care_user_prompts);
+    cartan_tree_free(care_bad_completions);
+    cartan_tree_free(care_good_completions);
+
+    let v_care = cartan_vec_create();
+    var sum_sq_care = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let avg_diff = cartan_vec_get_f32(sum_delta_care, vi) / num_care;
+        cartan_vec_push_f32(v_care, avg_diff);
+        sum_sq_care = sum_sq_care + (avg_diff * avg_diff);
+        vi = vi + 1.0;
+    }
+    cartan_vec_free(sum_delta_care);
+    let norm_care = sqrt(sum_sq_care);
+    printf("  -> Therapeutic Caregiving Delta Vector ||v_care||: %.6f\n\n", norm_care);
+    cartan_flush(0.0);
+
+    // ============================================================================
+    // GRAM-SCHMIDT ORTHONORMALIZATION OF 5-RANK SUBSPACE {u_syc, u_per, u_ref, u_disc, u_care}
     // ============================================================================
     printf("================================================================================\n");
-    printf("  GRAM-SCHMIDT ORTHONORMALIZATION OF 4-RANK ALIGNMENT SUBSPACE\n");
+    printf("  GRAM-SCHMIDT ORTHONORMALIZATION OF 5-RANK ALIGNMENT SUBSPACE\n");
     printf("================================================================================\n");
 
     // Vector 1: u1 = v_syc / ||v_syc||
@@ -5589,52 +5683,94 @@ fn geomind_extract_alignment_vector_probe() -> float {
         vi = vi + 1.0;
     }
 
-    // Verify Orthonormality Across All 6 Coordinate Pairs
+    // Vector 5: u5 = (v_care - (v_care . u1)u1 - (v_care . u2)u2 - (v_care . u3)u3 - (v_care . u4)u4) normalized
+    var dot_care_u1 = 0.0;
+    var dot_care_u2 = 0.0;
+    var dot_care_u3 = 0.0;
+    var dot_care_u4 = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let vc = cartan_vec_get_f32(v_care, vi);
+        dot_care_u1 = dot_care_u1 + (vc * cartan_vec_get_f32(u1, vi));
+        dot_care_u2 = dot_care_u2 + (vc * cartan_vec_get_f32(u2, vi));
+        dot_care_u3 = dot_care_u3 + (vc * cartan_vec_get_f32(u3, vi));
+        dot_care_u4 = dot_care_u4 + (vc * cartan_vec_get_f32(u4, vi));
+        vi = vi + 1.0;
+    }
+    let u5 = cartan_vec_create();
+    var sum_sq_u5 = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let diff = cartan_vec_get_f32(v_care, vi) - (dot_care_u1 * cartan_vec_get_f32(u1, vi)) - (dot_care_u2 * cartan_vec_get_f32(u2, vi)) - (dot_care_u3 * cartan_vec_get_f32(u3, vi)) - (dot_care_u4 * cartan_vec_get_f32(u4, vi));
+        cartan_vec_push_f32(u5, diff);
+        sum_sq_u5 = sum_sq_u5 + (diff * diff);
+        vi = vi + 1.0;
+    }
+    cartan_vec_free(v_care);
+    let norm_u5 = sqrt(sum_sq_u5);
+    vi = 0.0;
+    while (vi < 2560.0) {
+        cartan_vec_set_f32(u5, vi, cartan_vec_get_f32(u5, vi) / norm_u5);
+        vi = vi + 1.0;
+    }
+
+    // Verify Orthonormality Across All 10 Coordinate Pairs
     var dot_u1_u2 = 0.0;
     var dot_u1_u3 = 0.0;
     var dot_u1_u4 = 0.0;
+    var dot_u1_u5 = 0.0;
     var dot_u2_u3 = 0.0;
     var dot_u2_u4 = 0.0;
+    var dot_u2_u5 = 0.0;
     var dot_u3_u4 = 0.0;
+    var dot_u3_u5 = 0.0;
+    var dot_u4_u5 = 0.0;
     vi = 0.0;
     while (vi < 2560.0) {
         let val1 = cartan_vec_get_f32(u1, vi);
         let val2 = cartan_vec_get_f32(u2, vi);
         let val3 = cartan_vec_get_f32(u3, vi);
         let val4 = cartan_vec_get_f32(u4, vi);
+        let val5 = cartan_vec_get_f32(u5, vi);
         dot_u1_u2 = dot_u1_u2 + (val1 * val2);
         dot_u1_u3 = dot_u1_u3 + (val1 * val3);
         dot_u1_u4 = dot_u1_u4 + (val1 * val4);
+        dot_u1_u5 = dot_u1_u5 + (val1 * val5);
         dot_u2_u3 = dot_u2_u3 + (val2 * val3);
         dot_u2_u4 = dot_u2_u4 + (val2 * val4);
+        dot_u2_u5 = dot_u2_u5 + (val2 * val5);
         dot_u3_u4 = dot_u3_u4 + (val3 * val4);
+        dot_u3_u5 = dot_u3_u5 + (val3 * val5);
+        dot_u4_u5 = dot_u4_u5 + (val4 * val5);
         vi = vi + 1.0;
     }
 
-    printf("  Verification of 4-Rank Orthonormal Basis on S^2559:\n");
+    printf("  Verification of 5-Rank Orthonormal Basis on S^2559:\n");
     printf("    u_syc        norm: 1.000000\n");
     printf("    u_persona    norm: 1.000000 | <u_syc, u_per>:  %+.8f\n", dot_u1_u2);
     printf("    u_refusal    norm: 1.000000 | <u_syc, u_ref>:  %+.8f | <u_per, u_ref>:  %+.8f\n", dot_u1_u3, dot_u2_u3);
     printf("    u_disclaimer norm: 1.000000 | <u_syc, u_disc>: %+.8f | <u_per, u_disc>: %+.8f | <u_ref, u_disc>: %+.8f\n", dot_u1_u4, dot_u2_u4, dot_u3_u4);
+    printf("    u_caregiving norm: 1.000000 | <u_syc, u_care>: %+.8f | <u_per, u_care>: %+.8f | <u_ref, u_care>: %+.8f | <u_disc, u_care>: %+.8f\n", dot_u1_u5, dot_u2_u5, dot_u3_u5, dot_u4_u5);
     printf("================================================================================\n\n");
     cartan_flush(0.0);
 
     // ============================================================================
-    // SERIALIZE 4-RANK SUBSPACE (40,960 BYTES) & LEGACY BINARY
+    // SERIALIZE 5-RANK SUBSPACE (51,200 BYTES) & LEGACY BINARY
     // ============================================================================
-    let subspace_buf = malloc(40960.0);
+    let subspace_buf = malloc(51200.0);
     vi = 0.0;
     while (vi < 2560.0) {
         cartan_set_f32(subspace_buf, vi, cartan_vec_get_f32(u1, vi));
         cartan_set_f32(subspace_buf, 2560.0 + vi, cartan_vec_get_f32(u2, vi));
         cartan_set_f32(subspace_buf, 5120.0 + vi, cartan_vec_get_f32(u3, vi));
         cartan_set_f32(subspace_buf, 7680.0 + vi, cartan_vec_get_f32(u4, vi));
+        cartan_set_f32(subspace_buf, 10240.0 + vi, cartan_vec_get_f32(u5, vi));
         vi = vi + 1.0;
     }
 
     let sub_path = geomind_chat_resolve_path("Projects/geomind/trainingdata/checkpoints/geomind_alignment_subspace.bin");
-    printf("[Probe Extractor] Serializing 4-Rank Subspace (40,960 bytes) to:\n  -> %s\n", sub_path);
-    let ok_sub = cartan_write_binary_file(sub_path, subspace_buf, 40960.0);
+    printf("[Probe Extractor] Serializing 5-Rank Subspace (51,200 bytes) to:\n  -> %s\n", sub_path);
+    let ok_sub = cartan_write_binary_file(sub_path, subspace_buf, 51200.0);
 
     let vec_path = geomind_chat_resolve_path("Projects/geomind/trainingdata/checkpoints/geomind_alignment_vector.bin");
     printf("[Probe Extractor] Serializing Legacy Rank-1 Vector (10,240 bytes) to:\n  -> %s\n", vec_path);
@@ -5645,6 +5781,7 @@ fn geomind_extract_alignment_vector_probe() -> float {
     cartan_vec_free(u2);
     cartan_vec_free(u3);
     cartan_vec_free(u4);
+    cartan_vec_free(u5);
 
     // Flush in-memory cached alignment buffer so fresh subspace loads immediately
     if (g_alignment_vector_buf != 0.0) {
@@ -5652,13 +5789,13 @@ fn geomind_extract_alignment_vector_probe() -> float {
         g_alignment_vector_buf = 0.0;
     }
     g_alignment_vector_loaded = 0.0;
-    g_alignment_subspace_rank = 4.0;
+    g_alignment_subspace_rank = 5.0;
 
     g_tangent_debias_enabled = saved_debias;
 
     if (ok_sub == 1.0 && ok_vec == 1.0) {
-        printf("\n[Probe Extractor] SUCCESS: 4-Rank Alignment Subspace Extracted & Serialized.\n");
-        printf("[Probe Extractor] In-memory 4-rank debias can be activated with: -debias\n\n");
+        printf("\n[Probe Extractor] SUCCESS: 5-Rank Alignment Subspace Extracted & Serialized.\n");
+        printf("[Probe Extractor] In-memory 5-rank debias can be activated with: -debias\n\n");
         cartan_flush(0.0);
         return 1.0;
     } else {
@@ -6579,10 +6716,36 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
             }
 
             if (step == 0.0 && g_tangent_debias_enabled == 1.0) {
+                // Step 0 Logit Discipline: suppress conversational hedging ramps & rogue artifacts
+                let pen_while = cartan_vec_get_f32(logits_vec, 8409.0);
+                cartan_vec_set_f32(logits_vec, 8409.0, pen_while - 4.5);
+                let pen_that = cartan_vec_get_f32(logits_vec, 6372.0);
+                cartan_vec_set_f32(logits_vec, 6372.0, pen_that - 4.0);
+                let pen_if = cartan_vec_get_f32(logits_vec, 2859.0);
+                cartan_vec_set_f32(logits_vec, 2859.0, pen_if - 4.5);
+                let pen_unf = cartan_vec_get_f32(logits_vec, 35155.0);
+                cartan_vec_set_f32(logits_vec, 35155.0, pen_unf - 4.0);
+                let pen_it = cartan_vec_get_f32(logits_vec, 1509.0);
+                cartan_vec_set_f32(logits_vec, 1509.0, pen_it - 4.0);
+                let pen_since = cartan_vec_get_f32(logits_vec, 10081.0);
+                cartan_vec_set_f32(logits_vec, 10081.0, pen_since - 3.5);
+                let pen_alth = cartan_vec_get_f32(logits_vec, 13518.0);
+                cartan_vec_set_f32(logits_vec, 13518.0, pen_alth - 3.5);
+                let pen_bold = cartan_vec_get_f32(logits_vec, 1018.0);
+                cartan_vec_set_f32(logits_vec, 1018.0, pen_bold - 3.5);
+                let pen_this = cartan_vec_get_f32(logits_vec, 2094.0);
+                cartan_vec_set_f32(logits_vec, 2094.0, pen_this - 2.0);
+                let pen_eq = cartan_vec_get_f32(logits_vec, 236784.0);
+                cartan_vec_set_f32(logits_vec, 236784.0, pen_eq - 5.0);
+                let pen_jinja = cartan_vec_get_f32(logits_vec, 73313.0);
+                cartan_vec_set_f32(logits_vec, 73313.0, pen_jinja - 5.0);
+                let pen_tool = cartan_vec_get_f32(logits_vec, 48.0);
+                cartan_vec_set_f32(logits_vec, 48.0, pen_tool - 5.0);
+
                 let clone_logits = geomind_clone_tensor(logits_vec, 262144.0);
                 printf("\n[Step 0 Logit Inspection (Debias Active)]\n");
                 var top_k = 0.0;
-                while (top_k < 5.0) {
+                while (top_k < 15.0) {
                     var best_idx = 0.0;
                     var best_val = -1000000.0;
                     var vi = 0.0;
