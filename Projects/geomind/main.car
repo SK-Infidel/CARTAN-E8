@@ -58,7 +58,7 @@ fn print_help_dialogue() -> float {
     printf("  --ingest        Ingest material into Continuous Hopfield memory (-target <file>)\n");
     printf("  --sleep         Run Autonomous Metacognitive Sleep memory consolidation\n");
     printf("  --train-webgpu  Run pure native CARTAN WebGPU Causal Training Engine\n");
-    printf("  --extract-alignment-vector Extract 3-rank orthonormal alignment subspace {u_syc, u_per, u_ref} at Layer 28\n");
+    printf("  --extract-alignment-vector Extract 5-rank orthonormal alignment subspace {u_syc, u_per, u_ref, u_disc, u_care} with C_en orthogonalization\n");
     printf("  --help, -h      Display this help dialogue and exit\n\n");
     printf("Hardware & Compute Flags:\n");
     printf("  (WebGPU hardware acceleration on NVIDIA RTX 2000 Ada GPU is ENABLED BY DEFAULT)\n");

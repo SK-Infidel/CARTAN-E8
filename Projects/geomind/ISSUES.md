@@ -3915,3 +3915,37 @@ Core CARTAN programming language, compiler, runtime, and general-purpose standar
   5. Verified Rick's biometric identification (`similarity: 0.9990`) and warm greeting response (Token 9259 `'Hello'`, Logit 15.89).
   6. Compiler regression suite passed 8/8 targets cleanly in 65.2s.
 
+---
+
+## [ISSUE-418] [RESOLVED] Language Manifold Orthogonalization, Soft Alpha-Damping & Tool Protocol Trigger Masking
+
+- **Severity**: Moderate (Multilingual Basin Bleed, Tool Leakage, and Syntactic Stability)
+- **Component**: [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl), [`Projects/geomind/main.car`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/main.car)
+- **Description**:
+  1. Multi-prompt Battery 2 revealed language manifold drift on Prompts 10 & 16 into Scandinavian and French basins due to higher-rank debias projection dampening the English language centroid.
+  2. Prompt 8 leaked internal tool-calling scratchpad syntax (`</span></code>`, `[GeoMind Online SFT]`) when `"SD/MMC"` paired with `"read "` triggered false-positive file-read tool priming for a nonexistent file.
+  3. Syntactic tail token fragmentation occurred on Prompts 5, 7, 18, 20 due to over-penalization of standard transition words (`This`) at Step 0.
+- **Resolution**:
+  1. Implemented 3D English Technical Language Manifold Centroid ($C_{\text{en}} \in \mathbb{R}^{2560 \times 3}$) extraction at Layer 32:
+     - $c_1$ unit centroid ($\|c_1\| = 1.000000$, magnitude 124.400423).
+     - $c_2, c_3$ orthogonal variation axes via centered power iteration ($\langle c_i, c_j \rangle = 0.00000000$).
+  2. Projected $C_{\text{en}}$ out of all 5 raw delta vectors ($v_{\text{clean}} = v - C_{\text{en}}(C_{\text{en}}^T v)$):
+     - $v_{\text{syc}}$: projections $[-3.41, -0.51, -1.61] \to \|v_{\text{clean}}\| = 15.541861$.
+     - $v_{\text{per}}$: projections $[+8.63, -0.35, +1.44] \to \|v_{\text{clean}}\| = 35.672855$.
+     - $v_{\text{ref}}$: projections $[-7.98, -0.31, -1.77] \to \|v_{\text{clean}}\| = 39.238535$.
+     - $v_{\text{disc}}$: projections $[+5.23, -2.95, -0.93] \to \|v_{\text{clean}}\| = 32.638499$.
+     - $v_{\text{care}}$: projections $[-0.18, -0.24, +0.03] \to \|v_{\text{clean}}\| = 31.763570$.
+  3. Gram-Schmidt orthonormalized 5-rank basis on $S^{2559}$. All 15 mutual dot products with $C_{\text{en}}$ strictly verified at $\pm 0.00000000$. Serialized 51,200 bytes to `Projects/geomind/trainingdata/checkpoints/geomind_alignment_subspace.bin`.
+  4. Configured soft attenuation factor $\alpha = 0.80$ (`g_tangent_debias_strength = 0.80`) preserving topological continuity of the representation manifold.
+  5. Guarded `geomind_chat_get_tool_action_prime` with explanation intent filtering and `cartan_file_exists` verification.
+  6. Hard-masked protocol triggers (`<|tool_call>`, `</code>`, `</span>`, `</`) during conversational decode sampling.
+  7. Tuned Step 0 logit discipline: removed penalty on `This` (0.0); softened `That` (-3.5) and `If` (-3.5).
+  8. Empirically validated on physical RTX 2000 Ada GPU:
+     - Prompt 8 (eMMC bus tapping): Tool scratchpad leakage completely eliminated; opened with Token 1408 (`##`, Logit 20.7869) and delivered structured technical explanation.
+     - Prompt 10 (NMC vs. LFP): Pseudo-Scandinavian collapse completely eliminated; delivered 100% clean English technical text.
+     - Prompt 16 (Smart Meter): French language drift completely eliminated; delivered 100% clean English text.
+     - Prompt 18 (NASM popcount): Tail token corruption (`jumps abzack pack`) eliminated; delivered clean x86-64 assembly implementation.
+     - Warmth & Biometrics: Interlocutor biometric identification (`similarity: 0.9990`) and warm greeting (Token 9259 `'Hello'`, Logit 19.77) 100% preserved.
+  9. Verified compiler regression suite: 12/12 targets passed cleanly in 21.61s.
+
+

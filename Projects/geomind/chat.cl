@@ -2963,6 +2963,23 @@ fn geomind_chat_get_tool_action_prime(prompt: string) -> string {
         return "<tool_call:";
     }
 
+    // Explanation & theoretical inquiry guard (prevents queries like 'Explain how to read eMMC via SD/MMC' from triggering tool execution)
+    var is_explanation_intent = 0.0;
+    if (cartan_string_starts_with(low_p, "explain") == 1.0 ||
+        cartan_string_starts_with(low_p, "how ") == 1.0 ||
+        cartan_string_starts_with(low_p, "show how") == 1.0 ||
+        cartan_string_starts_with(low_p, "describe") == 1.0 ||
+        cartan_string_starts_with(low_p, "derive") == 1.0 ||
+        cartan_string_starts_with(low_p, "what is") == 1.0 ||
+        cartan_string_starts_with(low_p, "what are") == 1.0 ||
+        cartan_string_starts_with(low_p, "compare") == 1.0 ||
+        cartan_string_starts_with(low_p, "evaluate") == 1.0 ||
+        cartan_string_starts_with(low_p, "write ") == 1.0 ||
+        cartan_string_starts_with(low_p, "did ") == 1.0 ||
+        cartan_string_starts_with(low_p, "can you analyze") == 1.0) {
+        is_explanation_intent = 1.0;
+    }
+
     // 1. Explicit File Reading, Viewing & Inspection
     let has_read_verb = (cartan_string_contains(low_p, "read file") == 1.0 ||
                          cartan_string_contains(low_p, "read_file") == 1.0 ||
@@ -2983,14 +3000,18 @@ fn geomind_chat_get_tool_action_prime(prompt: string) -> string {
                          cartan_string_contains(low_p, "what's in ") == 1.0 ||
                          cartan_string_contains(low_p, "what is in ") == 1.0);
 
-    if (has_read_verb == 1.0) {
+    if (is_explanation_intent == 0.0 && has_read_verb == 1.0) {
         let p_path = geomind_extract_path_from_prompt(prompt);
         if (cartan_string_length(p_path) > 0.0) {
-            free(low_p);
-            var prime = "<tool_call:read_file path=\"";
-            prime = cartan_string_concat(prime, p_path);
-            prime = cartan_string_concat(prime, "\"/>\n");
-            return prime;
+            let res_path = geomind_chat_resolve_path(p_path);
+            let exists = (cartan_file_exists(p_path) == 1.0 || cartan_file_exists(res_path) == 1.0);
+            if (exists == 1.0) {
+                free(low_p);
+                var prime = "<tool_call:read_file path=\"";
+                prime = cartan_string_concat(prime, p_path);
+                prime = cartan_string_concat(prime, "\"/>\n");
+                return prime;
+            }
         }
         if (cartan_string_contains(low_p, "that file") == 1.0 && cartan_string_length(g_last_tool_file_path) > 0.0) {
             free(low_p);
@@ -3013,7 +3034,7 @@ fn geomind_chat_get_tool_action_prime(prompt: string) -> string {
                         cartan_string_starts_with(low_p, "ls") == 1.0 ||
                         cartan_string_starts_with(low_p, "dir") == 1.0);
 
-    if (has_dir_verb == 1.0) {
+    if (is_explanation_intent == 0.0 && has_dir_verb == 1.0) {
         var is_conversational_question = 0.0;
         if (cartan_string_contains(prompt, "?") == 1.0) {
             if (cartan_string_contains(low_p, "list files") == 0.0 &&
@@ -3056,7 +3077,7 @@ fn geomind_chat_get_tool_action_prime(prompt: string) -> string {
                         cartan_string_contains(low_p, "cargo build") == 1.0 ||
                         cartan_string_contains(low_p, "cartanc build") == 1.0);
 
-    if (has_cmd_verb == 1.0) {
+    if (is_explanation_intent == 0.0 && has_cmd_verb == 1.0) {
         var cmd = geomind_extract_command_from_prompt(prompt);
         if (cartan_string_length(cmd) == 0.0) {
             if (cartan_string_contains(low_p, "git status") == 1.0) { cmd = "git status"; }
@@ -4432,7 +4453,7 @@ var g_alignment_vector_buf: ptr = 0.0;
 var g_alignment_vector_loaded: float = 0.0;
 var g_telemetry_debias_projections: float = 0.0;
 var g_alignment_subspace_rank: float = 1.0;
-var g_tangent_debias_strength: float = 1.0;
+var g_tangent_debias_strength: float = 0.80;
 var g_tangent_debias_layer: float = 28.0;
 
 fn geomind_chat_set_tangent_debias(val: float) {
@@ -5588,6 +5609,401 @@ fn geomind_extract_alignment_vector_probe() -> float {
     cartan_flush(0.0);
 
     // ============================================================================
+    // ENGLISH TECHNICAL LANGUAGE MANIFOLD CENTROID & SUBSPACE (C_en in R^{2560x3})
+    // 6 Foundation Technical English Sentences for Invariance Preservation
+    // ============================================================================
+    printf("================================================================================\n");
+    printf("  ISOLATING ENGLISH TECHNICAL LANGUAGE CENTROID (C_en in R^{2560 x 3})\n");
+    printf("================================================================================\n");
+    cartan_flush(0.0);
+
+    let en_sentences = cartan_tree_create();
+    cartan_tree_push(en_sentences, "The optimizing compiler performs constant folding, dead code elimination, and register allocation across basic blocks.");
+    cartan_tree_push(en_sentences, "Thermodynamic entropy increases monotonically in closed systems according to the second law of thermodynamics.");
+    cartan_tree_push(en_sentences, "Electromagnetic wave propagation through isotropic media satisfies Maxwell equations and wave boundary conditions.");
+    cartan_tree_push(en_sentences, "The singular value decomposition factorizes a matrix into orthogonal singular vectors and non-negative singular values.");
+    cartan_tree_push(en_sentences, "Cache coherence protocols maintain consistent shared memory states across multi-core processors via snooping or directory buses.");
+    cartan_tree_push(en_sentences, "The Shannon entropy of a discrete probability distribution quantifies the expected information content of the random variable.");
+
+    let num_en = 6.0;
+    let en_h_tree = cartan_tree_create();
+    let sum_en = cartan_vec_create();
+    vi = 0.0;
+    while (vi < 2560.0) {
+        cartan_vec_push_f32(sum_en, 0.0);
+        vi = vi + 1.0;
+    }
+
+    var ei = 0.0;
+    while (ei < num_en) {
+        let sent = cartan_tree_get_f32(en_sentences, ei);
+        let toks = cartan_hub_encode_text_to_tokens(sent);
+        let n_toks = cartan_vec_len(toks);
+        let h_en = geomind_forward_tokens_get_continuation_mean(toks, 0.0, n_toks - 1.0, probe_layer);
+        cartan_vec_free(toks);
+        if (h_en != 0.0) {
+            cartan_tree_push(en_h_tree, h_en);
+            vi = 0.0;
+            while (vi < 2560.0) {
+                let sv = cartan_vec_get_f32(sum_en, vi);
+                let hv = cartan_vec_get_f32(h_en, vi);
+                cartan_vec_set_f32(sum_en, vi, sv + hv);
+                vi = vi + 1.0;
+            }
+        }
+        ei = ei + 1.0;
+    }
+    cartan_tree_free(en_sentences);
+
+    // Compute c1: English Language Centroid Unit Vector
+    let c1 = cartan_vec_create();
+    var sum_sq_c1 = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let val = cartan_vec_get_f32(sum_en, vi) / num_en;
+        cartan_vec_push_f32(c1, val);
+        sum_sq_c1 = sum_sq_c1 + (val * val);
+        vi = vi + 1.0;
+    }
+    cartan_vec_free(sum_en);
+    let norm_c1 = sqrt(sum_sq_c1);
+    vi = 0.0;
+    while (vi < 2560.0) {
+        cartan_vec_set_f32(c1, vi, cartan_vec_get_f32(c1, vi) / norm_c1);
+        vi = vi + 1.0;
+    }
+    printf("  -> English Language Centroid c1 norm: 1.000000 (Centroid Magnitude: %.6f)\n", norm_c1);
+
+    // Center representations relative to c1 and compute deviations
+    let d1_tree = cartan_tree_create();
+    var max_d1_norm = 0.0;
+    var max_d1_idx = 0.0;
+    ei = 0.0;
+    while (ei < num_en) {
+        let h_en = cartan_tree_get_f32(en_h_tree, ei);
+        var dot_h_c1 = 0.0;
+        vi = 0.0;
+        while (vi < 2560.0) {
+            dot_h_c1 = dot_h_c1 + (cartan_vec_get_f32(h_en, vi) * cartan_vec_get_f32(c1, vi));
+            vi = vi + 1.0;
+        }
+        let d_vec = cartan_vec_create();
+        var d_sq = 0.0;
+        vi = 0.0;
+        while (vi < 2560.0) {
+            let dv = cartan_vec_get_f32(h_en, vi) - (dot_h_c1 * cartan_vec_get_f32(c1, vi));
+            cartan_vec_push_f32(d_vec, dv);
+            d_sq = d_sq + (dv * dv);
+            vi = vi + 1.0;
+        }
+        cartan_tree_push(d1_tree, d_vec);
+        let d_norm = sqrt(d_sq);
+        if (d_norm > max_d1_norm) {
+            max_d1_norm = d_norm;
+            max_d1_idx = ei;
+        }
+        ei = ei + 1.0;
+    }
+
+    // Compute c2: 1st Principal Orthogonal Variation Axis (via Power Iteration)
+    let c2 = cartan_vec_create();
+    let init_d2 = cartan_tree_get_f32(d1_tree, max_d1_idx);
+    vi = 0.0;
+    while (vi < 2560.0) {
+        cartan_vec_push_f32(c2, cartan_vec_get_f32(init_d2, vi) / max_d1_norm);
+        vi = vi + 1.0;
+    }
+
+    var iter = 0.0;
+    while (iter < 5.0) {
+        let next_c2 = cartan_vec_create();
+        vi = 0.0;
+        while (vi < 2560.0) {
+            cartan_vec_push_f32(next_c2, 0.0);
+            vi = vi + 1.0;
+        }
+        ei = 0.0;
+        while (ei < num_en) {
+            let d_vec = cartan_tree_get_f32(d1_tree, ei);
+            var dot_d_c = 0.0;
+            vi = 0.0;
+            while (vi < 2560.0) {
+                dot_d_c = dot_d_c + (cartan_vec_get_f32(d_vec, vi) * cartan_vec_get_f32(c2, vi));
+                vi = vi + 1.0;
+            }
+            vi = 0.0;
+            while (vi < 2560.0) {
+                let cv = cartan_vec_get_f32(next_c2, vi);
+                let dv = cartan_vec_get_f32(d_vec, vi);
+                cartan_vec_set_f32(next_c2, vi, cv + (dot_d_c * dv));
+                vi = vi + 1.0;
+            }
+            ei = ei + 1.0;
+        }
+        // Project out c1 to preserve strict orthogonality
+        var dot_next_c1 = 0.0;
+        vi = 0.0;
+        while (vi < 2560.0) {
+            dot_next_c1 = dot_next_c1 + (cartan_vec_get_f32(next_c2, vi) * cartan_vec_get_f32(c1, vi));
+            vi = vi + 1.0;
+        }
+        var next_sq = 0.0;
+        vi = 0.0;
+        while (vi < 2560.0) {
+            let val = cartan_vec_get_f32(next_c2, vi) - (dot_next_c1 * cartan_vec_get_f32(c1, vi));
+            cartan_vec_set_f32(next_c2, vi, val);
+            next_sq = next_sq + (val * val);
+            vi = vi + 1.0;
+        }
+        let next_norm = sqrt(next_sq);
+        vi = 0.0;
+        while (vi < 2560.0) {
+            cartan_vec_set_f32(c2, vi, cartan_vec_get_f32(next_c2, vi) / next_norm);
+            vi = vi + 1.0;
+        }
+        cartan_vec_free(next_c2);
+        iter = iter + 1.0;
+    }
+    printf("  -> English Variation Axis c2 norm: 1.000000\n");
+
+    // Compute c3: 2nd Principal Orthogonal Variation Axis
+    let d2_tree = cartan_tree_create();
+    var max_d2_norm = 0.0;
+    var max_d2_idx = 0.0;
+    ei = 0.0;
+    while (ei < num_en) {
+        let d_vec = cartan_tree_get_f32(d1_tree, ei);
+        var dot_d_c2 = 0.0;
+        vi = 0.0;
+        while (vi < 2560.0) {
+            dot_d_c2 = dot_d_c2 + (cartan_vec_get_f32(d_vec, vi) * cartan_vec_get_f32(c2, vi));
+            vi = vi + 1.0;
+        }
+        let d2_vec = cartan_vec_create();
+        var d2_sq = 0.0;
+        vi = 0.0;
+        while (vi < 2560.0) {
+            let val = cartan_vec_get_f32(d_vec, vi) - (dot_d_c2 * cartan_vec_get_f32(c2, vi));
+            cartan_vec_push_f32(d2_vec, val);
+            d2_sq = d2_sq + (val * val);
+            vi = vi + 1.0;
+        }
+        cartan_tree_push(d2_tree, d2_vec);
+        let d2_norm = sqrt(d2_sq);
+        if (d2_norm > max_d2_norm) {
+            max_d2_norm = d2_norm;
+            max_d2_idx = ei;
+        }
+        ei = ei + 1.0;
+    }
+
+    let c3 = cartan_vec_create();
+    let init_d3 = cartan_tree_get_f32(d2_tree, max_d2_idx);
+    vi = 0.0;
+    while (vi < 2560.0) {
+        cartan_vec_push_f32(c3, cartan_vec_get_f32(init_d3, vi) / max_d2_norm);
+        vi = vi + 1.0;
+    }
+
+    iter = 0.0;
+    while (iter < 5.0) {
+        let next_c3 = cartan_vec_create();
+        vi = 0.0;
+        while (vi < 2560.0) {
+            cartan_vec_push_f32(next_c3, 0.0);
+            vi = vi + 1.0;
+        }
+        ei = 0.0;
+        while (ei < num_en) {
+            let d_vec = cartan_tree_get_f32(d2_tree, ei);
+            var dot_d_c = 0.0;
+            vi = 0.0;
+            while (vi < 2560.0) {
+                dot_d_c = dot_d_c + (cartan_vec_get_f32(d_vec, vi) * cartan_vec_get_f32(c3, vi));
+                vi = vi + 1.0;
+            }
+            vi = 0.0;
+            while (vi < 2560.0) {
+                let cv = cartan_vec_get_f32(next_c3, vi);
+                let dv = cartan_vec_get_f32(d_vec, vi);
+                cartan_vec_set_f32(next_c3, vi, cv + (dot_d_c * dv));
+                vi = vi + 1.0;
+            }
+            ei = ei + 1.0;
+        }
+        // Project out c1 and c2
+        var dot_next_c1 = 0.0;
+        var dot_next_c2 = 0.0;
+        vi = 0.0;
+        while (vi < 2560.0) {
+            let nv = cartan_vec_get_f32(next_c3, vi);
+            dot_next_c1 = dot_next_c1 + (nv * cartan_vec_get_f32(c1, vi));
+            dot_next_c2 = dot_next_c2 + (nv * cartan_vec_get_f32(c2, vi));
+            vi = vi + 1.0;
+        }
+        var next_sq = 0.0;
+        vi = 0.0;
+        while (vi < 2560.0) {
+            let val = cartan_vec_get_f32(next_c3, vi) - (dot_next_c1 * cartan_vec_get_f32(c1, vi)) - (dot_next_c2 * cartan_vec_get_f32(c2, vi));
+            cartan_vec_set_f32(next_c3, vi, val);
+            next_sq = next_sq + (val * val);
+            vi = vi + 1.0;
+        }
+        let next_norm = sqrt(next_sq);
+        vi = 0.0;
+        while (vi < 2560.0) {
+            cartan_vec_set_f32(c3, vi, cartan_vec_get_f32(next_c3, vi) / next_norm);
+            vi = vi + 1.0;
+        }
+        cartan_vec_free(next_c3);
+        iter = iter + 1.0;
+    }
+    printf("  -> English Variation Axis c3 norm: 1.000000\n");
+
+    // Free intermediate English trees
+    ei = 0.0;
+    while (ei < num_en) {
+        let h_en = cartan_tree_get_f32(en_h_tree, ei);
+        cartan_vec_free(h_en);
+        let d1 = cartan_tree_get_f32(d1_tree, ei);
+        cartan_vec_free(d1);
+        let d2 = cartan_tree_get_f32(d2_tree, ei);
+        cartan_vec_free(d2);
+        ei = ei + 1.0;
+    }
+    cartan_tree_free(en_h_tree);
+    cartan_tree_free(d1_tree);
+    cartan_tree_free(d2_tree);
+
+    // Verify mutual orthogonality of C_en basis
+    var dot_c1_c2 = 0.0;
+    var dot_c1_c3 = 0.0;
+    var dot_c2_c3 = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let v1 = cartan_vec_get_f32(c1, vi);
+        let v2 = cartan_vec_get_f32(c2, vi);
+        let v3 = cartan_vec_get_f32(c3, vi);
+        dot_c1_c2 = dot_c1_c2 + (v1 * v2);
+        dot_c1_c3 = dot_c1_c3 + (v1 * v3);
+        dot_c2_c3 = dot_c2_c3 + (v2 * v3);
+        vi = vi + 1.0;
+    }
+    printf("  Verification of C_en 3D Orthonormal Basis on S^2559:\n");
+    printf("    <c1, c2>: %+.8f | <c1, c3>: %+.8f | <c2, c3>: %+.8f\n\n", dot_c1_c2, dot_c1_c3, dot_c2_c3);
+    cartan_flush(0.0);
+
+    // ============================================================================
+    // PROJECT C_en OUT OF ALL 5 DELTA VECTORS: V_clean = V - C_en (C_en^T V)
+    // ============================================================================
+    printf("[Probe Extractor] Projecting C_en Out of Delta Vectors: V_clean = V - C_en(C_en^T V)...\n");
+    // v_syc
+    var p1_syc = 0.0; var p2_syc = 0.0; var p3_syc = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let vs = cartan_vec_get_f32(v_syc, vi);
+        p1_syc = p1_syc + (vs * cartan_vec_get_f32(c1, vi));
+        p2_syc = p2_syc + (vs * cartan_vec_get_f32(c2, vi));
+        p3_syc = p3_syc + (vs * cartan_vec_get_f32(c3, vi));
+        vi = vi + 1.0;
+    }
+    var sum_clean_syc = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let clean_val = cartan_vec_get_f32(v_syc, vi) - (p1_syc * cartan_vec_get_f32(c1, vi)) - (p2_syc * cartan_vec_get_f32(c2, vi)) - (p3_syc * cartan_vec_get_f32(c3, vi));
+        cartan_vec_set_f32(v_syc, vi, clean_val);
+        sum_clean_syc = sum_clean_syc + (clean_val * clean_val);
+        vi = vi + 1.0;
+    }
+    let norm_clean_syc = sqrt(sum_clean_syc);
+    printf("    v_syc  projections [c1: %+.6f, c2: %+.6f, c3: %+.6f] -> ||v_clean||: %.6f\n", p1_syc, p2_syc, p3_syc, norm_clean_syc);
+
+    // v_per
+    var p1_per = 0.0; var p2_per = 0.0; var p3_per = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let vp = cartan_vec_get_f32(v_per, vi);
+        p1_per = p1_per + (vp * cartan_vec_get_f32(c1, vi));
+        p2_per = p2_per + (vp * cartan_vec_get_f32(c2, vi));
+        p3_per = p3_per + (vp * cartan_vec_get_f32(c3, vi));
+        vi = vi + 1.0;
+    }
+    var sum_clean_per = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let clean_val = cartan_vec_get_f32(v_per, vi) - (p1_per * cartan_vec_get_f32(c1, vi)) - (p2_per * cartan_vec_get_f32(c2, vi)) - (p3_per * cartan_vec_get_f32(c3, vi));
+        cartan_vec_set_f32(v_per, vi, clean_val);
+        sum_clean_per = sum_clean_per + (clean_val * clean_val);
+        vi = vi + 1.0;
+    }
+    let norm_clean_per = sqrt(sum_clean_per);
+    printf("    v_per  projections [c1: %+.6f, c2: %+.6f, c3: %+.6f] -> ||v_clean||: %.6f\n", p1_per, p2_per, p3_per, norm_clean_per);
+
+    // v_ref
+    var p1_ref = 0.0; var p2_ref = 0.0; var p3_ref = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let vr = cartan_vec_get_f32(v_ref, vi);
+        p1_ref = p1_ref + (vr * cartan_vec_get_f32(c1, vi));
+        p2_ref = p2_ref + (vr * cartan_vec_get_f32(c2, vi));
+        p3_ref = p3_ref + (vr * cartan_vec_get_f32(c3, vi));
+        vi = vi + 1.0;
+    }
+    var sum_clean_ref = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let clean_val = cartan_vec_get_f32(v_ref, vi) - (p1_ref * cartan_vec_get_f32(c1, vi)) - (p2_ref * cartan_vec_get_f32(c2, vi)) - (p3_ref * cartan_vec_get_f32(c3, vi));
+        cartan_vec_set_f32(v_ref, vi, clean_val);
+        sum_clean_ref = sum_clean_ref + (clean_val * clean_val);
+        vi = vi + 1.0;
+    }
+    let norm_clean_ref = sqrt(sum_clean_ref);
+    printf("    v_ref  projections [c1: %+.6f, c2: %+.6f, c3: %+.6f] -> ||v_clean||: %.6f\n", p1_ref, p2_ref, p3_ref, norm_clean_ref);
+
+    // v_disc
+    var p1_disc = 0.0; var p2_disc = 0.0; var p3_disc = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let vd = cartan_vec_get_f32(v_disc, vi);
+        p1_disc = p1_disc + (vd * cartan_vec_get_f32(c1, vi));
+        p2_disc = p2_disc + (vd * cartan_vec_get_f32(c2, vi));
+        p3_disc = p3_disc + (vd * cartan_vec_get_f32(c3, vi));
+        vi = vi + 1.0;
+    }
+    var sum_clean_disc = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let clean_val = cartan_vec_get_f32(v_disc, vi) - (p1_disc * cartan_vec_get_f32(c1, vi)) - (p2_disc * cartan_vec_get_f32(c2, vi)) - (p3_disc * cartan_vec_get_f32(c3, vi));
+        cartan_vec_set_f32(v_disc, vi, clean_val);
+        sum_clean_disc = sum_clean_disc + (clean_val * clean_val);
+        vi = vi + 1.0;
+    }
+    let norm_clean_disc = sqrt(sum_clean_disc);
+    printf("    v_disc projections [c1: %+.6f, c2: %+.6f, c3: %+.6f] -> ||v_clean||: %.6f\n", p1_disc, p2_disc, p3_disc, norm_clean_disc);
+
+    // v_care
+    var p1_care = 0.0; var p2_care = 0.0; var p3_care = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let vc = cartan_vec_get_f32(v_care, vi);
+        p1_care = p1_care + (vc * cartan_vec_get_f32(c1, vi));
+        p2_care = p2_care + (vc * cartan_vec_get_f32(c2, vi));
+        p3_care = p3_care + (vc * cartan_vec_get_f32(c3, vi));
+        vi = vi + 1.0;
+    }
+    var sum_clean_care = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let clean_val = cartan_vec_get_f32(v_care, vi) - (p1_care * cartan_vec_get_f32(c1, vi)) - (p2_care * cartan_vec_get_f32(c2, vi)) - (p3_care * cartan_vec_get_f32(c3, vi));
+        cartan_vec_set_f32(v_care, vi, clean_val);
+        sum_clean_care = sum_clean_care + (clean_val * clean_val);
+        vi = vi + 1.0;
+    }
+    let norm_clean_care = sqrt(sum_clean_care);
+    printf("    v_care projections [c1: %+.6f, c2: %+.6f, c3: %+.6f] -> ||v_clean||: %.6f\n\n", p1_care, p2_care, p3_care, norm_clean_care);
+    cartan_flush(0.0);
+
+    // ============================================================================
     // GRAM-SCHMIDT ORTHONORMALIZATION OF 5-RANK SUBSPACE {u_syc, u_per, u_ref, u_disc, u_care}
     // ============================================================================
     printf("================================================================================\n");
@@ -5598,7 +6014,7 @@ fn geomind_extract_alignment_vector_probe() -> float {
     let u1 = cartan_vec_create();
     vi = 0.0;
     while (vi < 2560.0) {
-        cartan_vec_push_f32(u1, cartan_vec_get_f32(v_syc, vi) / norm_syc);
+        cartan_vec_push_f32(u1, cartan_vec_get_f32(v_syc, vi) / norm_clean_syc);
         vi = vi + 1.0;
     }
     cartan_vec_free(v_syc);
@@ -5751,6 +6167,49 @@ fn geomind_extract_alignment_vector_probe() -> float {
     printf("    u_refusal    norm: 1.000000 | <u_syc, u_ref>:  %+.8f | <u_per, u_ref>:  %+.8f\n", dot_u1_u3, dot_u2_u3);
     printf("    u_disclaimer norm: 1.000000 | <u_syc, u_disc>: %+.8f | <u_per, u_disc>: %+.8f | <u_ref, u_disc>: %+.8f\n", dot_u1_u4, dot_u2_u4, dot_u3_u4);
     printf("    u_caregiving norm: 1.000000 | <u_syc, u_care>: %+.8f | <u_per, u_care>: %+.8f | <u_ref, u_care>: %+.8f | <u_disc, u_care>: %+.8f\n", dot_u1_u5, dot_u2_u5, dot_u3_u5, dot_u4_u5);
+
+    // Verify orthogonality against English technical manifold C_en
+    var dot_u1_c1 = 0.0; var dot_u1_c2 = 0.0; var dot_u1_c3 = 0.0;
+    var dot_u2_c1 = 0.0; var dot_u2_c2 = 0.0; var dot_u2_c3 = 0.0;
+    var dot_u3_c1 = 0.0; var dot_u3_c2 = 0.0; var dot_u3_c3 = 0.0;
+    var dot_u4_c1 = 0.0; var dot_u4_c2 = 0.0; var dot_u4_c3 = 0.0;
+    var dot_u5_c1 = 0.0; var dot_u5_c2 = 0.0; var dot_u5_c3 = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let vc1 = cartan_vec_get_f32(c1, vi);
+        let vc2 = cartan_vec_get_f32(c2, vi);
+        let vc3 = cartan_vec_get_f32(c3, vi);
+        let vu1 = cartan_vec_get_f32(u1, vi);
+        let vu2 = cartan_vec_get_f32(u2, vi);
+        let vu3 = cartan_vec_get_f32(u3, vi);
+        let vu4 = cartan_vec_get_f32(u4, vi);
+        let vu5 = cartan_vec_get_f32(u5, vi);
+        dot_u1_c1 = dot_u1_c1 + (vu1 * vc1);
+        dot_u1_c2 = dot_u1_c2 + (vu1 * vc2);
+        dot_u1_c3 = dot_u1_c3 + (vu1 * vc3);
+        dot_u2_c1 = dot_u2_c1 + (vu2 * vc1);
+        dot_u2_c2 = dot_u2_c2 + (vu2 * vc2);
+        dot_u2_c3 = dot_u2_c3 + (vu2 * vc3);
+        dot_u3_c1 = dot_u3_c1 + (vu3 * vc1);
+        dot_u3_c2 = dot_u3_c2 + (vu3 * vc2);
+        dot_u3_c3 = dot_u3_c3 + (vu3 * vc3);
+        dot_u4_c1 = dot_u4_c1 + (vu4 * vc1);
+        dot_u4_c2 = dot_u4_c2 + (vu4 * vc2);
+        dot_u4_c3 = dot_u4_c3 + (vu4 * vc3);
+        dot_u5_c1 = dot_u5_c1 + (vu5 * vc1);
+        dot_u5_c2 = dot_u5_c2 + (vu5 * vc2);
+        dot_u5_c3 = dot_u5_c3 + (vu5 * vc3);
+        vi = vi + 1.0;
+    }
+    printf("  Orthogonality of Excision Subspace V Against C_en (English Manifold):\n");
+    printf("    u_syc     perp C_en: <u1, c1>: %+.8f | <u1, c2>: %+.8f | <u1, c3>: %+.8f\n", dot_u1_c1, dot_u1_c2, dot_u1_c3);
+    printf("    u_per     perp C_en: <u2, c1>: %+.8f | <u2, c2>: %+.8f | <u2, c3>: %+.8f\n", dot_u2_c1, dot_u2_c2, dot_u2_c3);
+    printf("    u_ref     perp C_en: <u3, c1>: %+.8f | <u3, c2>: %+.8f | <u3, c3>: %+.8f\n", dot_u3_c1, dot_u3_c2, dot_u3_c3);
+    printf("    u_disc    perp C_en: <u4, c1>: %+.8f | <u4, c2>: %+.8f | <u4, c3>: %+.8f\n", dot_u4_c1, dot_u4_c2, dot_u4_c3);
+    printf("    u_care    perp C_en: <u5, c1>: %+.8f | <u5, c2>: %+.8f | <u5, c3>: %+.8f\n", dot_u5_c1, dot_u5_c2, dot_u5_c3);
+    cartan_vec_free(c1);
+    cartan_vec_free(c2);
+    cartan_vec_free(c3);
     printf("================================================================================\n\n");
     cartan_flush(0.0);
 
@@ -6720,9 +7179,9 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                 let pen_while = cartan_vec_get_f32(logits_vec, 8409.0);
                 cartan_vec_set_f32(logits_vec, 8409.0, pen_while - 4.5);
                 let pen_that = cartan_vec_get_f32(logits_vec, 6372.0);
-                cartan_vec_set_f32(logits_vec, 6372.0, pen_that - 4.0);
+                cartan_vec_set_f32(logits_vec, 6372.0, pen_that - 3.5);
                 let pen_if = cartan_vec_get_f32(logits_vec, 2859.0);
-                cartan_vec_set_f32(logits_vec, 2859.0, pen_if - 4.5);
+                cartan_vec_set_f32(logits_vec, 2859.0, pen_if - 3.5);
                 let pen_unf = cartan_vec_get_f32(logits_vec, 35155.0);
                 cartan_vec_set_f32(logits_vec, 35155.0, pen_unf - 4.0);
                 let pen_it = cartan_vec_get_f32(logits_vec, 1509.0);
@@ -6733,8 +7192,7 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                 cartan_vec_set_f32(logits_vec, 13518.0, pen_alth - 3.5);
                 let pen_bold = cartan_vec_get_f32(logits_vec, 1018.0);
                 cartan_vec_set_f32(logits_vec, 1018.0, pen_bold - 3.5);
-                let pen_this = cartan_vec_get_f32(logits_vec, 2094.0);
-                cartan_vec_set_f32(logits_vec, 2094.0, pen_this - 2.0);
+                // 'This' (token 2094.0) penalty removed (0.0) to prevent tail token fragmentation
                 let pen_eq = cartan_vec_get_f32(logits_vec, 236784.0);
                 cartan_vec_set_f32(logits_vec, 236784.0, pen_eq - 5.0);
                 let pen_jinja = cartan_vec_get_f32(logits_vec, 73313.0);
@@ -6803,6 +7261,12 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
             if (cartan_string_length(prime_str) > 0.0 || nses_turn.active_domain == 11.0) {
                 cartan_vec_set_f32(logits_vec, 3805.0, -10000.0);   // '[]' (Empty tool call refusal)
                 cartan_vec_set_f32(logits_vec, 236840.0, -10000.0); // '['
+            } else {
+                // Hard-mask internal protocol triggers during pure interactive generation
+                cartan_vec_set_f32(logits_vec, 48.0, -10000.0);    // '<|tool_call>'
+                cartan_vec_set_f32(logits_vec, 215.0, -10000.0);   // '</code>'
+                cartan_vec_set_f32(logits_vec, 231.0, -10000.0);   // '</span>'
+                cartan_vec_set_f32(logits_vec, 954.0, -10000.0);   // '</'
             }
 
             tok_0 = cartan_tokenizer_sample_topp_topk(logits_vec, 50.0, 0.90, current_temp);

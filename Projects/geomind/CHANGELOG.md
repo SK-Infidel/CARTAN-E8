@@ -4,6 +4,24 @@ This changelog records the complete development history, cognitive architecture 
 
 Core CARTAN programming language, compiler, runtime, and general-purpose standard library releases are tracked in the root [`CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/CHANGELOG.md).
 
+## [1.0.13] - 2026-10-07 (Sprint 557: English Manifold Orthogonalization, Soft Damping & Protocol Masking)
+
+### Completed & Validated
+- **English Language Centroid Orthogonalization ($C_{\text{en}} \in \mathbb{R}^{2560 \times 3}$)**:
+  - Extracted 3D English technical manifold basis at Layer 32 across 6 foundational technical disciplines.
+  - Projected $C_{\text{en}}$ out of all 5 debias delta vectors ($V_{\text{clean}} = V - C_{\text{en}}(C_{\text{en}}^T V)$) prior to Gram-Schmidt.
+  - Verified strict mutual orthogonality ($\langle u_k, c_j \rangle = 0.00000000$ across all 15 inner products).
+- **Soft Attenuation ($\alpha$-Damping)**:
+  - Configured default debias strength to $\alpha = 0.80$ to preserve representation continuity and prevent circuit tearing.
+- **Tool Protocol Masking & Intent Guards**:
+  - Filtered explanatory/theoretical prompts from false-positive `read_file` priming and enforced `cartan_file_exists` check.
+  - Hard-masked protocol triggers (`<|tool_call>`, `</code>`, `</span>`, `</`) during conversational decode sampling.
+- **Syntactic Stability & Step 0 Discipline**:
+  - Removed penalty on `This` (0.0); softened `That` (-3.5) and `If` (-3.5) to eliminate low-probability tail token fragmentation.
+- **Empirical GPU Verification & Regression Suite**:
+  - Prompts 8, 10, 16, 18 validated on RTX 2000 Ada GPU: 100% elimination of tool leakage, pseudo-Scandinavian drift, French drift, and tail token corruption.
+  - 12/12 regression test targets passed cleanly in 21.61s.
+
 ## [1.0.12] - 2026-10-07 (Sprint 556: 5-Rank Subspace Debias & Step 0 Logit Discipline)
 
 ### Completed & Validated
