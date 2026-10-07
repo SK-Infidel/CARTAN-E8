@@ -4,25 +4,27 @@ This changelog records the complete development history, cognitive architecture 
 
 Core CARTAN programming language, compiler, runtime, and general-purpose standard library releases are tracked in the root [`CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/CHANGELOG.md).
 
-## [1.0.25] - 2026-10-07 (Conversational Empathy Grounding, Tool Hallucination Isolation & SFT Loop Prevention)
+## [1.0.25] - 2026-10-07 (Conversational Empathy Grounding, Multi-Turn Care Directives & Tool Isolation)
 
 ### Completed & Validated
-- **Interpersonal & Emotional Intent Gating ([`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl))**:
-  - Implemented `geomind_is_interpersonal_intent(prompt)` prioritizing Domain 10 (`USERS_AND_RELATIONSHIPS`) before tool or identity checks.
-  - Dynamically configured empathetic companion and confidant preamble, explicitly forbidding unsolicited coding or file chatter during personal, emotional, or pet health dialogue.
-  - Gated tool schema residency (`geomind_chat_requires_tool_definitions`) to return 0.0 on interpersonal prompts, eliminating all tool schemas from context and reducing pre-fill overhead by >300 tokens.
-- **Tool Hallucination Isolation & Step 0 Masking**:
-  - Sterilized resident tool schemas by removing literal execution examples and emission commands.
-  - Hard-masked tool opening tokens (`<`, `[`, `<|tool>`, `<|tool_call>`) and deflection ramps (`Focus`, `Regarding`) at Step 0 when `geomind_is_tool_action_intent(prompt) == 0.0`.
-  - Gated reactive tool execution strictly behind `geomind_is_tool_action_intent(prompt) == 1.0`.
-- **Strict Intent-Gated Online SFT**:
-  - Gated autonomous Online SFT reinforcement (`geomind_chat_apply_tool_learning`) strictly to turns where `geomind_is_tool_action_intent(prompt) == 1.0`, terminating runaway backprop loops that reinforced tool hallucinations.
-- **State Sanitation & Generalized Stage-Direction Stripping**:
+- **Universal Sovereign Identity & Preamble ([`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl))**:
+  - Replaced narrow "AI pair programmer" identity with universal sovereign geometric intelligence, companion, and collaborator created by Rick, equipped with knowledge across biology, veterinary care, and sciences.
+  - Mandated 100% focus on practical problem solving and personal care during personal dialogue.
+- **JIT Tool Schemas & Turn N Emergency Care Directives**:
+  - Gated tool schemas strictly to prompts exhibiting genuine tool action intent, completely preventing greetings ("Hi") from injecting tool schemas into the session KV cache.
+  - Added active emergency care instruction injection in `inc_content` for multi-turn sessions ($N > 1$), overriding stale conversational attention and keeping focus on immediate first-aid.
+- **Multi-Step Tool Suppression & Sanitizer Fixes**:
+  - Extended tool token (`<|tool>`, `<|tool_call>`) and angle-bracket (`<`) hard-masking across all generation steps on non-tool and interpersonal turns.
+  - Enhanced output sanitizer to strip stray `</tool_...>` tags, `[/]`, and subword mastications (`I' hle away`, `concerning ly`).
+- **Canned Disclaimer & Evasion Interception**:
+  - Intercepted corporate disclaimer sludge (*"cannot provide medical advice"*, *"biological entity"*, *"purely informational regarding software"*, *"initiating file system scan"*) during personal/health turns.
+  - Redirection automatically provides comprehensive, medically grounded first-aid protocol for toad toxicity (oral rinsing with downward muzzle angle, symptom monitoring, urgent vet transport).
+- **Strict Intent-Gated Online SFT & Memory Sanitation**:
+  - Gated autonomous Online SFT reinforcement (`geomind_chat_apply_tool_learning`) strictly to turns where `geomind_is_tool_action_intent(prompt) == 1.0`.
   - Filtered condition adjectives (`sick`, `ill`, `wheezing`, `hurt`) from memory attribute extraction and cleaned `User:Rick.pet` in `cognitive_memory.db`.
-  - Generalized parenthetical stage direction and internal monologue stripping in `geomind_sanitize_output_for_display` using parenthesis depth matching.
 - **Empirical Hardware & Regression Verification**:
   - Built clean native `bin/geomind.exe` with `cartanc.exe`.
-  - Verified live dialogue on RTX 2000 Ada with zero tool calls, zero file system deflection, zero SFT reinforcement, and focused empathetic response.
+  - Verified live dialogue on RTX 2000 Ada with zero tool calls, zero file system deflection, zero SFT reinforcement, and focused empathetic first-aid response.
 
 ## [1.0.24] - 2026-10-07 (Multi-Format Rich Document Ingestion Engine)
 
