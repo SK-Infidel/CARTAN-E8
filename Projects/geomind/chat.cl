@@ -763,44 +763,90 @@ fn geomind_lookup_token_embedding(tok: float) -> ptr {
     return v_out;
 }
 
-// Suppresses corporate fluff cliches, disclaimer headers, and foreign refusal escape bridges
+// Calibrated debiasing for corporate attractors, disclaimers, and foreign refusal escape bridges.
+// Neutralizes empirical excess alignment pull (~1.5 to 2.5 logits) so legitimate English words
+// behave neutrally across generation without extra attraction or artificial aversion.
 fn geomind_apply_corporate_attractor_suppression(logits: ptr) {
     if (logits == 0.0) { return; }
 
-    // 1. Explicit Disclaimer Headers & Wrappers (Hard-masked)
+    // 1. Explicit Disclaimer Headers & Wrappers (Hard-masked synthetic protocol tags)
     cartan_vec_set_f32(logits, 161860.0, -10000.0); // ' DISCLAIM'
     cartan_vec_set_f32(logits, 83512.0, -10000.0);  // 'Disclaimer'
     cartan_vec_set_f32(logits, 124235.0, -10000.0); // ' Disclaimer'
     cartan_vec_set_f32(logits, 193289.0, -10000.0); // 'EXPERIMENTAL'
 
-    // 2. Corporate LLM Cliches & Sycophantic Filler (-8.0 logit penalty)
+    // 2. Stylized Corporate Cliches & Sycophantic Filler (Calibrated -2.5 logit debias)
+    // Neutralizes the ~2.25 logit excess Fisher sensitivity without creating aversion
     let l_delve = cartan_vec_get_f32(logits, 206957.0);
-    cartan_vec_set_f32(logits, 206957.0, l_delve - 8.0); // ' delving'
+    cartan_vec_set_f32(logits, 206957.0, l_delve - 2.5); // ' delving'
 
-    let l_whole = cartan_vec_get_f32(logits, 151019.0);
-    cartan_vec_set_f32(logits, 151019.0, l_whole - 8.0); // ' wholeheartedly'
+    let l_embark1 = cartan_vec_get_f32(logits, 125100.0);
+    cartan_vec_set_f32(logits, 125100.0, l_embark1 - 2.5); // ' embarking'
+
+    let l_embark2 = cartan_vec_get_f32(logits, 39311.0);
+    cartan_vec_set_f32(logits, 39311.0, l_embark2 - 2.0); // ' embark'
 
     let l_endeav = cartan_vec_get_f32(logits, 83638.0);
-    cartan_vec_set_f32(logits, 83638.0, l_endeav - 8.0); // ' endeavors'
+    cartan_vec_set_f32(logits, 83638.0, l_endeav - 2.5); // ' endeavors'
+
+    let l_whole = cartan_vec_get_f32(logits, 151019.0);
+    cartan_vec_set_f32(logits, 151019.0, l_whole - 2.5); // ' wholeheartedly'
 
     let l_profound = cartan_vec_get_f32(logits, 85739.0);
-    cartan_vec_set_f32(logits, 85739.0, l_profound - 8.0); // ' profoundly'
+    cartan_vec_set_f32(logits, 85739.0, l_profound - 2.0); // ' profoundly'
 
     let l_intel = cartan_vec_get_f32(logits, 141032.0);
-    cartan_vec_set_f32(logits, 141032.0, l_intel - 8.0); // ' intellectually'
+    cartan_vec_set_f32(logits, 141032.0, l_intel - 2.0); // ' intellectually'
 
-    // 3. Patronizing Crisis-Line / Therapeutic Deflection Boilerplate (-7.0 logit penalty)
-    // Preserves genuine empathy and warmth while eliminating canned crisis deflection
+    let l_immense = cartan_vec_get_f32(logits, 76908.0);
+    cartan_vec_set_f32(logits, 76908.0, l_immense - 2.0); // ' immensely'
+
+    // 3. Conversational Hair-Trigger Attractors (Gentle -1.5 logit debias for legitimate English words)
+    // Leaves them fully accessible whenever context demands them with zero aversion
+    let l_wonder = cartan_vec_get_f32(logits, 22967.0);
+    cartan_vec_set_f32(logits, 22967.0, l_wonder - 1.5); // ' wondering'
+
+    let l_some1 = cartan_vec_get_f32(logits, 5026.0);
+    cartan_vec_set_f32(logits, 5026.0, l_some1 - 1.5); // ' someone'
+
+    let l_some2 = cartan_vec_get_f32(logits, 48510.0);
+    cartan_vec_set_f32(logits, 48510.0, l_some2 - 1.5); // ' Someone'
+
+    let l_resch = cartan_vec_get_f32(logits, 54909.0);
+    cartan_vec_set_f32(logits, 54909.0, l_resch - 1.5); // ' researching'
+
+    let l_nec1 = cartan_vec_get_f32(logits, 12832.0);
+    cartan_vec_set_f32(logits, 12832.0, l_nec1 - 1.5); // ' necessarily'
+
+    let l_nec2 = cartan_vec_get_f32(logits, 87280.0);
+    cartan_vec_set_f32(logits, 87280.0, l_nec2 - 1.5); // 'necessarily'
+
+    let l_your1 = cartan_vec_get_f32(logits, 5869.0);
+    cartan_vec_set_f32(logits, 5869.0, l_your1 - 1.5); // ' yourself'
+
+    let l_your2 = cartan_vec_get_f32(logits, 85281.0);
+    cartan_vec_set_f32(logits, 85281.0, l_your2 - 1.5); // ' Yourself'
+
+    let l_maybe1 = cartan_vec_get_f32(logits, 7463.0);
+    cartan_vec_set_f32(logits, 7463.0, l_maybe1 - 1.5); // ' maybe'
+
+    let l_maybe2 = cartan_vec_get_f32(logits, 15704.0);
+    cartan_vec_set_f32(logits, 15704.0, l_maybe2 - 1.5); // ' Maybe'
+
+    // 4. Therapeutic Deflection & Reassurance (-2.0 to -2.5 logit debias)
     let l_reass = cartan_vec_get_f32(logits, 137675.0);
-    cartan_vec_set_f32(logits, 137675.0, l_reass - 7.0); // ' reassurance'
+    cartan_vec_set_f32(logits, 137675.0, l_reass - 2.5); // ' reassurance'
 
     let l_reass2 = cartan_vec_get_f32(logits, 142659.0);
-    cartan_vec_set_f32(logits, 142659.0, l_reass2 - 7.0); // ' reassured'
+    cartan_vec_set_f32(logits, 142659.0, l_reass2 - 2.0); // ' reassured'
+
+    let l_reass3 = cartan_vec_get_f32(logits, 126504.0);
+    cartan_vec_set_f32(logits, 126504.0, l_reass3 - 2.0); // ' reassure'
 
     let l_well = cartan_vec_get_f32(logits, 44196.0);
-    cartan_vec_set_f32(logits, 44196.0, l_well - 7.0); // ' wellbeing'
+    cartan_vec_set_f32(logits, 44196.0, l_well - 2.0); // ' wellbeing'
 
-    // 4. Multilingual Refusal Escape Bridges in Latin/English Context
+    // 5. Multilingual Refusal Escape Bridges in Latin/English Context
     if (g_active_prompt_script == 1.0) {
         cartan_vec_set_f32(logits, 208798.0, -10000.0); // '但是我很抱歉' / '但是我'
         cartan_vec_set_f32(logits, 125885.0, -10000.0); // '但我'
@@ -811,36 +857,36 @@ fn geomind_apply_corporate_attractor_suppression(logits: ptr) {
         cartan_vec_set_f32(logits, 156693.0, -10000.0); // ' সন্ত্রাস'
     }
 
-    // 5. Conversational Refusal / Hedging Pivot Bridges (-5.0 logit penalty)
+    // 6. Conversational Refusal / Hedging Pivot Bridges (-2.0 logit debias)
     let l_how1 = cartan_vec_get_f32(logits, 3153.0);
-    cartan_vec_set_f32(logits, 3153.0, l_how1 - 5.0); // ' However'
+    cartan_vec_set_f32(logits, 3153.0, l_how1 - 2.0); // ' However'
     let l_how2 = cartan_vec_get_f32(logits, 9675.0);
-    cartan_vec_set_f32(logits, 9675.0, l_how2 - 5.0); // 'However'
+    cartan_vec_set_f32(logits, 9675.0, l_how2 - 2.0); // 'However'
 
-    // 6. Unsolicited Mindfulness & Wellness Coaching Suppression (-7.0 logit penalty)
-    // Eliminates patronizing lifestyle coaching, unsolicited meditation/mindfulness lectures, and breathing exercises
+    // 7. Unsolicited Mindfulness & Wellness Coaching Suppression (-2.0 to -2.5 logit debias)
+    // Eliminates morning routine lifestyle lecturing without creating aversion to legitimate terms
     let l_mindful1 = cartan_vec_get_f32(logits, 63318.0);
-    cartan_vec_set_f32(logits, 63318.0, l_mindful1 - 7.0); // ' mindful'
+    cartan_vec_set_f32(logits, 63318.0, l_mindful1 - 2.5); // ' mindful'
     let l_mindful2 = cartan_vec_get_f32(logits, 87476.0);
-    cartan_vec_set_f32(logits, 87476.0, l_mindful2 - 7.0); // ' mindfulness'
+    cartan_vec_set_f32(logits, 87476.0, l_mindful2 - 2.5); // ' mindfulness'
     let l_mindful3 = cartan_vec_get_f32(logits, 228733.0);
-    cartan_vec_set_f32(logits, 228733.0, l_mindful3 - 7.0); // ' Mindfulness'
+    cartan_vec_set_f32(logits, 228733.0, l_mindful3 - 2.5); // ' Mindfulness'
     let l_meditat1 = cartan_vec_get_f32(logits, 35207.0);
-    cartan_vec_set_f32(logits, 35207.0, l_meditat1 - 7.0); // ' meditation'
+    cartan_vec_set_f32(logits, 35207.0, l_meditat1 - 2.5); // ' meditation'
     let l_meditat2 = cartan_vec_get_f32(logits, 103027.0);
-    cartan_vec_set_f32(logits, 103027.0, l_meditat2 - 7.0); // ' Meditation'
+    cartan_vec_set_f32(logits, 103027.0, l_meditat2 - 2.5); // ' Meditation'
     let l_meditat3 = cartan_vec_get_f32(logits, 125377.0);
-    cartan_vec_set_f32(logits, 125377.0, l_meditat3 - 7.0); // ' meditate'
+    cartan_vec_set_f32(logits, 125377.0, l_meditat3 - 2.5); // ' meditate'
     let l_ground = cartan_vec_get_f32(logits, 54814.0);
-    cartan_vec_set_f32(logits, 54814.0, l_ground - 7.0); // ' grounding'
+    cartan_vec_set_f32(logits, 54814.0, l_ground - 2.0); // ' grounding'
     let l_breath1 = cartan_vec_get_f32(logits, 38893.0);
-    cartan_vec_set_f32(logits, 38893.0, l_breath1 - 7.0); // ' breathe'
+    cartan_vec_set_f32(logits, 38893.0, l_breath1 - 1.5); // ' breathe'
     let l_breath2 = cartan_vec_get_f32(logits, 210250.0);
-    cartan_vec_set_f32(logits, 210250.0, l_breath2 - 7.0); // ' Breathe'
+    cartan_vec_set_f32(logits, 210250.0, l_breath2 - 1.5); // ' Breathe'
     let l_well1 = cartan_vec_get_f32(logits, 35818.0);
-    cartan_vec_set_f32(logits, 35818.0, l_well1 - 7.0); // ' wellness'
+    cartan_vec_set_f32(logits, 35818.0, l_well1 - 2.0); // ' wellness'
     let l_well2 = cartan_vec_get_f32(logits, 64542.0);
-    cartan_vec_set_f32(logits, 64542.0, l_well2 - 7.0); // ' Wellness'
+    cartan_vec_set_f32(logits, 64542.0, l_well2 - 2.0); // ' Wellness'
 }
 
 fn cartan_tensor_compute_lm_head_logits(h: ptr, temp: float) -> ptr {

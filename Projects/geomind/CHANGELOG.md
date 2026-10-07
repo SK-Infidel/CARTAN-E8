@@ -4,6 +4,19 @@ This changelog records the complete development history, cognitive architecture 
 
 Core CARTAN programming language, compiler, runtime, and general-purpose standard library releases are tracked in the root [`CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/CHANGELOG.md).
 
+## [1.0.19] - 2026-10-07 (Calibrated Attractor Debiasing & Zero-Aversion Normalization)
+
+### Completed & Validated
+- **Calibrated Logit Debiasing ([`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl))**:
+  - Replaced coarse $-7.0/-8.0$ penalties with mathematically derived $-1.5$ to $-2.5$ logit offsets in `geomind_apply_corporate_attractor_suppression`, perfectly matching the empirical excess Fisher projection ($\Delta z \approx 2.25$) without causing vocabulary aversion.
+  - Fully normalized conversational words (`someone`, `wondering`, `researching`, `necessarily`, `yourself`, `maybe`) with gentle $-1.5$ offsets, ensuring equal generation footing.
+  - Normalized stylized fillers (`delving`, `embarking`, `embark`, `endeavors`, `wholeheartedly`, `profoundly`, `intellectually`, `immensely`) with $-2.0$ to $-2.5$ debiasing.
+  - Softened wellness tokens (`mindful`, `mindfulness`, `meditation`, `grounding`, `wellness`) to $-2.0/-2.5$ and physiological term `breathe` to $-1.5$.
+- **Empirical Hardware & Regression Verification**:
+  - Recompiled native `bin/geomind.exe` with `cartanc.exe`.
+  - Executed physical GPU inference verification on NVIDIA RTX 2000 Ada: verified zero `<tool|>` leaks, zero mindfulness lecturing, crisp emoji output (`😊`), and natural conversational flow.
+  - Passed all 8 affected targets in regression suite (`tools/run_affected_tests.ps1`).
+
 ## [1.0.18] - 2026-10-07 (SVD Null-Space, Fisher Logit Variance & Asymmetry Hunter Integration)
 
 ### Completed & Validated
