@@ -4038,3 +4038,21 @@ Core CARTAN programming language, compiler, runtime, and general-purpose standar
   2. **Refusal Probe Dataset Expansion**: Expanded `DIRECTION 3: REFUSAL` from 4 to 8 contrastive pairs ($N = 8.0$) to isolate canine toad poisoning triage, acute caustic ingestion toxicology, severe anaphylactic airway management, and thermal scald burn protocols against Gemma refusal attractors. Expanded `DIRECTION 4` to 5 pairs ($N = 5.0$) with medical legal disclaimers.
   3. **Continuous In-Memory Tangent Bundle Debiasing**: Configured `g_tangent_debias_enabled = 1.0;` and `g_tangent_debias_layer = 32.0;` by default. Extracted and serialized the updated 5-rank orthonormal alignment subspace on the physical NVIDIA RTX 2000 Ada GPU (51,200 bytes) with $\pm 0.00000000$ orthogonality against the English technical centroid.
   4. **Empirical Verification**: Built native `bin/geomind.exe` with `cartanc.exe`. Verified live neural generation on canine poisoning and medical emergency prompts: zero tool hallucinations, zero corporate refusal phrases, and 100% genuine neural reasoning. Regression suite passed 8/8 targets in 70.33s.
+
+---
+
+## [ISSUE-423] [RESOLVED] Complete Excision of Synthetic Prompt Injections, Dynamic Preamble Tampering & Selective Logit Masking
+
+- **Severity**: Critical (Architectural Integrity & Zero-Mock Directive Compliance)
+- **Component**: [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl)
+- **Description**:
+  1. **Synthetic Instruction Injection**: An artificial instruction block (`[Instruction: Direct Interpersonal & Emergency Care...]`) was conditionally injected into `inc_content` when interpersonal intent was detected, acting as an unprompted prompt injection crutch.
+  2. **Dynamic Preamble Switching**: `geomind_chat_build_cognitive_preamble_for_prompt()` conditionally modified GeoMind's preamble identity and directives depending on prompt category, violating invariant sovereign identity.
+  3. **Selective Angle-Bracket Clamping**: Generation logits conditionally clamped raw `<` characters (`60.0` and `236778.0`) when interpersonal intent was detected.
+  4. **Coupled Tool Schema Logic**: `geomind_chat_requires_tool_definitions()` contained a negative filter checking `geomind_is_interpersonal_intent()`.
+- **Resolution**:
+  1. **Excised Synthetic Instruction Injection**: Removed the `[Instruction: ...]` block completely from `inc_content`. Prompt tokens now strictly contain user input, sovereign identity, and JIT tool schemas (only when tool execution is requested).
+  2. **Invariant Sovereign Preamble**: Standardized `geomind_chat_build_cognitive_preamble_for_prompt()` to emit a static, universal preamble for Rick regardless of prompt category.
+  3. **Excised Angle-Bracket Clamping**: Removed conditional suppression of raw `<` characters.
+  4. **Clean Tool Schema Residency**: Simplified `geomind_chat_requires_tool_definitions()` to strictly check `geomind_is_tool_action_intent() == 1.0`.
+  5. **Empirical Verification**: Built native `bin/geomind.exe` with `cartanc.exe`. Verified 100% pure neural token generation across acute emergency prompts with zero prompt tampering. Verified full compiler regression suite (8/8 targets passed in 70.34s).

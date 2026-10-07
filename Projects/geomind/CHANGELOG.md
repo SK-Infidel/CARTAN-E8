@@ -4,6 +4,21 @@ This changelog records the complete development history, cognitive architecture 
 
 Core CARTAN programming language, compiler, runtime, and general-purpose standard library releases are tracked in the root [`CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/CHANGELOG.md).
 
+## [1.0.27] - 2026-10-07 (Prompt Injection & Dynamic Preamble Excision - Total Invariance)
+
+### Completed & Validated
+- **Zero Prompt Injection Enforcement ([`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl))**:
+  - Completely excised synthetic `[Instruction: Direct Interpersonal & Emergency Care...]` injection block from `inc_content`. Prompt tokens now strictly reflect authentic user dialogue, static sovereign identity, and JIT tool schemas when requested.
+- **Invariant Sovereign Cognitive Preamble**:
+  - Eliminated conditional system prompt branching in `geomind_chat_build_cognitive_preamble_for_prompt()`. GeoMind's preamble remains static, universal, and invariant across all interactions.
+- **Selective Masking & Negative Tool Filter Elimination**:
+  - Removed prompt-conditional raw `<` logit clamping.
+  - Simplified `geomind_chat_requires_tool_definitions()` to gate tool schemas exclusively on authentic tool action intent (`geomind_is_tool_action_intent() == 1.0`).
+- **Empirical Hardware & Regression Verification**:
+  - Native compilation cleanly verified with `cartanc.exe` (170,650 LLVM IR instructions).
+  - Physical GPU inference on acute canine poisoning prompt produced 100% genuine neural token generation addressing anaphylactic distress, vomiting, and mucosal clearing with zero prompt scaffolding.
+  - Full compiler regression suite passed 8/8 targets in 70.34s.
+
 ## [1.0.26] - 2026-10-07 (Genuine Subspace Excision & Zero-Mock Protocol Restoration)
 
 ### Completed & Validated

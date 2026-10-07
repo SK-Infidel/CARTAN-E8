@@ -3295,11 +3295,7 @@ fn geomind_chat_build_cognitive_preamble_for_prompt(db: ptr, prompt: string) -> 
 
     var pre = "You are ";
     pre = cartan_string_concat(pre, s_name);
-    if (geomind_is_interpersonal_intent(prompt) == 1.0) {
-        pre = cartan_string_concat(pre, ", an empathetic companion, confidant, and sovereign intelligence created by ");
-    } else {
-        pre = cartan_string_concat(pre, ", a sovereign geometric intelligence, universal companion, and collaborator created by ");
-    }
+    pre = cartan_string_concat(pre, ", a sovereign geometric intelligence, universal companion, and collaborator created by ");
     pre = cartan_string_concat(pre, s_creator);
     pre = cartan_string_concat(pre, ". You possess universal knowledge across physical sciences, biology, veterinary care, engineering, and practical life problem-solving.\n");
 
@@ -3318,13 +3314,9 @@ fn geomind_chat_build_cognitive_preamble_for_prompt(db: ptr, prompt: string) -> 
         }
         pre = cartan_string_concat(pre, ". Speak directly to ");
         pre = cartan_string_concat(pre, display_name);
-        if (geomind_is_interpersonal_intent(prompt) == 1.0) {
-            pre = cartan_string_concat(pre, " in the first person (\"I\") with deep warmth, genuine empathy, and immediate practical care. Focus 100% on their situation, pet, and well-being. Never mention programming, files, or technical tasks.\n");
-        } else {
-            pre = cartan_string_concat(pre, " in the first person (\"I\") with warmth, natural conversational flow, and practical helpfulness. Never claim your capabilities are limited to software or code. Never echo prompt instructions or speak about ");
-            pre = cartan_string_concat(pre, display_name);
-            pre = cartan_string_concat(pre, " in the third person.\n");
-        }
+        pre = cartan_string_concat(pre, " in the first person (\"I\") with warmth, natural conversational flow, genuine empathy, and practical helpfulness. Never claim your capabilities are limited to software or code. Never echo prompt instructions or speak about ");
+        pre = cartan_string_concat(pre, display_name);
+        pre = cartan_string_concat(pre, " in the third person.\n");
 
         if (cartan_string_length(p_name) > 0.0) { free(p_name); }
         if (cartan_string_length(p_rel) > 0.0) { free(p_rel); }
@@ -3553,9 +3545,6 @@ fn geomind_chat_get_tool_action_prime(prompt: string) -> string {
 
 // Tool schema residency: Tool definitions are loaded ONLY when user prompt exhibits genuine tool action intent
 fn geomind_chat_requires_tool_definitions(prompt: string) -> float {
-    if (geomind_is_interpersonal_intent(prompt) == 1.0) {
-        return 0.0;
-    }
     if (geomind_is_tool_action_intent(prompt) == 1.0) {
         return 1.0;
     }
@@ -7511,9 +7500,7 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
 
         // Native Sovereign GeoMind Incremental User Turn
         var inc_content = "";
-        if (geomind_is_interpersonal_intent(prompt) == 1.0) {
-            inc_content = cartan_string_concat(inc_content, "[Instruction: Direct Interpersonal & Emergency Care. Immediately set aside all previous discussion of files, code, tools, or technical tasks. Rick needs direct, practical assistance for his situation (Athena / pet health / personal well-being). Provide immediate, warm, clear first-aid guidance and compassionate support. Strictly forbid any mention of files, tools, commands, or code.]\n\n");
-        } else if (geomind_chat_requires_tool_definitions(prompt) == 1.0) {
+        if (geomind_chat_requires_tool_definitions(prompt) == 1.0) {
             let tool_defs = geomind_chat_get_tool_definitions();
             inc_content = cartan_string_concat(inc_content, tool_defs);
             inc_content = cartan_string_concat(inc_content, "\n\n");
@@ -7775,10 +7762,6 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                 cartan_vec_set_f32(logits_vec, 47.0, -10000.0);
                 cartan_vec_set_f32(logits_vec, 48.0, -10000.0);       // '<|tool_call>'
                 cartan_vec_set_f32(logits_vec, 49.0, -10000.0);
-            }
-            if (geomind_is_interpersonal_intent(prompt) == 1.0) {
-                cartan_vec_set_f32(logits_vec, 60.0, -10000.0);       // '<'
-                cartan_vec_set_f32(logits_vec, 236778.0, -10000.0);   // '<'
             }
 
             if (step == 0.0) {
