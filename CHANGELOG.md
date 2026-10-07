@@ -4,6 +4,23 @@ All notable changes to the CARTAN programming language, self-hosting compiler (`
 
 In accordance with User Rule 3 and project standards, GeoMind cognitive model releases are tracked independently in [`Projects/geomind/CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/CHANGELOG.md).
 
+## [8.525.0] - 2026-10-07 (Multi-Format Rich Document Ingestion Engine)
+
+### Completed & Validated
+- **Document Extraction Engine ([`tools/document_reader.py`](file:///C:/Users/rich-/source/repos/CARTAN/tools/document_reader.py))**:
+  - Developed multi-format document reader converting binary document formats to structured Markdown.
+  - **Microsoft Word (`.docx`)**: Pure stdlib XML extraction parsing paragraph blocks, heading hierarchies (`#`, `##`, `###`), bullet list items, and full grid tables into formatted Markdown tables.
+  - **Microsoft Excel (`.xlsx`)**: Pure stdlib XML extraction parsing worksheets, resolving shared strings (`xl/sharedStrings.xml`), and emitting structured Markdown tables with headers and row boundaries.
+  - **Adobe PDF (`.pdf`)**: Integrated `pypdf` stream extractor providing metadata and paginated text blocks (`--- Page X ---`).
+- **GeoMind Tool Integration ([`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl))**:
+  - Enhanced `geomind_tool_read_file` with automatic format detection, transparently routing `.docx`, `.xlsx`, and `.pdf` files through `python tools/document_reader.py "<target>"` while preserving native direct fast-path reading for source code, plain text, and json.
+  - Extended path extraction in `geomind_extract_path_from_prompt` to recognize `.docx`, `.xlsx`, `.pdf`, and `.csv`.
+  - Updated tool schemas in `geomind_chat_get_tool_definitions` declaring multi-format document reading capabilities.
+- **Empirical Hardware & Regression Verification**:
+  - Built clean native `bin/geomind.exe` with `cartanc.exe` (170,001 LLVM IR instructions).
+  - Verified selective regression test suite: 8/8 targets passed in 66.09s (`tools/run_affected_tests.ps1 -Auto`).
+  - Empirically validated genuine extraction on `Projects/geomind/docs/research/unified_geometrodynamics.docx` from native CARTAN JIT runtime.
+
 ## [8.524.0] - 2026-10-07 (Conversational Intent Decoupling, Recency Weighting & Anti-Deflection in Multi-Turn Interactive REPL)
 
 ### Completed & Validated

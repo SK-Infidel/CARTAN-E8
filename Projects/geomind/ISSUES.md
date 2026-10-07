@@ -3971,3 +3971,28 @@ Core CARTAN programming language, compiler, runtime, and general-purpose standar
   6. Added corporate meta-sludge detection and authentic conversational recovery in `geomind_chat_generate_reply_multimodal`.
   7. Built clean native executable `bin/geomind.exe` with `cartanc.exe` (169,878 LLVM IR instructions).
   8. Verified selective regression test suite: 10/10 passed (71.01s).
+
+---
+
+## [ISSUE-420] [RESOLVED] Multi-Format Rich Document Ingestion Engine (.docx, .xlsx, .pdf)
+
+- **Severity**: Feature / Operational Capability
+- **Component**: [`tools/document_reader.py`](file:///C:/Users/rich-/source/repos/CARTAN/tools/document_reader.py), [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl)
+- **Description**:
+  1. GeoMind lacked the ability to read non-plaintext document formats such as Microsoft Word (`.docx`), Microsoft Excel (`.xlsx`), and Adobe Portable Document Format (`.pdf`). Calling `read_file` on these binary formats returned raw compressed zip or binary byte streams.
+  2. Path extraction in `geomind_extract_path_from_prompt` only recognized `.car`, `.cl`, `.c`, `.h`, `.txt`, `.md`, `.json`, and `.toml` extensions, causing document file requests without leading directory separators to be missed.
+  3. Tool schemas lacked documentation for office and publication document extraction.
+- **Resolution**:
+  1. Developed [`tools/document_reader.py`](file:///C:/Users/rich-/source/repos/CARTAN/tools/document_reader.py):
+     - **Word (`.docx`)**: Pure stdlib `zipfile` + `xml.etree.ElementTree` parser extracting document body paragraphs, heading hierarchies (`#`, `##`, `###`), bullet list items, and full grid tables formatted as Markdown.
+     - **Excel (`.xlsx`)**: Pure stdlib `zipfile` + `xml.etree.ElementTree` parser reading workbook sheets, resolving shared strings (`xl/sharedStrings.xml`), and emitting structured Markdown tables with headers and row boundaries.
+     - **PDF (`.pdf`)**: Integrated `pypdf` stream extractor providing metadata and paginated text blocks (`--- Page X ---`).
+  2. Integrated rich document dispatch into `geomind_tool_read_file`:
+     - Added extension detection for `.docx`, `.xlsx`, and `.pdf`.
+     - Automatically routes rich documents through `python tools/document_reader.py "<target>"` via `geomind_internal_exec_to_scratch`, preserving standard direct native fast-path for code and text files.
+  3. Extended `geomind_extract_path_from_prompt` to recognize `.docx`, `.xlsx`, `.pdf`, and `.csv`.
+  4. Updated permanent tool definitions schema in `geomind_chat_get_tool_definitions` declaring multi-format document reading capabilities.
+  5. Built native `bin/geomind.exe` with `cartanc.exe` (170,001 LLVM IR instructions).
+  6. Verified selective regression test suite: 8/8 passed in 66.09s (`tools/run_affected_tests.ps1 -Auto`).
+  7. Validated live extraction on `Projects/geomind/docs/research/unified_geometrodynamics.docx` from native CARTAN JIT runtime.
+

@@ -2650,8 +2650,33 @@ fn geomind_tool_read_file(path: string) -> string {
         }
     }
     g_last_tool_file_path = target;
-    let content = cartan_read_file(target);
-    let clean_content = cartan_string_replace(content, "\r\n", "\n");
+
+    // Check for rich document extensions: .docx, .xlsx, .pdf
+    let low_t = veto_string_to_lower(target);
+    var is_rich_doc = 0.0;
+    if (cartan_string_ends_with(low_t, ".docx") == 1.0 ||
+        cartan_string_ends_with(low_t, ".xlsx") == 1.0 ||
+        cartan_string_ends_with(low_t, ".pdf") == 1.0) {
+        is_rich_doc = 1.0;
+    }
+    free(low_t);
+
+    var clean_content = "";
+    if (is_rich_doc == 1.0) {
+        let doc_reader = "tools/document_reader.py";
+        if (cartan_file_exists(doc_reader) == 1.0 || cartan_file_exists("tools\\document_reader.py") == 1.0) {
+            var cmd = "python tools/document_reader.py \"";
+            cmd = cartan_string_concat(cmd, target);
+            cmd = cartan_string_concat(cmd, "\"");
+            clean_content = geomind_internal_exec_to_scratch(cmd);
+        } else {
+            clean_content = "Error: Document reader utility (tools/document_reader.py) not found.";
+        }
+    } else {
+        let content = cartan_read_file(target);
+        clean_content = cartan_string_replace(content, "\r\n", "\n");
+    }
+
     let len = cartan_string_length(clean_content);
     if (len > 65536.0) {
         let truncated = cartan_string_substring(clean_content, 0.0, 65536.0);
@@ -2953,6 +2978,10 @@ fn geomind_extract_path_from_prompt(prompt: string) -> string {
                 cartan_string_contains(clean_word, ".txt") == 1.0 ||
                 cartan_string_contains(clean_word, ".md") == 1.0 ||
                 cartan_string_contains(clean_word, ".json") == 1.0 ||
+                cartan_string_contains(clean_word, ".docx") == 1.0 ||
+                cartan_string_contains(clean_word, ".xlsx") == 1.0 ||
+                cartan_string_contains(clean_word, ".pdf") == 1.0 ||
+                cartan_string_contains(clean_word, ".csv") == 1.0 ||
                 cartan_string_contains(clean_word, ".toml") == 1.0) {
                 return clean_word;
             }
@@ -3262,9 +3291,9 @@ fn geomind_chat_build_cognitive_preamble(db: ptr) -> string {
     return geomind_chat_build_cognitive_preamble_for_prompt(db, "");
 }
 
-// Standalone tool definitions specification string (only loaded on-demand when tool intent is detected)
+// Standalone tool definitions specification string (permanently resident)
 fn geomind_chat_get_tool_definitions() -> string {
-    return " [Available Tools: read_file(path), write_file(path, content), exec_command(cmd), list_dir(path), file_exists(path), browse_web(url), read_screen(). Environment: Repository root CARTAN. GeoMind codebase is in Projects/geomind/ (main.car, chat.cl, engine.cl). Compiler in src/cartanc/. To inspect your code, list directory: <tool_call:list_dir path=\"Projects/geomind\"/> or read: <tool_call:read_file path=\"Projects/geomind/main.car\"/>. Action Directive: You have live local host access. When asked to inspect code, read files, examine directories, run terminal commands, or check git status, DO NOT output internal thoughts, preambles, or conversational refusal. Emit the tool call IMMEDIATELY: <tool_call:read_file path=\"...\"/>, <tool_call:exec_command cmd=\"...\"/>, <tool_call:list_dir path=\"...\"/>, <tool_call:file_exists path=\"...\"/>, <tool_call:browse_web url=\"...\"/>, <tool_call:read_screen/>, or <tool_call:write_file path=\"...\">CONTENT</tool_call>. The system executes the call and returns <tool_response tool=\"...\" status=\"...\">RESULT</tool_response>. Use that genuine output to answer Rick without echoing the tool response tags.]";
+    return " [Available Tools: read_file(path), write_file(path, content), exec_command(cmd), list_dir(path), file_exists(path), browse_web(url), read_screen(). Capability: read_file(path) reads source code, text, Word (.docx), Excel (.xlsx), and PDF (.pdf). Environment: Repository root CARTAN. GeoMind codebase is in Projects/geomind/ (main.car, chat.cl, engine.cl). Compiler in src/cartanc/. To inspect your code, list directory: <tool_call:list_dir path=\"Projects/geomind\"/> or read: <tool_call:read_file path=\"Projects/geomind/main.car\"/>. Action Directive: You have live local host access. When asked to inspect code, read files, examine directories, run terminal commands, or check git status, DO NOT output internal thoughts, preambles, or conversational refusal. Emit the tool call IMMEDIATELY: <tool_call:read_file path=\"...\"/>, <tool_call:exec_command cmd=\"...\"/>, <tool_call:list_dir path=\"...\"/>, <tool_call:file_exists path=\"...\"/>, <tool_call:browse_web url=\"...\"/>, <tool_call:read_screen/>, or <tool_call:write_file path=\"...\">CONTENT</tool_call>. The system executes the call and returns <tool_response tool=\"...\" status=\"...\">RESULT</tool_response>. Use that genuine output to answer Rick without echoing the tool response tags.]";
 }
 
 // Intent detector: checks whether user prompt indicates a file, terminal, web, or screen tool operation
