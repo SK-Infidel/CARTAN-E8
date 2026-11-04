@@ -1548,19 +1548,20 @@ fn main() -> float {
             let prompt = get_cli_param("-prompt", arg_count);
             let epochs = get_cli_epochs(arg_count, 5.0);
             let lr = get_cli_param_float("-lr", arg_count, 0.03);
+            let layers = get_cli_param_float("-layers", arg_count, 4.0);
             let vis = get_cli_flag_present("-visualize", arg_count);
             var corpus_text = "In pure mathematics and differential geometry, the exceptional Lie algebra E8 decomposes into the 120-dimensional orthogonal gauge algebra so(16) and the 128-dimensional Majorana-Weyl spinor representation S16+.";
             if (cartan_string_length(target) > 0.0 && cartan_file_exists(target) == 1.0) {
                 corpus_text = cartan_read_file(target);
             }
             geomind_visualizer_reset();
-            let final_act = geomind_byte_latent_train_corpus(corpus_text, epochs, lr, vis);
+            let final_act = geomind_byte_latent_train_deep_e8_corpus(corpus_text, layers, epochs, lr, vis);
             var gen_seed = "In pure mathematics";
             if (cartan_string_length(prompt) > 0.0) { gen_seed = prompt; }
-            let gen_str = geomind_byte_latent_generate(gen_seed, 48.0);
-            printf("[CARTAN-E8 Byte-Latent] Final Lagrangian Action S = %.6f | Generated: %s\n", final_act, gen_str);
+            let gen_str = geomind_byte_latent_generate_deep_e8(gen_seed, layers, 48.0);
+            printf("[CARTAN-E8 Deep Byte-Latent (L=%.0f)] Final Lagrangian Action S = %.6f | Generated: %s\n", layers, final_act, gen_str);
             if (vis == 1.0) {
-                geomind_visualizer_export_html("manifold_relaxation.html", "Byte-Latent E8 Corpus");
+                geomind_visualizer_export_html("manifold_relaxation.html", "Deep E8 Byte-Latent Stack");
                 printf("[CARTAN-E8 Visualizer] Exported manifold_relaxation.html\n");
             }
             cartan_flush(0.0);

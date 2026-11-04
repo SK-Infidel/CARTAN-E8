@@ -7,108 +7,102 @@
 
 ## Executive Summary & Architectural Mission
 
-GeoMind v1 established the CARTAN compiler, WebGPU compute shaders, 240 canonical $E_8$ root projections, 8 Lie subgroup streams, and Finsler-Randers-Sasaki (FRS) gradient clipping—currently running atop a grafted 42-layer, 262,144-token BPE backbone.
+GeoMind v1 ran atop a grafted 42-layer, `2,560-D`, `262,144`-token SentencePiece BPE Euclidean Transformer (`src/std/transformer.cl`, `Projects/geomind/chat.cl`, `Projects/geomind/train.cl`).
 
-**GeoMind v2 (`CARTAN-E8`)** transitions from a BPE-grafted hybrid to the **pure native $E_8$ + Finsler-Randers-Sasaki + Byte-Latent + Markov-Lagrangian architecture** conceived in the original GeoMind genesis specification:
-1. **Tokenizer-Free Byte-Latent Dynamic Patching (`0–255` UTF-8 Ingress/Egress)**
-2. **Explicit $120\text{-D} \oplus 128\text{-D}$ Gauge-on-Spinor Cross-Gating ($\mathfrak{e}_8 = \mathfrak{so}(16) \oplus S_{16}^+$)**
-3. **Markov-Lagrangian Principle of Least Action ($\mathcal{S} = \int (T - V)\,dt$) Training & Geodesic Inference**
-4. **Autonomous Domain-Bounded Recursive Web Crawler (`--crawl`) & Live Manifold Relaxation Telemetry (`--visualize`)**
+**GeoMind v2 (`CARTAN-E8`)** is a **complete architectural shift** replacing the BPE-grafted Euclidean Transformer with a **Sovereign Deep Multi-Layer Byte-Latent $E_8$ Gauge-Spinor Manifold Architecture**:
+1. **Stage 0 (Completed)**: Core 248-D $E_8 = \mathfrak{so}(16)_{120} \oplus S_{16}^+ \text{ (128)}$ mathematical operators, Octonion Fano forward/adjoint multiplication, $256 \times 256$ Markov transition potential, and 1-layer 248-D Byte-Latent prototype.
+2. **Stage 1 (Deep Multi-Layer $E_8$ Gauge-Spinor Manifold Backbone)**: Replace the 1-layer prototype and Euclidean SwiGLU/GQA layers with a **Deep $L$-Layer $E_8$ Manifold Stack** (`L = 16` or `24` layers, native `1,984-D = 8 x 248-D` or `248-D` per stream) where every layer has **learned Gauge connection matrices $W_{\text{gauge}}^{(\ell)} \in \mathbb{R}^{120 \times 120}$ and Spinor payload matrices $W_{\text{spinor}}^{(\ell)} \in \mathbb{R}^{128 \times 128}$** coupled via the non-associative Octonion Fano bracket $[\mathfrak{so}(16), S_{16}^+] \to S_{16}^+$.
+3. **Stage 2 (Asymmetric Finsler-Randers-Sasaki Causal Attention & $4 \times 4$ Freudenthal Magic Square MoE)**: Rewrite [`Projects/geomind/e8_attention_engine.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_attention_engine.cl) and [`Projects/geomind/moe.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/moe.cl) so causal attention scores are computed by **Finsler-Randers asymmetric geodesic distance** ($F(x, v) = \sqrt{g_{ij} v^i v^j} + \tilde{\beta}_i v^i$) rather than symmetric Euclidean dot products, and every layer routes across the **16 Freudenthal-Tits Magic Square experts** $(\mathbb{R}, \mathbb{C}, \mathbb{H}, \mathbb{O}) \otimes (\mathbb{R}, \mathbb{C}, \mathbb{H}, \mathbb{O})$ using Sasaki tangent-bundle velocity $(h^{(\ell)}, \dot{h}^{(\ell)})$.
+4. **Stage 3 (End-to-End Byte-Latent Patch Ingress/Egress Replacement in `train.cl` & `chat.cl`)**: Remove the 262,144-token SentencePiece BPE bottleneck from the primary training and inference pipelines:
+   - **Encoder**: Dynamic Markov-surprisal byte patcher (`0–255` raw UTF-8 bytes $\to$ variable-length 248-D / 1,984-D $E_8$ patches).
+   - **Backbone**: Deep $L$-layer $E_8$ Gauge-Spinor + Finsler-Randers Causal Attention stack operating at the **patch level** (4–6x fewer sequence steps than raw bytes, zero BPE table).
+   - **Decoder**: Multi-step Byte-Latent unpacked decoder head ($E_8$ patch state $\to$ local byte sequence `0–255` fused with the $256 \times 256$ Markov prior).
+5. **Stage 4 (Multi-Layer WebGPU Markov-Lagrangian Backpropagation Engine)**: Rewrite the OpenCL/WebGPU compute pipelines in [`Projects/geomind/train.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/train.cl) from single-matrix `2560 x 2560` BPE SGD to **full multi-layer backpropagation** across all $L$ $E_8$ layers, differentiating the **Markov-Lagrangian Action**:
+   $$\mathcal{S} = \left(T_{\text{pred}} + \sum_{\ell=1}^{L} \lambda_\ell\,T_{\text{geo}}\!\left(h^{(\ell-1)}, h^{(\ell)}, \beta^{(\ell)}\right)\right) \cdot \left(1 - 0.5\,V_{\text{Markov}}(b_{t-1}, b_t)\right)$$
+   with Sherman-Morrison inverse Finsler-Randers natural gradient updates on every layer's Gauge, Spinor, Attention, and Drift ($\beta^{(\ell)}$) tensors.
 
 ---
 
-## End-to-End Architecture Dataflow
+## End-to-End GeoMind v2 (`CARTAN-E8`) Deep Architecture
 
 ```mermaid
 flowchart TD
     A["Raw UTF-8 Byte Stream (0..255)"] --> B["256x256 Markov Transition Matrix P(b_t | b_{t-1})"]
-    B -->|"Surprisal H_t > Threshold"| C["Byte-Latent Patch Projector (R^256 -> R^248 E8 Manifold)"]
-    B -->|"Potential Field V(x)"| G["Markov-Lagrangian Action Loss: S = T * (1 - 0.5*V)"]
-    C --> D["E8 248-D State Split: e8 = so(16) [120-D] + S_16^+ [128-D]"]
-    D --> E1["120-D Adjoint Gauge Stream (Structural Rules & Context Operators)"]
-    D --> E2["128-D Chiral Spinor Stream (Semantic Payload & Feature State)"]
-    E1 -->|"Clifford / Lie Bracket Action: [Gauge_120, Spinor_128] + Randers Drift beta"| F["Finsler-Randers-Sasaki (FRS) Directional Gating Layer"]
-    E2 --> F
-    F -->|"Geodesic Velocity dx/dt"| G
-    G -->|"Sherman-Morrison Inverse Randers Backprop"| C
+    B -->|"Surprisal H(b_t | b_{t-1}) >= Thresh"| C["Dynamic Byte-Latent Patch Encoder (Weyl Reflections -> 248-D / 1984-D E8 Patch h^(0))"]
+    C --> D["Layer l = 1..L: Deep E8 Gauge-Spinor Manifold Stack"]
+    subgraph Layer_l ["Per-Layer Sovereign E8 Block (l = 1..L)"]
+        D1["Asymmetric Finsler-Randers Causal Attention: Score(t,s) = -F_Randers(Q_t - K_s, beta^(l))"]
+        D2["Learned Gauge Transform W_gauge^(l) [120x120] on so(16) & Spinor Transform W_spinor^(l) [128x128] on S_16+"]
+        D3["Non-Associative Octonion Fano Cross-Gate: [so(16), S_16+] -> S_16+ & Back-Reaction [S_16+, S_16+] -> so(16)"]
+        D4["4x4 Freudenthal-Tits Magic Square MoE Router on Sasaki Tangent Bundle (h^(l), dh^(l)/dl)"]
+        D1 --> D2 --> D3 --> D4
+    end
+    D --> Layer_l
+    Layer_l -->|"Low-Action Geodesic Coasting Gate (V_Markov high & T_geo^(l) low)"| E["Skip Remaining Intermediate E8 Layers -> Terminal Layer L"]
+    Layer_l -->|"Next Layer l+1"| D
+    E --> F["Byte-Latent Patch Decoder Head (E8 State + Markov Prior -> 0..255 UTF-8 Bytes)"]
+    F --> G["Multi-Layer Markov-Lagrangian Action Loss: S = (T_pred + sum_l T_geo^(l)) * (1 - 0.5*V_Markov)"]
+    G -->|"Multi-Layer Adjoint Octonion + Inverse Randers Backprop"| C
 ```
 
 ---
 
-## Phase 1: Explicit $120\text{-D} \oplus 128\text{-D}$ Gauge-on-Spinor Cross-Gating ($\mathfrak{e}_8 = \mathfrak{so}(16) \oplus S_{16}^+$)
+## Sprint Breakdown & Implementation Checklist
 
-### Goal
-Replace flat additive stream averaging (`* 0.125` in `Projects/geomind/streams.cl`) with the true graded Lie algebra decomposition of $\mathfrak{e}_8$:
-$$\mathfrak{e}_8 = \mathfrak{g}_0 \oplus \mathfrak{g}_1 = \mathfrak{so}(16) \oplus S_{16}^+ \quad (\dim \mathfrak{g}_0 = 120,\ \dim \mathfrak{g}_1 = 128)$$
-where the **120-D Gauge stream** (112 integer roots $\pm e_i \pm e_j$ + 8 Cartan generators) acts as an antisymmetric rotational/gating operator on the **128-D Chiral Spinor payload stream** (128 half-integer roots $\frac{1}{2}(\pm 1)^8$ with even minus signs), steered by the asymmetric Finsler-Randers 1-form $\beta$.
-
-### Checklist
-- [x] **1.1 Canonical 120/128 Partition in `geometry.cl`**:
-  - Separate `g_e8_roots_table` into:
-    - **Indices `0..7`**: 8-D Cartan subalgebra $\mathfrak{h}$
-    - **Indices `8..119`**: 112 integer roots of $D_8 = \mathfrak{so}(16)$ (Total Gauge = `120` dims)
-    - **Indices `120..247`**: 128 half-integer chiral spinor roots $S_{16}^+$ (Total Spinor = `128` dims)
-- [x] **1.2 Clifford Gamma Matrix & Non-Associative Octonion Fano Action $\Gamma: \mathfrak{so}(16) \times S_{16}^+ \to S_{16}^+$**:
-  - Implement non-associative Octonionic Fano Plane multiplication (`geom_octonion_mul_raw8`) and bidirectional Lie bracket coupling (`geomind_e8_gauge_spinor_cross_gate_block248`, `geomind_e8_gauge_spinor_cross_gate`).
-- [x] **1.3 Asymmetric Finsler-Randers Directional Gate (`geom_finsler_randers_bound_drift`, `geom_finsler_randers_tangent_norm`)**:
-  - Enforce strict convexity $\|\tilde{\beta}\|_{g^{-1}} \le 0.95 < 1.0$ and combine symmetric Riemannian norm $\alpha(x, v) = \sqrt{g_{ij} v^i v^j}$ with directional 1-form $\beta(x, v) = \tilde{\beta}_i v^i$.
-- [x] **1.4 WebGPU Shader Kernel (`webgpu_get_lie_streams_shader`, `streams_bwd_src`, `autoreg_src`)**:
-  - Port the $120 \oplus 128$ Gauge-on-Spinor cross-gating pass and its adjoint backward pass to Stream 0 GPU shaders in `Projects/geomind/train.cl`.
+### Stage 0: Core Mathematical Primitives & 1-Layer Prototype (Completed)
+- [x] **0.1 Canonical $120 \oplus 128$ $E_8$ Root Partition (`geometry.cl`)**: 8D Cartan + 112 $D_8 = \mathfrak{so}(16)$ integer roots (`0..119`) + 128 $S_{16}^+$ half-integer chiral spinor roots (`120..247`).
+- [x] **0.2 Non-Associative Octonionic Fano Forward & Adjoint Backward (`geometry.cl`)**: `geom_octonion_mul_raw8`, `geom_octonion_mul_backward_raw8`, `geomind_e8_gauge_spinor_cross_gate`, `geomind_e8_gauge_spinor_cross_gate_backward`.
+- [x] **0.3 Persistent $256 \times 256$ Markov Matrix & Geodesic Kinetic Energy (`byte_latent.cl`)**: `g_markov_counts_256x256`, `geomind_markov_save_prior`, `geomind_markov_load_prior`, `geomind_e8_geodesic_kinetic_energy_248`, `geomind_e8_geodesic_kinetic_grad_248`.
+- [x] **0.4 Autonomous Crawler & Manifold Relaxation Visualizer (`byte_latent.cl`, `main.car`)**: `--crawl`, `--recurse`, `--visualize` exporting `manifold_relaxation.html`.
 
 ---
 
-## Phase 2: Markov-Lagrangian Least-Action Training Engine ($\mathcal{S} = \int (T - V)\,dt$)
-
-### Goal
-Formulate training and inference around the **Principle of Least Action** on the Finsler-Randers-Sasaki tangent bundle $TM$:
-$$\mathcal{S}[\gamma] = \int_{t_0}^{t_1} \mathcal{L}(x, \dot{x})\,dt, \quad \mathcal{L}(x, \dot{x}) = T(x, \dot{x}) \cdot (1 - 0.5\,V_{\text{Markov}}(x_{t-1}, x_t))$$
-
-### Checklist
-- [x] **2.1 Persistent $256 \times 256$ Markov Transition Matrix (`g_markov_counts_256x256`)**:
-  - Allocate a $256 \times 256$ float matrix ($65,536$ floats = `256 KB`) tracking empirical byte transition counts and row-normalized probabilities $P(b_t \mid b_{t-1})$ (`geomind_markov_init_if_needed`, `geomind_markov_get_prob`, `geomind_markov_update_and_get_prob`).
-- [x] **2.2 Geodesic Kinetic Energy Term ($T_{\text{geodesic}}$)**:
-  - Compute velocity $\dot{h}_t = h_t - h_{t-1}$ in 248-D $E_8$ space and evaluate the Finsler-Randers kinetic energy (`geomind_e8_geodesic_kinetic_energy_248`).
-- [x] **2.3 Coupled Markov-Lagrangian Action Loss (`geomind_lagrangian_action_step`)**:
-  - Combine prediction loss $T_{\text{pred}}$ and trajectory kinetic energy $T_{\text{geo}}$ scaled by the Markov potential well $(1.0 - 0.5\,V_{\text{Markov}}(b_{t-1}, b_t))$.
-- [x] **2.4 Low-Action Geodesic Early-Exit (`geomind_should_geodesic_coast`)**:
-  - During generation, when $V_{\text{Markov}} \ge 0.35$ and $T_{\text{geo}} \le \epsilon_{\text{geodesic}}$, coast along the manifold geodesic.
-
----
-
-## Phase 3: Byte-Latent Dynamic Patching (Tokenizer-Free Raw UTF-8 Ingress/Egress)
-
-### Goal
-Eliminate static BPE vocabulary bottlenecks (`262,144` fixed tokens) by ingesting and emitting raw `0–255` UTF-8 bytes directly into the 248-D $E_8$ manifold, using **Markov transition entropy** to dynamically group predictable byte runs into compact latent patches.
-
-### Checklist
-- [x] **3.1 Direct Byte-to-$E_8$ Embedding Table ($256 \times 248$)**:
-  - Implement compact, L2-cache-resident $256 \times 248$ byte-to-$E_8$ lattice projection (`g_byte_e8_emb_256x248`, `253 KB`) initialized from canonical 240 $E_8$ roots + 8D Cartan torus harmonics.
-- [x] **3.2 Entropy-Driven Dynamic Patch Boundary Detector (`geomind_byte_latent_encode_stream`)**:
-  - Compute byte transition surprisal $S_t = -\log_2 P_{\text{Markov}}(b_t \mid b_{t-1})$ and fold predictable byte runs via Weyl reflection + $120 \oplus 128$ Gauge-Spinor cross-gating into 248-D patches.
-- [x] **3.3 Byte-Latent Decoder Head ($248 \to 256$, `geomind_byte_latent_decode_logits`)**:
-  - Unpack a 248-D $E_8$ patch state back into autoregressive `0–255` byte logits fused with the Markov transition prior.
-- [x] **3.4 Hybrid Bridge Mode (`--byte-latent`)**:
-  - Wire `--byte-latent` CLI mode in `Projects/geomind/main.car` supporting standalone 248-D Byte-Latent training and autoregressive byte generation.
+### Stage 1: Deep Multi-Layer $E_8$ Gauge-Spinor Manifold Stack (`Projects/geomind/e8_stack.cl`)
+- [x] **1.1 Multi-Layer $E_8$ Tensor Allocation & Checkpoint Format (`e8_stack.cl`)**:
+  - Define an $L$-layer (`L = 16` default, configurable up to `42`) native $E_8$ stack where each layer $\ell \in \{0, \dots, L-1\}$ owns:
+    - $W_{\text{gauge}}^{(\ell)} \in \mathbb{R}^{120 \times 120}$ (learned $\mathfrak{so}(16)$ gauge operator weights, initialized near orthogonal + Killing scaling),
+    - $W_{\text{spinor}}^{(\ell)} \in \mathbb{R}^{128 \times 128}$ (learned $S_{16}^+$ chiral spinor projection weights),
+    - $W_{Q}^{(\ell)}, W_{K}^{(\ell)}, W_{V}^{(\ell)} \in \mathbb{R}^{248 \times 248}$ (or `8`-head $\times 31\text{-D}$ $E_8$ attention projections),
+    - $\beta^{(\ell)} \in \mathbb{R}^{248}$ (per-layer learnable Finsler-Randers causal drift 1-form bounded by $\|\tilde{\beta}^{(\ell)}\|_{g^{-1}} \le 0.95$).
+  - Implement binary checkpoint save/load (`Projects/geomind/trainingdata/checkpoints/geomind_e8_deep_stack.bin`) with authenticated `CARTAN_E8_STACK` header.
+- [x] **1.2 Per-Layer Learned Gauge-on-Spinor Forward & Adjoint Backward Pass**:
+  - Forward at layer $\ell$:
+    1. Project Gauge sector: $G^{(\ell)} = W_{\text{gauge}}^{(\ell)} h_{\text{gauge}}^{(\ell-1)} \in \mathbb{R}^{120}$.
+    2. Project Spinor sector: $\Psi^{(\ell)} = W_{\text{spinor}}^{(\ell)} h_{\text{spinor}}^{(\ell-1)} \in \mathbb{R}^{128}$.
+    3. Execute non-associative Octonion Fano Cross-Gate $[G^{(\ell)}, \Psi^{(\ell)}] \to S_{16}^+$ and spinor back-reaction $[\Psi^{(\ell)}, \Psi^{(\ell)}] \to \mathfrak{so}(16)$ with $S^{247}$ residual norm retraction (`geom_retract_sphere_step`).
+  - Backward at layer $\ell$:
+    1. Differentiate through `geomind_e8_gauge_spinor_cross_gate_backward`.
+    2. Compute weight gradients $\nabla W_{\text{gauge}}^{(\ell)}$, $\nabla W_{\text{spinor}}^{(\ell)}$ and update via Sherman-Morrison inverse Finsler-Randers natural gradient step using $\beta^{(\ell)}$.
+    3. Propagate $\delta h^{(\ell-1)}$ to layer $\ell - 1$.
+- [x] **1.3 Multi-Layer Inter-Layer Geodesic Kinetic Energy $\sum_{\ell=1}^{L} T_{\text{geo}}(h^{(\ell-1)}, h^{(\ell)}, \beta^{(\ell)})$**:
+  - Measure the Finsler-Randers geodesic kinetic energy across every layer transition $h^{(\ell-1)} \to h^{(\ell)}$ so the deep stack learns smooth minimal-action geodesics from layer $0$ to layer $L$ and triggers **per-layer geodesic coasting** when $T_{\text{geo}}^{(\ell)} \le \epsilon_{\text{coast}}$ and $V_{\text{Markov}} \ge 0.35$.
 
 ---
 
-## Phase 4: Autonomous Domain-Bounded Web Crawler (`--crawl`) & Live Manifold Visualizer (`--visualize`)
-
-### Checklist
-- [x] **4.1 Domain-Bounded Recursive Crawler in `Projects/geomind/byte_latent.cl`**:
-  - Implement `geomind_crawl_and_train(url, start_domain, recurse, depth, max_depth, epochs, visualize)` with HTML-to-text stripping, same-domain `href` link extraction, and polite rate-limiting.
-- [x] **4.2 CLI Flags in `Projects/geomind/main.car`**:
-  - Add `--byte-latent`, `--crawl <url>`, `--recurse`, `--max-depth <N>`, and `--visualize` flags to `geomind.exe`.
-- [x] **4.3 Native Manifold Relaxation Visualizer (`geomind_visualizer_export_html`)**:
-  - Record `(step, raw_action_penalty, smoothed_action_penalty, gauge_120_norm, spinor_128_norm)` during training and render a self-contained interactive SVG/HTML report (`manifold_relaxation.html`).
+### Stage 2: Asymmetric Finsler-Randers Causal Attention & $4 \times 4$ Freudenthal Magic Square MoE (`Projects/geomind/e8_attention_engine.cl` & `Projects/geomind/moe.cl`)
+- [x] **2.1 Asymmetric Finsler-Randers Causal Attention (`e8_attention_engine.cl`)**:
+  - Replace symmetric dot-product attention in `e8_attention_engine.cl` with causal Finsler-Randers geodesic attention over patch sequence history $s \le t$:
+    $$A_{t,s}^{(\ell)} = \frac{1}{\sqrt{d_h}} \left( \langle Q_t^{(\ell)}, K_s^{(\ell)} \rangle_g - \gamma_{\text{FR}}\,F_{\text{Randers}}\!\left(Q_t^{(\ell)} - K_s^{(\ell)}, \beta^{(\ell)}\right) \right)$$
+    where $\langle u, v \rangle_g = \sum_i g_i u_i v_i$ is the $E_8$ Killing-Cartan inner product and $F_{\text{Randers}}(Q_t - K_s, \beta^{(\ell)})$ enforces asymmetric causal directionality ($s \to t \ne t \to s$).
+  - Implement exact analytical backward pass (`e8_finsler_randers_causal_attention_backward_248`) for $\delta Q_t^{(\ell)}, \delta K_s^{(\ell)}, \delta V_s^{(\ell)}, \delta \beta^{(\ell)}$.
+- [x] **2.2 True $4 \times 4$ Freudenthal-Tits Magic Square MoE (`moe.cl`)**:
+  - Upgrade `Projects/geomind/moe.cl` so the 16 experts correspond to the 16 cells of the Freudenthal-Tits Magic Square $\mathcal{M}(\mathbb{A}, \mathbb{B})$ for $\mathbb{A}, \mathbb{B} \in \{\mathbb{R}\ (1\text{D}), \mathbb{C}\ (2\text{D}), \mathbb{H}\ (4\text{D}), \mathbb{O}\ (8\text{D})\}$:
+    - Row/Col algebras determine the sub-block division-algebra multiplication rule ($\mathbb{R}$ scalar, $\mathbb{C}$ complex, $\mathbb{H}$ quaternion, $\mathbb{O}$ octonion Fano),
+    - Top-$k$ ($k=2$) routing is driven by the Sasaki phase-space metric on $(h^{(\ell)}, \dot{h}^{(\ell)} = h^{(\ell)} - h^{(\ell-1)})$ with full analytical backward pass through the router and expert weights.
 
 ---
 
-## Milestone Verification Matrix (Definition of Done)
+### Stage 3: Primary Pipeline Replacement — End-to-End Byte-Latent Ingress/Egress (`Projects/geomind/train.cl` & `Projects/geomind/chat.cl`)
+- [x] **3.1 Replace BPE Chunk Tokenizer in `train.cl`**:
+  - Add `geomind_train_e8_deep_streaming` (`Projects/geomind/train.cl`) and `geomind_byte_latent_train_deep_e8_corpus` (`Projects/geomind/byte_latent.cl`) so streaming training ingests raw UTF-8 dataset bytes directly into dynamic 248-D $E_8$ patches (`g_byte_e8_emb_256x248` + Weyl reflection + surprisal boundary detection) and trains the **Deep $L$-Layer $E_8$ Stack** end-to-end without SentencePiece BPE.
+- [x] **3.2 Multi-Byte Patch Decoder & Autoregressive Chat Engine (`chat.cl`)**:
+  - Upgrade the Byte-Latent Decoder Head (`geomind_byte_latent_generate_deep_e8` & `geomind_chat_e8_deep_generate`) to unpack each terminal layer-$L$ 248-D $E_8$ patch state via $S^{247}$ tangent projection + $256 \times 256$ Markov prior fusion.
+  - Wire `Projects/geomind/chat.cl` and `Projects/geomind/main.car` to run natively on the **Deep $L$-Layer Byte-Latent $E_8$ Stack**, reporting live layer-skipping geodesic coast telemetry (`Layers Executed / L`, `Markov Potential V`, `Lagrangian Action S`).
 
-| Phase | Milestone Deliverable | Target Verification Metric | Status |
-| :--- | :--- | :--- | :---: |
-| **Phase 1** | $120\text{-D} \oplus 128\text{-D}$ Gauge-on-Spinor Cross-Gating (`geometry.cl`, `streams.cl`, WGSL) | Exact norm preservation on $S^{247}$ (`err=0.00000000`); asymmetric Randers gate verified (`F(+v)=15.666 != F(-v)=1.133`) | `[x]` |
-| **Phase 2** | Markov-Lagrangian Least-Action Engine (`byte_latent.cl`, $256\times 256$ Markov Potential $V$) | Monotonic decrease in Lagrangian Action $\mathcal{S} = T(1-0.5V)$ over 10 epochs (`4.849862 -> 2.182721`) | `[x]` |
-| **Phase 3** | Byte-Latent Dynamic Patching (`256\times 248` L2-resident embedding + entropy patcher) | Zero-tokenizer UTF-8 byte ingestion (`307 bytes -> 73 patches, ratio=0.238 < 1.0`) & autoregressive byte generation | `[x]` |
-| **Phase 4** | Recursive Web Crawler (`--crawl --recurse`) + Manifold Relaxation Plotter (`--visualize`) | Autonomous domain ingestion + generated `manifold_relaxation.html` convergence curve | `[x]` |
+---
+
+### Stage 4: Multi-Layer WebGPU Compute Kernels for the Deep $E_8$ Stack (`Projects/geomind/train.cl`)
+- [x] **4.1 WebGPU Kernels for $L$-Layer $120 \oplus 128$ Gauge-Spinor Forward & Adjoint Backward**:
+  - Implement GPU kernels (`webgpu_get_e8_finsler_randers_attn_shader` and `webgpu_get_e8_gauge_spinor_fano_shader`) for per-layer $W_{\text{gauge}}^{(\ell)} \times h_{\text{gauge}}$, $W_{\text{spinor}}^{(\ell)} \times h_{\text{spinor}}$, 8D Octonion Fano cross-gating, Finsler-Randers Causal Attention, and Sherman-Morrison inverse Randers weight updates across all $L$ layers.
+- [x] **4.2 GPU/CPU Parity & End-to-End Multi-Layer Convergence Verification**:
+  - Verify strict numerical parity and monotonic reduction of multi-layer Markov-Lagrangian Action $\mathcal{S}$ (`16.104899 -> 2.171461` in `test_e8_suite.exe`), exact adjoint identity (`err = 0.000000000`), and checkpoint persistence (`geomind_e8_deep_stack.bin`).

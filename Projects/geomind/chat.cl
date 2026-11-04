@@ -13,6 +13,7 @@ include "../../src/std/fusion.cl";
 include "../../src/std/resonator.cl";
 include "../../src/std/audio.cl";
 include "geometry.cl";
+include "byte_latent.cl";
 
 include "engine.cl";
 include "ising_state_machine.cl";
@@ -6127,6 +6128,10 @@ var g_prev_decode_h: ptr = 0.0;
 var g_decode_vel_h: ptr = 0.0;
 var g_prev_layer24_h: ptr = 0.0;
 var g_layer24_vel_h: ptr = 0.0;
+var g_decode_e8_prev_248: ptr = 0.0;
+var g_decode_e8_curr_248: ptr = 0.0;
+var g_decode_e8_gated_248: ptr = 0.0;
+var g_decode_prev_tok_byte: float = 32.0;
 
 fn geomind_clone_tensor(src: ptr, dim: float) -> ptr {
     if (src == 0.0 || dim <= 0.0) { return 0.0; }
@@ -6210,15 +6215,52 @@ fn geomind_execute_manifold_decode_step(sampled_tok: float, pos: float) -> ptr {
     g_active_dom_stream = dom_stream;
     g_active_dom_w = dom_w;
 
+    // CARTAN-E8 Phase 2 & 3 Side-Channel Fusion & Markov-Lagrangian Geodesic Coasting Gate:
+    geomind_byte_latent_init_if_needed();
+    if (g_decode_e8_prev_248 == 0.0) {
+        g_decode_e8_prev_248 = cartan_vec_create();
+        g_decode_e8_curr_248 = cartan_vec_create();
+        g_decode_e8_gated_248 = cartan_vec_create();
+        var e8_i = 0.0;
+        while (e8_i < 248.0) {
+            cartan_vec_push_f32(g_decode_e8_prev_248, 0.0);
+            cartan_vec_push_f32(g_decode_e8_curr_248, 0.0);
+            cartan_vec_push_f32(g_decode_e8_gated_248, 0.0);
+            e8_i = e8_i + 1.0;
+        }
+    }
+    var e8_d = 0.0;
+    while (e8_d < 248.0) {
+        let old_e8 = cartan_vec_get_f32(g_decode_e8_curr_248, e8_d);
+        cartan_vec_set_f32(g_decode_e8_prev_248, e8_d, old_e8);
+        cartan_vec_set_f32(g_decode_e8_curr_248, e8_d, 0.65 * old_e8);
+        e8_d = e8_d + 1.0;
+    }
+    geomind_fold_byte_into_e8_patch(g_decode_e8_curr_248, sampled_tok, pos);
+    geomind_e8_gauge_spinor_cross_gate(g_decode_e8_curr_248, g_decode_e8_gated_248, 0.25);
+    e8_d = 0.0;
+    while (e8_d < 248.0) {
+        let gated_e8 = cartan_vec_get_f32(g_decode_e8_gated_248, e8_d);
+        cartan_vec_set_f32(g_decode_e8_curr_248, e8_d, gated_e8);
+        cur_h[2.0 + e8_d] = cur_h[2.0 + e8_d] + 0.05 * gated_e8;
+        e8_d = e8_d + 1.0;
+    }
+    let decode_t_geo = geomind_e8_geodesic_kinetic_energy_248(g_decode_e8_prev_248, g_decode_e8_curr_248, g_byte_e8_randers_b_248);
+    let lagrangian_coast = geomind_should_geodesic_coast(g_decode_prev_tok_byte, sampled_tok, decode_t_geo, 0.85);
+    g_decode_prev_tok_byte = math_mod_val(floor(math_abs_val(sampled_tok)), 256.0);
+
     var early_exited = 0.0;
     var sasaki_bypassed = 0.0;
     let ee_enabled = cartan_transformer_get_early_exit_enabled();
     let min_l = cartan_transformer_get_early_exit_min_layer();
     let thresh = cartan_transformer_get_early_exit_threshold();
     l = 25.0;
-    if (g_sasaki_bypass_enabled == 1.0 && dom_w >= g_sasaki_stream_threshold) {
-        // Fast-Path: evaluate velocity (h_24, \dot{h}_24), bypass intermediate dense layers 25..40 directly to Anchor Layer 41
+    if (g_sasaki_bypass_enabled == 1.0 && (dom_w >= g_sasaki_stream_threshold || (lagrangian_coast == 1.0 && dom_w >= 0.45))) {
+        // Fast-Path: evaluate velocity (h_24, \dot{h}_24) + Markov-Lagrangian geodesic coasting, bypass layers 25..40 directly to Anchor Layer 41
         g_telemetry_stream_bypass_count = g_telemetry_stream_bypass_count + 1.0;
+        if (lagrangian_coast == 1.0) {
+            g_byte_latent_coast_count = g_byte_latent_coast_count + 1.0;
+        }
         sasaki_bypassed = 1.0;
         l = 41.0;
     }
@@ -9472,6 +9514,20 @@ fn geomind_chat_apply_correction(prompt: string, correct_reply: string) -> float
     cartan_vec_free(corr_toks);
     cartan_vec_free(h_state);
     return loss;
+}
+
+// ============================================================================
+// STAGE 3: DEEP L-LAYER E8 GAUGE-SPINOR BYTE-LATENT INTERACTIVE CHAT GENERATION
+// ============================================================================
+fn geomind_chat_e8_deep_generate(prompt: string, num_layers: float, max_bytes: float) -> string {
+    var L = floor(num_layers);
+    if (L < 1.0) { L = 16.0; }
+    let reply = geomind_byte_latent_generate_deep_e8(prompt, L, max_bytes);
+    printf("[CARTAN-E8 Deep Chat] (L=%.0f layers | Seq Coasts=%.0f | Layer Coasts=%.0f | Kinetic T_geo=%.6f)\n",
+        L, geomind_byte_latent_get_coast_count(), g_e8_stack_layer_coasts, g_e8_stack_last_kinetic_energy);
+    printf("%s\n", reply);
+    cartan_flush(0.0);
+    return reply;
 }
 
 
