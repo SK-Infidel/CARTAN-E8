@@ -29,11 +29,17 @@ fn cartan_char_from_code(code: float) -> string {
 // 256 x 256 transition count matrix (65,536 floats = 256 KB) + 256 row totals
 var g_markov_counts_256x256: ptr = 0.0;
 var g_markov_row_totals_256: ptr = 0.0;
-// 3-gram context Markov table: 65,536 collision-free (ctx_patch_id, sym(b_{t-1}), sym(b_t)) contexts x 128 ASCII next bytes
+// 4-Block Hierarchical Tapestry Markov Table (131,072 rows x 128 ASCII next bytes):
+// - Block 0 (0..32767):      Collision-free 32-symbol 3-gram morphology (b3, b2, b1)
+// - Block 1 (32768..65535):  Open-addressed 1-Word Anchor Hub (w_k, b3, b2, b1) for single-word concept pivot bridging
+// - Block 2 (65536..98303):  Open-addressed 2-Word Phrase Hub (w_{k-1}, w_k, b3, b2, b1) for phrase-level recombination
+// - Block 3 (98304..131071): Open-addressed 3-Word Clause Hub (w_{k-2}, w_{k-1}, w_k, b3, b2, b1) for clause disambiguation
 var g_markov_3gram_counts: ptr = 0.0;
 var g_markov_3gram_totals: ptr = 0.0;
 var g_markov_3gram_keys: ptr = 0.0;
-var g_markov_ctx_patch_id: float = 0.0;
+var g_markov_ctx_word1_id: float = 0.0;
+var g_markov_ctx_word2_id: float = 0.0;
+var g_markov_ctx_word3_id: float = 0.0;
 var g_markov_initialized: float = 0.0;
 
 // Maps any byte (0..255) to a 32-state collision-free orthographic symbol index:
@@ -57,19 +63,19 @@ fn geomind_markov_3gram_ctx_idx(b3: float, b2: float, b1: float) -> float {
     return s3 * 1024.0 + s2 * 32.0 + s1;
 }
 
-fn geomind_markov_patch_ctx_idx(b3: float, b2: float, b1: float, create_slot: float) -> float {
-    let pid = math_mod_val(floor(math_abs_val(g_markov_ctx_patch_id)), 32768.0);
-    let c_idx = geomind_markov_3gram_ctx_idx(b3, b2, b1);
+fn geomind_markov_hub_row_idx(base_row: float, hub_id: float, c_idx: float, create_slot: float) -> float {
+    if (hub_id <= 0.0) { return -1.0; }
+    let pid = math_mod_val(floor(math_abs_val(hub_id)), 32768.0);
     let k_pid = pid + 1.0;
     let k_tri = c_idx + 1.0;
     let h0 = math_mod_val(pid * 13331.0 + c_idx * 997.0, 32768.0);
     if (g_markov_3gram_keys == 0.0) {
-        return 32768.0 + h0;
+        return base_row + h0;
     }
     var probe = 0.0;
     while (probe < 16.0) {
         let slot = math_mod_val(h0 + probe * 7.0, 32768.0);
-        let row = 32768.0 + slot;
+        let row = base_row + slot;
         let cur_pid = cartan_vec_get_f32(g_markov_3gram_keys, row * 2.0);
         let cur_tri = cartan_vec_get_f32(g_markov_3gram_keys, row * 2.0 + 1.0);
         if (cur_pid == k_pid && cur_tri == k_tri) {
@@ -86,7 +92,7 @@ fn geomind_markov_patch_ctx_idx(b3: float, b2: float, b1: float, create_slot: fl
         probe = probe + 1.0;
     }
     if (create_slot == 1.0) {
-        return 32768.0 + h0;
+        return base_row + h0;
     }
     return -1.0;
 }
@@ -103,14 +109,28 @@ fn geomind_markov_update_3gram(b3: float, b2: float, b1: float, curr_byte: float
     cartan_vec_set_f32(g_markov_3gram_counts, m_idx, old_cnt + 1.0);
     cartan_vec_set_f32(g_markov_3gram_totals, c_idx, old_tot + 1.0);
 
-    // Also update 2-Patch Discourse-Conditioned 3-gram row (32768..65535)
-    let p_idx = geomind_markov_patch_ctx_idx(b3, b2, b1, 1.0);
-    if (p_idx >= 32768.0) {
-        let pm_idx = p_idx * 128.0 + cb;
-        let p_cnt = cartan_vec_get_f32(g_markov_3gram_counts, pm_idx);
-        let p_tot = cartan_vec_get_f32(g_markov_3gram_totals, p_idx);
-        cartan_vec_set_f32(g_markov_3gram_counts, pm_idx, p_cnt + 1.0);
-        cartan_vec_set_f32(g_markov_3gram_totals, p_idx, p_tot + 1.0);
+    // Update Block 1: 1-Word Anchor Hub (32768..65535) — shared across all sentences using this word!
+    let w1_idx = geomind_markov_hub_row_idx(32768.0, g_markov_ctx_word1_id, c_idx, 1.0);
+    if (w1_idx >= 32768.0) {
+        let w1m = w1_idx * 128.0 + cb;
+        cartan_vec_set_f32(g_markov_3gram_counts, w1m, cartan_vec_get_f32(g_markov_3gram_counts, w1m) + 1.0);
+        cartan_vec_set_f32(g_markov_3gram_totals, w1_idx, cartan_vec_get_f32(g_markov_3gram_totals, w1_idx) + 1.0);
+    }
+
+    // Update Block 2: 2-Word Phrase Hub (65536..98303) — shared across all sentences using this 2-word pair!
+    let w2_idx = geomind_markov_hub_row_idx(65536.0, g_markov_ctx_word2_id, c_idx, 1.0);
+    if (w2_idx >= 65536.0) {
+        let w2m = w2_idx * 128.0 + cb;
+        cartan_vec_set_f32(g_markov_3gram_counts, w2m, cartan_vec_get_f32(g_markov_3gram_counts, w2m) + 1.0);
+        cartan_vec_set_f32(g_markov_3gram_totals, w2_idx, cartan_vec_get_f32(g_markov_3gram_totals, w2_idx) + 1.0);
+    }
+
+    // Update Block 3: 3-Word Clause Hub (98304..131071) — shared across all clauses using this 3-word window!
+    let w3_idx = geomind_markov_hub_row_idx(98304.0, g_markov_ctx_word3_id, c_idx, 1.0);
+    if (w3_idx >= 98304.0) {
+        let w3m = w3_idx * 128.0 + cb;
+        cartan_vec_set_f32(g_markov_3gram_counts, w3m, cartan_vec_get_f32(g_markov_3gram_counts, w3m) + 1.0);
+        cartan_vec_set_f32(g_markov_3gram_totals, w3_idx, cartan_vec_get_f32(g_markov_3gram_totals, w3_idx) + 1.0);
     }
     return p3;
 }
@@ -128,25 +148,77 @@ fn geomind_markov_get_3gram_prob(b3: float, b2: float, b1: float, curr_byte: flo
         p3 = (cnt3 + 0.005) / (tot3 + 0.05);
     }
 
-    // Open-Addressed Sentence-Discourse Context Lookup (32768..65535):
-    // When the current (pid, b3, b2, b1) sentence context has been observed in training (tot_p > 0.5),
-    // condition directly on its empirical distribution so unobserved continuations (cnt_p == 0) in a known
-    // sentence context do not inherit unconditioned global p3 mass.
-    let p_idx = geomind_markov_patch_ctx_idx(b3, b2, b1, 0.0);
-    if (p_idx >= 32768.0) {
-        let tot_p = cartan_vec_get_f32(g_markov_3gram_totals, p_idx);
-        if (tot_p > 0.5) {
-            let pm_idx = p_idx * 128.0 + cb;
-            let cnt_p = cartan_vec_get_f32(g_markov_3gram_counts, pm_idx);
-            if (cnt3 >= 0.5 && cnt_p >= 0.5) {
-                var safe_cnt_p = cnt_p;
-                if (safe_cnt_p > cnt3) { safe_cnt_p = cnt3; }
-                let pp = (safe_cnt_p + 0.005) / (tot_p + 0.05);
-                return 0.92 * pp + 0.06 * p3 + 0.02 * p1;
+    // Query Block 1: 1-Word Anchor Hub (32768..65535)
+    var has_w1 = 0.0;
+    var p_w1 = 0.0;
+    let w1_idx = geomind_markov_hub_row_idx(32768.0, g_markov_ctx_word1_id, c_idx, 0.0);
+    if (w1_idx >= 32768.0) {
+        let tot_w1 = cartan_vec_get_f32(g_markov_3gram_totals, w1_idx);
+        if (tot_w1 > 0.5) {
+            has_w1 = 1.0;
+            let cnt_w1 = cartan_vec_get_f32(g_markov_3gram_counts, w1_idx * 128.0 + cb);
+            if (cnt3 >= 0.5 && cnt_w1 >= 0.5) {
+                var safe_w1 = cnt_w1;
+                if (safe_w1 > cnt3) { safe_w1 = cnt3; }
+                p_w1 = (safe_w1 + 0.005) / (tot_w1 + 0.05);
+            } else {
+                p_w1 = 0.0005 / (tot_w1 + 0.05);
             }
-            let pp_zero = 0.0005 / (tot_p + 0.05);
-            return 0.92 * pp_zero + 0.04 * p3 + 0.04 * p1;
         }
+    }
+
+    // Query Block 2: 2-Word Phrase Hub (65536..98303)
+    var has_w2 = 0.0;
+    var p_w2 = 0.0;
+    let w2_idx = geomind_markov_hub_row_idx(65536.0, g_markov_ctx_word2_id, c_idx, 0.0);
+    if (w2_idx >= 65536.0) {
+        let tot_w2 = cartan_vec_get_f32(g_markov_3gram_totals, w2_idx);
+        if (tot_w2 > 0.5) {
+            has_w2 = 1.0;
+            let cnt_w2 = cartan_vec_get_f32(g_markov_3gram_counts, w2_idx * 128.0 + cb);
+            if (cnt3 >= 0.5 && cnt_w2 >= 0.5) {
+                var safe_w2 = cnt_w2;
+                if (safe_w2 > cnt3) { safe_w2 = cnt3; }
+                p_w2 = (safe_w2 + 0.005) / (tot_w2 + 0.05);
+            } else {
+                p_w2 = 0.0005 / (tot_w2 + 0.05);
+            }
+        }
+    }
+
+    // Query Block 3: 3-Word Clause Hub (98304..131071)
+    var has_w3 = 0.0;
+    var p_w3 = 0.0;
+    let w3_idx = geomind_markov_hub_row_idx(98304.0, g_markov_ctx_word3_id, c_idx, 0.0);
+    if (w3_idx >= 98304.0) {
+        let tot_w3 = cartan_vec_get_f32(g_markov_3gram_totals, w3_idx);
+        if (tot_w3 > 0.5) {
+            has_w3 = 1.0;
+            let cnt_w3 = cartan_vec_get_f32(g_markov_3gram_counts, w3_idx * 128.0 + cb);
+            if (cnt3 >= 0.5 && cnt_w3 >= 0.5) {
+                var safe_w3 = cnt_w3;
+                if (safe_w3 > cnt3) { safe_w3 = cnt3; }
+                p_w3 = (safe_w3 + 0.005) / (tot_w3 + 0.05);
+            } else {
+                p_w3 = 0.0005 / (tot_w3 + 0.05);
+            }
+        }
+    }
+
+    if (has_w3 == 1.0 && has_w2 == 1.0 && has_w1 == 1.0) {
+        return 0.68 * p_w3 + 0.18 * p_w2 + 0.08 * p_w1 + 0.04 * p3 + 0.02 * p1;
+    }
+    if (has_w3 == 1.0) {
+        return 0.85 * p_w3 + 0.10 * p3 + 0.05 * p1;
+    }
+    if (has_w2 == 1.0 && has_w1 == 1.0) {
+        return 0.72 * p_w2 + 0.20 * p_w1 + 0.06 * p3 + 0.02 * p1;
+    }
+    if (has_w2 == 1.0) {
+        return 0.88 * p_w2 + 0.08 * p3 + 0.04 * p1;
+    }
+    if (has_w1 == 1.0) {
+        return 0.88 * p_w1 + 0.08 * p3 + 0.04 * p1;
     }
     return 0.90 * p3 + 0.10 * p1;
 }
@@ -155,7 +227,7 @@ fn geomind_markov_save_prior(path: string) -> float {
     if (path == 0.0 || g_markov_counts_256x256 == 0.0 || g_markov_row_totals_256 == 0.0) { return 0.0; }
     let f = fopen(path, "wb");
     if (f == 0.0) { return 0.0; }
-    let total_elems = 65536.0 + 256.0 + 8388608.0 + 65536.0 + 131072.0;
+    let total_elems = 65536.0 + 256.0 + 16777216.0 + 131072.0 + 262144.0;
     let buf = malloc(total_elems * 8.0);
     if (buf == 0.0) { fclose(f); return 0.0; }
     var i = 0.0;
@@ -169,22 +241,22 @@ fn geomind_markov_save_prior(path: string) -> float {
         r = r + 1.0;
     }
     i = 0.0;
-    while (i < 8388608.0) {
+    while (i < 16777216.0) {
         buf[65792.0 + i] = cartan_vec_get_f32(g_markov_3gram_counts, i);
         i = i + 1.0;
     }
     r = 0.0;
-    while (r < 65536.0) {
-        buf[8454400.0 + r] = cartan_vec_get_f32(g_markov_3gram_totals, r);
+    while (r < 131072.0) {
+        buf[16843008.0 + r] = cartan_vec_get_f32(g_markov_3gram_totals, r);
         r = r + 1.0;
     }
     var k = 0.0;
-    while (k < 131072.0) {
+    while (k < 262144.0) {
         var kv = 0.0;
         if (g_markov_3gram_keys != 0.0) {
             kv = cartan_vec_get_f32(g_markov_3gram_keys, k);
         }
-        buf[8519936.0 + k] = kv;
+        buf[16974080.0 + k] = kv;
         k = k + 1.0;
     }
     fwrite(buf, 8.0, total_elems, f);
@@ -196,8 +268,7 @@ fn geomind_markov_save_prior(path: string) -> float {
 fn geomind_markov_load_prior(path: string) -> float {
     if (path == 0.0 || cartan_file_exists(path) == 0.0) { return 0.0; }
     let base_elems = 65536.0 + 256.0;
-    let full_elems = 65536.0 + 256.0 + 8388608.0 + 65536.0;
-    let keyed_elems = full_elems + 131072.0;
+    let full_elems = 65536.0 + 256.0 + 16777216.0 + 131072.0 + 262144.0;
     let f_sz = cartan_get_binary_file_size(path);
     if (f_sz < base_elems * 8.0) { return 0.0; }
     if (g_markov_counts_256x256 == 0.0) {
@@ -207,22 +278,18 @@ fn geomind_markov_load_prior(path: string) -> float {
         g_markov_row_totals_256 = cartan_tensor_alloc(256.0);
     }
     if (g_markov_3gram_counts == 0.0) {
-        g_markov_3gram_counts = cartan_tensor_alloc(8388608.0);
+        g_markov_3gram_counts = cartan_tensor_alloc(16777216.0);
     }
     if (g_markov_3gram_totals == 0.0) {
-        g_markov_3gram_totals = cartan_tensor_alloc(65536.0);
+        g_markov_3gram_totals = cartan_tensor_alloc(131072.0);
     }
     if (g_markov_3gram_keys == 0.0) {
-        g_markov_3gram_keys = cartan_tensor_alloc(131072.0);
+        g_markov_3gram_keys = cartan_tensor_alloc(262144.0);
     }
     let f = fopen(path, "rb");
     if (f == 0.0) { return 0.0; }
     var read_elems = base_elems;
-    if (f_sz >= keyed_elems * 8.0) {
-        read_elems = keyed_elems;
-    } else {
-        if (f_sz >= full_elems * 8.0) { read_elems = full_elems; }
-    }
+    if (f_sz >= full_elems * 8.0) { read_elems = full_elems; }
     let buf = malloc(read_elems * 8.0);
     if (buf == 0.0) { fclose(f); return 0.0; }
     fread(buf, 8.0, read_elems, f);
@@ -237,22 +304,20 @@ fn geomind_markov_load_prior(path: string) -> float {
         cartan_vec_set_f32(g_markov_row_totals_256, r, buf[65536.0 + r]);
         r = r + 1.0;
     }
-    if (read_elems >= full_elems) {
+    if (read_elems == full_elems) {
         i = 0.0;
-        while (i < 8388608.0) {
+        while (i < 16777216.0) {
             cartan_vec_set_f32(g_markov_3gram_counts, i, buf[65792.0 + i]);
             i = i + 1.0;
         }
         r = 0.0;
-        while (r < 65536.0) {
-            cartan_vec_set_f32(g_markov_3gram_totals, r, buf[8454400.0 + r]);
+        while (r < 131072.0) {
+            cartan_vec_set_f32(g_markov_3gram_totals, r, buf[16843008.0 + r]);
             r = r + 1.0;
         }
-    }
-    if (read_elems == keyed_elems) {
         var k = 0.0;
-        while (k < 131072.0) {
-            cartan_vec_set_f32(g_markov_3gram_keys, k, buf[8519936.0 + k]);
+        while (k < 262144.0) {
+            cartan_vec_set_f32(g_markov_3gram_keys, k, buf[16974080.0 + k]);
             k = k + 1.0;
         }
     }
@@ -267,9 +332,9 @@ fn geomind_markov_init_if_needed() -> float {
     }
     g_markov_counts_256x256 = cartan_tensor_alloc(65536.0);
     g_markov_row_totals_256 = cartan_tensor_alloc(256.0);
-    g_markov_3gram_counts = cartan_tensor_alloc(8388608.0);
-    g_markov_3gram_totals = cartan_tensor_alloc(65536.0);
-    g_markov_3gram_keys = cartan_tensor_alloc(131072.0);
+    g_markov_3gram_counts = cartan_tensor_alloc(16777216.0);
+    g_markov_3gram_totals = cartan_tensor_alloc(131072.0);
+    g_markov_3gram_keys = cartan_tensor_alloc(262144.0);
 
     // Initialize with Laplace Dirichlet prior (alpha = 0.02 per cell, row total = 256 * 0.02 = 5.12)
     var idx = 0.0;
@@ -1554,13 +1619,16 @@ fn geomind_byte_latent_train_deep_e8_corpus(
         var next_b = 32.0;
         var patch_len = 0.0;
         var patch_hash = 17.0;
+        var prev2_patch_hash = 17.0;
         var prev_patch_hash = 17.0;
         var last_patch_hash = 17.0;
         var patch_sent_end = 0.0;
         var patch_act_sum = 0.0;
         var focus_horizon = 0.0;
         var stack_t_geo = 0.0;
-        g_markov_ctx_patch_id = 0.0;
+        g_markov_ctx_word1_id = 0.0;
+        g_markov_ctx_word2_id = 0.0;
+        g_markov_ctx_word3_id = 0.0;
 
         while (step < max_steps) {
             cur_b = cartan_byte_at(corpus, step);
@@ -1654,27 +1722,29 @@ fn geomind_byte_latent_train_deep_e8_corpus(
                     patch_steps_taken = patch_steps_taken + 1.0;
                 }
 
-                // Update Sentence-Level Rolling Patch Discourse ID immediately at patch boundary (in lockstep with generation!)
-                if (patch_sent_end == 1.0) {
-                    prev_patch_hash = 17.0;
-                    last_patch_hash = 17.0;
-                    g_markov_ctx_patch_id = 0.0;
-                    patch_sent_end = 0.0;
+                // Update Local 1-Word Anchor Hub, 2-Word Phrase Hub, & 3-Word Clause Hub IDs (sliding window!)
+                prev2_patch_hash = prev_patch_hash;
+                prev_patch_hash = last_patch_hash;
+                last_patch_hash = patch_hash;
+                g_markov_ctx_word1_id = math_mod_val(patch_hash, 32767.0) + 1.0;
+                if (prev_patch_hash != 17.0) {
+                    g_markov_ctx_word2_id = math_mod_val(prev_patch_hash * 257.0 + patch_hash, 32767.0) + 1.0;
                 } else {
-                    prev_patch_hash = last_patch_hash;
-                    last_patch_hash = math_mod_val(last_patch_hash * 257.0 + patch_hash, 32768.0);
-                    g_markov_ctx_patch_id = last_patch_hash;
+                    g_markov_ctx_word2_id = 0.0;
                 }
+                if (prev2_patch_hash != 17.0 && prev_patch_hash != 17.0) {
+                    let h23 = math_mod_val(prev2_patch_hash * 257.0 + prev_patch_hash, 32767.0);
+                    g_markov_ctx_word3_id = math_mod_val(h23 * 257.0 + patch_hash, 32767.0) + 1.0;
+                } else {
+                    g_markov_ctx_word3_id = 0.0;
+                }
+                patch_sent_end = 0.0;
             }
 
             // 4. Decode 256 byte logits from fused (h_local, h_top_patch) + pre-update 3-gram Markov prior
             let markov_v = geomind_markov_get_3gram_prob(b3, b2, cur_b, next_b);
             geomind_byte_latent_decode_logits_blt(h_local, h_top_patch, b3, b2, cur_b, logits_256);
-
-            // Only update 3-gram Markov counts when in focus (or when no anchor filter is active)
-            if (g_e8_primer_crystallize_all == 1.0 || g_e8_anchor_count == 0.0 || focus_horizon > 0.0 || in_focus == 1.0) {
-                geomind_markov_update_3gram(b3, b2, cur_b, next_b);
-            }
+            geomind_markov_update_3gram(b3, b2, cur_b, next_b);
 
             // 5. Evaluate Markov-Lagrangian Action Loss
             let base_act = geomind_lagrangian_action_step(
@@ -1852,8 +1922,11 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
     var patch_hash = 17.0;
     var last_patch_hash = 17.0;
     var prev_patch_hash = 17.0;
+    var prev2_patch_hash = 17.0;
     var patch_sent_end = 0.0;
-    g_markov_ctx_patch_id = 0.0;
+    g_markov_ctx_word1_id = 0.0;
+    g_markov_ctx_word2_id = 0.0;
+    g_markov_ctx_word3_id = 0.0;
     var patch_steps = 0.0;
     var i = 0.0;
     while (i < plen) {
@@ -1909,16 +1982,22 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
                 cartan_vec_set_f32(h_patch_accum, d, 0.0);
                 d = d + 1.0;
             }
-            if (patch_sent_end == 1.0) {
-                prev_patch_hash = 17.0;
-                last_patch_hash = 17.0;
-                g_markov_ctx_patch_id = 0.0;
-                patch_sent_end = 0.0;
+            prev2_patch_hash = prev_patch_hash;
+            prev_patch_hash = last_patch_hash;
+            last_patch_hash = patch_hash;
+            g_markov_ctx_word1_id = math_mod_val(patch_hash, 32767.0) + 1.0;
+            if (prev_patch_hash != 17.0) {
+                g_markov_ctx_word2_id = math_mod_val(prev_patch_hash * 257.0 + patch_hash, 32767.0) + 1.0;
             } else {
-                prev_patch_hash = last_patch_hash;
-                last_patch_hash = math_mod_val(last_patch_hash * 257.0 + patch_hash, 32768.0);
-                g_markov_ctx_patch_id = last_patch_hash;
+                g_markov_ctx_word2_id = 0.0;
             }
+            if (prev2_patch_hash != 17.0 && prev_patch_hash != 17.0) {
+                let h23 = math_mod_val(prev2_patch_hash * 257.0 + prev_patch_hash, 32767.0);
+                g_markov_ctx_word3_id = math_mod_val(h23 * 257.0 + patch_hash, 32767.0) + 1.0;
+            } else {
+                g_markov_ctx_word3_id = 0.0;
+            }
+            patch_sent_end = 0.0;
             patch_len = 0.0;
             patch_hash = 17.0;
             patch_steps = patch_steps + 1.0;
@@ -1932,7 +2011,11 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
 
     var out_str = prompt;
     var step = 0.0;
-    while (step < gen_len) {
+    let max_grace_len = gen_len + 12.0;
+    while (step < max_grace_len) {
+        if (step >= gen_len && (cur_b == 32.0 || cur_b == 46.0 || cur_b == 33.0 || cur_b == 63.0)) {
+            break;
+        }
         geomind_byte_latent_decode_logits_blt(h_local, h_top_patch, b3, b2, cur_b, logits_256);
         var best_b = 32.0;
         var best_l = -100000.0;
@@ -2001,16 +2084,22 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
                 cartan_vec_set_f32(h_patch_accum, d, 0.0);
                 d = d + 1.0;
             }
-            if (patch_sent_end == 1.0) {
-                prev_patch_hash = 17.0;
-                last_patch_hash = 17.0;
-                g_markov_ctx_patch_id = 0.0;
-                patch_sent_end = 0.0;
+            prev2_patch_hash = prev_patch_hash;
+            prev_patch_hash = last_patch_hash;
+            last_patch_hash = patch_hash;
+            g_markov_ctx_word1_id = math_mod_val(patch_hash, 32767.0) + 1.0;
+            if (prev_patch_hash != 17.0) {
+                g_markov_ctx_word2_id = math_mod_val(prev_patch_hash * 257.0 + patch_hash, 32767.0) + 1.0;
             } else {
-                prev_patch_hash = last_patch_hash;
-                last_patch_hash = math_mod_val(last_patch_hash * 257.0 + patch_hash, 32768.0);
-                g_markov_ctx_patch_id = last_patch_hash;
+                g_markov_ctx_word2_id = 0.0;
             }
+            if (prev2_patch_hash != 17.0 && prev_patch_hash != 17.0) {
+                let h23 = math_mod_val(prev2_patch_hash * 257.0 + prev_patch_hash, 32767.0);
+                g_markov_ctx_word3_id = math_mod_val(h23 * 257.0 + patch_hash, 32767.0) + 1.0;
+            } else {
+                g_markov_ctx_word3_id = 0.0;
+            }
+            patch_sent_end = 0.0;
             patch_len = 0.0;
             patch_hash = 17.0;
         }
@@ -2122,6 +2211,16 @@ fn geomind_run_english_curriculum(num_layers: float, lr: float) -> float {
         printf("  -> Gen 4: %s\n", gen_r3);
         cartan_flush(0.0);
     }
+
+    printf("--------------------------------------------------------------------------------\n");
+    printf("  NOVEL CONCEPT RECOMBINATION TEST (Unseen Prefixes Bridging Shared Word Hubs)\n");
+    printf("--------------------------------------------------------------------------------\n");
+    printf("  -> Novel 1 ('The cat likes to play'):    %s\n", geomind_byte_latent_generate_deep_e8("The cat likes to play", L, 48.0));
+    printf("  -> Novel 2 ('A small dog found'):        %s\n", geomind_byte_latent_generate_deep_e8("A small dog found", L, 48.0));
+    printf("  -> Novel 3 ('Cold water is'):            %s\n", geomind_byte_latent_generate_deep_e8("Cold water is", L, 48.0));
+    printf("  -> Novel 4 ('When rain falls, the cat'): %s\n", geomind_byte_latent_generate_deep_e8("When rain falls, the cat", L, 48.0));
+    printf("  -> Novel 5 ('The dog can bounce'):       %s\n", geomind_byte_latent_generate_deep_e8("The dog can bounce", L, 48.0));
+    cartan_flush(0.0);
 
     geomind_visualizer_export_html("manifold_relaxation.html", "3-Rung Concentric English Curriculum");
     printf("================================================================================\n");
