@@ -4,6 +4,15 @@ This changelog records the complete development history, cognitive architecture 
 
 Core CARTAN programming language, compiler, runtime, and general-purpose standard library releases are tracked in the root [`CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/CHANGELOG.md).
 
+## [2.4.1] - 2026-11-04 (GeoMind v2 `CARTAN-E8` Stage 5.4.1: Paragraph-Boundary Decoupling, Sentence-Subject Topic Bridge Hub (`sent_topic_hash`), & Canonical Sentence-Boundary Orthographic Normalization)
+
+### Completed & Validated
+- **Paragraph-Boundary Decoupling & Sentence-Subject Topic Bridge Hub ([`Projects/geomind/byte_latent.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L60-L71), [`e8_nursery_primer.txt`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/trainingdata/e8_nursery_primer.txt), [`e8_concept_triples.txt`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/trainingdata/e8_concept_triples.txt))**:
+  - Decoupled paragraph breaks (`\n`, `is_para_break == 1.0`) so unrelated paragraphs never chain false cross-sentence Markov links across line boundaries.
+  - Added [`geomind_is_glue_word_hash`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L1598-L1610) and `sent_topic_hash` (`bridge_h = (top_h + 500009) mod 1000003`) to anchor sentence boundaries (`.`, `!`, `?`) to the opening subject/content noun of the completed sentence rather than the trailing tail word.
+  - Normalized pre-period characters (`s3 = s2` when `(s2 == 27 || s2 == 30) && s1 == 0`) in [`geomind_markov_3gram_ctx_idx`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L60-L71) so sentence-subject topic hubs transfer seamlessly across novel recombined sentence endings regardless of the final letter before `.`.
+  - Verified thematic continuity across all 14 curriculum and novel recombination generations (`"The cat likes to play"` $\to$ `"The cat likes to play with the ball. A gentle cat purrs when it is happy."`; `"When rain falls, the cat"` $\to$ `"When rain falls, the cat likes to sleep in the warm sun. The rain makes "`; `"The dog can bounce"` $\to$ `"The dog can bounce the ball on the ground. The dog is a good friend."`; `"Commander Vane found a"` $\to$ `"Commander Vane found a bright red ball. It has matched our linguistic frequencies."`).
+
 ## [2.4.0] - 2026-11-04 (GeoMind v2 `CARTAN-E8` Stage 5.4: Clean 467-Chunk Storytelling Corpus Pipeline, 8,192-Concept $O(1)$ Anchor Hash Index, Short-Term Synaptic Depression Buffer, & Rung 4 Multi-Genre Storytelling Ingestion)
 
 ### Completed & Validated
