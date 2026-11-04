@@ -20,16 +20,47 @@ extern fn fseek(f: ptr, offset: float, origin: float) -> float;
 extern fn ftell(f: ptr) -> float;
 
 
-// Stream 0: SO(16) Orthogonal Metric Projection
+// Stream 0: SO(16) (+) S_16^+ (120-D Gauge (+) 128-D Spinor) & Asymmetric Finsler-Randers Drift Stream
 fn stream_cosformer_process(x: ptr, dim: float) -> ptr {
     if (x == 0.0 || dim <= 0.0) { return x; }
     let out = cartan_vec_create();
     let kw = geom_killing_form_dynkin_weight(0.0);
     let inv_dynkin = 1.0 / sqrt(kw);
+    let gauge_split = floor(dim * (120.0 / 248.0));
+
+    // Compute bounded Randers causal drift norm ||beta||_{g^{-1}} < 1 from the 120-D so(16) gauge sector
+    var gauge_norm_sq = 0.0;
+    var g_idx = 0.0;
+    while (g_idx < gauge_split && g_idx < dim) {
+        let gv = cartan_vec_get_f32(x, g_idx);
+        gauge_norm_sq = gauge_norm_sq + (gv * gv) / kw;
+        g_idx = g_idx + 1.0;
+    }
+    let gauge_norm = sqrt(gauge_norm_sq);
+    var beta_scale = 0.0;
+    if (gauge_norm > 0.000001) {
+        beta_scale = 0.95 * (tanh(gauge_norm) / gauge_norm);
+    }
+
     var i = 0.0;
     while (i < dim) {
         let val = cartan_vec_get_f32(x, i);
-        cartan_vec_push_f32(out, val * inv_dynkin);
+        if (i < gauge_split) {
+            // 120-D so(16) Bosonic Gauge Sector: receives Spinor bilinear current back-reaction
+            var spin_pair_idx = gauge_split + math_mod_val(i, dim - gauge_split);
+            if (spin_pair_idx >= dim) { spin_pair_idx = dim - 1.0; }
+            let spin_v = cartan_vec_get_f32(x, spin_pair_idx);
+            let back_react = 0.15 * tanh(spin_v * val);
+            cartan_vec_push_f32(out, (val + back_react) * inv_dynkin);
+        } else {
+            // 128-D S_16^+ Majorana-Weyl Spinor Sector: gated by so(16) gauge curvature + asymmetric Randers drift
+            var gauge_pair_idx = math_mod_val(i - gauge_split, gauge_split);
+            if (gauge_pair_idx < 0.0 || gauge_pair_idx >= dim) { gauge_pair_idx = 0.0; }
+            let gauge_v = cartan_vec_get_f32(x, gauge_pair_idx);
+            let randers_drift = (gauge_v * beta_scale) * val;
+            let spin_gated = val * inv_dynkin + 0.25 * (gauge_v * val) + 0.15 * randers_drift;
+            cartan_vec_push_f32(out, spin_gated);
+        }
         i = i + 1.0;
     }
     return out;
@@ -428,10 +459,36 @@ fn geomind_single_stream_forward(x: ptr, stream_idx: float) -> ptr {
     if (stream_idx == 0.0) {
         let kw = geom_killing_form_dynkin_weight(0.0);
         let inv_dynkin = 1.0 / sqrt(kw);
+        let gauge_split = floor(dim * (120.0 / 248.0));
+        var gauge_norm_sq = 0.0;
+        var g_idx = 0.0;
+        while (g_idx < gauge_split && g_idx < dim) {
+            let gv = cartan_vec_get_f32(x, g_idx);
+            gauge_norm_sq = gauge_norm_sq + (gv * gv) / kw;
+            g_idx = g_idx + 1.0;
+        }
+        let gauge_norm = sqrt(gauge_norm_sq);
+        var beta_scale = 0.0;
+        if (gauge_norm > 0.000001) {
+            beta_scale = 0.95 * (tanh(gauge_norm) / gauge_norm);
+        }
         var i = 0.0;
         while (i < dim) {
             let val = cartan_vec_get_f32(x, i);
-            cartan_vec_set_f32(g_single_stream_scratch, i, val * inv_dynkin);
+            if (i < gauge_split) {
+                var spin_pair_idx = gauge_split + math_mod_val(i, dim - gauge_split);
+                if (spin_pair_idx >= dim) { spin_pair_idx = dim - 1.0; }
+                let spin_v = cartan_vec_get_f32(x, spin_pair_idx);
+                let back_react = 0.15 * tanh(spin_v * val);
+                cartan_vec_set_f32(g_single_stream_scratch, i, (val + back_react) * inv_dynkin);
+            } else {
+                var gauge_pair_idx = math_mod_val(i - gauge_split, gauge_split);
+                if (gauge_pair_idx < 0.0 || gauge_pair_idx >= dim) { gauge_pair_idx = 0.0; }
+                let gauge_v = cartan_vec_get_f32(x, gauge_pair_idx);
+                let randers_drift = (gauge_v * beta_scale) * val;
+                let spin_gated = val * inv_dynkin + 0.25 * (gauge_v * val) + 0.15 * randers_drift;
+                cartan_vec_set_f32(g_single_stream_scratch, i, spin_gated);
+            }
             i = i + 1.0;
         }
         return g_single_stream_scratch;
@@ -572,14 +629,37 @@ fn geomind_streams_manifold_forward(x: ptr, mix: float) -> ptr {
 
     let out = cartan_vec_create();
 
-    // Stream 0: SO(16) Orthogonal Metric Projection (0..stride-1)
+    // Stream 0: SO(16) (+) S_16^+ (120-D Gauge (+) 128-D Spinor) & Asymmetric Randers Drift (0..stride-1)
     let kw0 = geom_killing_form_dynkin_weight(0.0);
     let inv_dynkin0 = 1.0 / sqrt(kw0);
+    let gauge_split0 = floor(stride * (120.0 / 248.0));
+    var g_norm_sq0 = 0.0;
+    var g_i0 = 0.0;
+    while (g_i0 < gauge_split0) {
+        let gv0 = cartan_vec_get_f32(x, g_i0);
+        g_norm_sq0 = g_norm_sq0 + (gv0 * gv0) / kw0;
+        g_i0 = g_i0 + 1.0;
+    }
+    let g_norm0 = sqrt(g_norm_sq0);
+    var beta_scale0 = 0.0;
+    if (g_norm0 > 0.000001) {
+        beta_scale0 = 0.95 * (tanh(g_norm0) / g_norm0);
+    }
     var i = 0.0;
     let end0 = 1.0 * stride;
     while (i < end0) {
         let v = cartan_vec_get_f32(x, i);
-        let trans = v * inv_dynkin0;
+        var trans = v * inv_dynkin0;
+        if (i < gauge_split0) {
+            let sp_idx = gauge_split0 + math_mod_val(i, stride - gauge_split0);
+            let sp_v = cartan_vec_get_f32(x, sp_idx);
+            trans = (v + 0.15 * tanh(sp_v * v)) * inv_dynkin0;
+        } else {
+            let gp_idx = math_mod_val(i - gauge_split0, gauge_split0);
+            let gp_v = cartan_vec_get_f32(x, gp_idx);
+            let r_drift = (gp_v * beta_scale0) * v;
+            trans = v * inv_dynkin0 + 0.25 * (gp_v * v) + 0.15 * r_drift;
+        }
         cartan_vec_push_f32(out, (1.0 - m) * v + m * trans);
         i = i + 1.0;
     }
@@ -705,19 +785,42 @@ fn geomind_streams_manifold_forward_routed(x: ptr, weights: ptr) -> ptr {
         stride = 320.0;
     }
 
-    // Stream 0: SO(16) Cosformer (0..stride-1)
+    // Stream 0: SO(16) (+) S_16^+ Gauge-on-Spinor & Asymmetric Randers Drift (0..stride-1)
     let kw0 = geom_killing_form_dynkin_weight(0.0);
     var w0 = 0.125;
     if (weights != 0.0 && weights[0] >= 8.0) { w0 = weights[2.0]; }
     var m0 = 0.10 * (8.0 * w0);
     if (m0 < 0.02) { m0 = 0.02; }
     if (m0 > 0.65) { m0 = 0.65; }
+    let gauge_split_r0 = floor(stride * (120.0 / 248.0));
+    var g_norm_sq_r0 = 0.0;
+    var gi_r0 = 0.0;
+    while (gi_r0 < gauge_split_r0) {
+        let gvr = x[2.0 + gi_r0];
+        g_norm_sq_r0 = g_norm_sq_r0 + (gvr * gvr) / kw0;
+        gi_r0 = gi_r0 + 1.0;
+    }
+    let g_norm_r0 = sqrt(g_norm_sq_r0);
+    var beta_scale_r0 = 0.0;
+    if (g_norm_r0 > 0.000001) {
+        beta_scale_r0 = 0.95 * (tanh(g_norm_r0) / g_norm_r0);
+    }
     var i = 0.0;
     let end0 = 1.0 * stride;
     while (i < end0) {
         let v = x[2.0 + i];
         let cos_mod = cos(i * 0.05 * kw0) * 0.25 + 0.75;
-        let trans = v * cos_mod;
+        var trans = v * cos_mod;
+        if (i < gauge_split_r0) {
+            let sp_idx = gauge_split_r0 + math_mod_val(i, stride - gauge_split_r0);
+            let sp_v = x[2.0 + sp_idx];
+            trans = (v + 0.15 * tanh(sp_v * v)) * cos_mod;
+        } else {
+            let gp_idx = math_mod_val(i - gauge_split_r0, gauge_split_r0);
+            let gp_v = x[2.0 + gp_idx];
+            let r_drift = (gp_v * beta_scale_r0) * v;
+            trans = v * cos_mod + 0.20 * (gp_v * v) + 0.15 * r_drift;
+        }
         x[2.0 + i] = (1.0 - m0) * v + m0 * trans;
         i = i + 1.0;
     }

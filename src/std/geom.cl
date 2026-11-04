@@ -66,10 +66,104 @@ fn geom_e8_root_vector_length() -> float {
 }
 
 fn geom_e8_root_coordinate(root_idx: float, dim: float) -> float {
-    let r = math_mod_val(root_idx, 240.0);
-    let d = math_mod_val(dim, 8.0);
-    let angle = (r + 1.0) * (d + 1.0) * 0.0174533;
-    return cos(angle) * 0.70710678;
+    let r = floor(math_mod_val(root_idx, 240.0));
+    let d = floor(math_mod_val(dim, 8.0));
+    var pair_idx = 0.0;
+    var sign_comb = 0.0;
+    var cur_pair = 0.0;
+    var i = 0.0;
+    var j = 0.0;
+    if (r < 112.0) {
+        pair_idx = floor(r / 4.0);
+        sign_comb = math_mod_val(r, 4.0);
+        while (i < 8.0) {
+            j = i + 1.0;
+            while (j < 8.0) {
+                if (cur_pair == pair_idx) {
+                    if (d == i) {
+                        if (sign_comb < 2.0) { return 1.0; }
+                        return -1.0;
+                    }
+                    if (d == j) {
+                        if (math_mod_val(sign_comb, 2.0) == 0.0) { return 1.0; }
+                        return -1.0;
+                    }
+                    return 0.0;
+                }
+                cur_pair = cur_pair + 1.0;
+                j = j + 1.0;
+            }
+            i = i + 1.0;
+        }
+        return 0.0;
+    }
+
+    let spin_idx = r - 112.0;
+    var found_even = 0.0;
+    var mask = 0.0;
+    var minus_cnt = 0.0;
+    var b = 0.0;
+    var bit = 0.0;
+    var d_bit = 0.0;
+    while (mask < 256.0) {
+        minus_cnt = 0.0;
+        b = 0.0;
+        while (b < 8.0) {
+            bit = math_mod_val(floor(mask / pow(2.0, b)), 2.0);
+            if (bit == 1.0) { minus_cnt = minus_cnt + 1.0; }
+            b = b + 1.0;
+        }
+        if (math_mod_val(minus_cnt, 2.0) == 0.0) {
+            if (found_even == spin_idx) {
+                d_bit = math_mod_val(floor(mask / pow(2.0, d)), 2.0);
+                if (d_bit == 1.0) { return -0.5; }
+                return 0.5;
+            }
+            found_even = found_even + 1.0;
+        }
+        mask = mask + 1.0;
+    }
+    return 0.0;
+}
+
+// Non-Associative Octonionic Fano Plane Multiplication (a, b in O = R^8 -> c = a * b in O)
+// Directed Fano Triples: (1,2,3), (1,4,5), (1,7,6), (2,4,6), (2,5,7), (3,4,7), (3,6,5)
+fn geom_octonion_mul_raw8(a_ptr: ptr, a_off: float, b_ptr: ptr, b_off: float, out_ptr: ptr, out_off: float) {
+    let a0 = cartan_vec_get_f32(a_ptr, a_off + 0.0);
+    let a1 = cartan_vec_get_f32(a_ptr, a_off + 1.0);
+    let a2 = cartan_vec_get_f32(a_ptr, a_off + 2.0);
+    let a3 = cartan_vec_get_f32(a_ptr, a_off + 3.0);
+    let a4 = cartan_vec_get_f32(a_ptr, a_off + 4.0);
+    let a5 = cartan_vec_get_f32(a_ptr, a_off + 5.0);
+    let a6 = cartan_vec_get_f32(a_ptr, a_off + 6.0);
+    let a7 = cartan_vec_get_f32(a_ptr, a_off + 7.0);
+
+    let b0 = cartan_vec_get_f32(b_ptr, b_off + 0.0);
+    let b1 = cartan_vec_get_f32(b_ptr, b_off + 1.0);
+    let b2 = cartan_vec_get_f32(b_ptr, b_off + 2.0);
+    let b3 = cartan_vec_get_f32(b_ptr, b_off + 3.0);
+    let b4 = cartan_vec_get_f32(b_ptr, b_off + 4.0);
+    let b5 = cartan_vec_get_f32(b_ptr, b_off + 5.0);
+    let b6 = cartan_vec_get_f32(b_ptr, b_off + 6.0);
+    let b7 = cartan_vec_get_f32(b_ptr, b_off + 7.0);
+
+    let c0 = a0*b0 - a1*b1 - a2*b2 - a3*b3 - a4*b4 - a5*b5 - a6*b6 - a7*b7;
+    let c1 = a0*b1 + a1*b0 + a2*b3 - a3*b2 + a4*b5 - a5*b4 - a6*b7 + a7*b6;
+    let c2 = a0*b2 - a1*b3 + a2*b0 + a3*b1 + a4*b6 + a5*b7 - a6*b4 - a7*b5;
+    let c3 = a0*b3 + a1*b2 - a2*b1 + a3*b0 + a4*b7 - a5*b6 + a6*b5 - a7*b4;
+    let c4 = a0*b4 - a1*b5 - a2*b6 - a3*b7 + a4*b0 + a5*b1 + a6*b2 + a7*b3;
+    let c5 = a0*b5 + a1*b4 - a2*b7 + a3*b6 - a4*b1 + a5*b0 - a6*b3 + a7*b2;
+    let c6 = a0*b6 + a1*b7 + a2*b4 - a3*b5 - a4*b2 + a5*b3 + a6*b0 - a7*b1;
+    let c7 = a0*b7 - a1*b6 + a2*b5 + a3*b4 - a4*b3 - a5*b2 + a6*b1 + a7*b0;
+
+    cartan_vec_set_f32(out_ptr, out_off + 0.0, c0);
+    cartan_vec_set_f32(out_ptr, out_off + 1.0, c1);
+    cartan_vec_set_f32(out_ptr, out_off + 2.0, c2);
+    cartan_vec_set_f32(out_ptr, out_off + 3.0, c3);
+    cartan_vec_set_f32(out_ptr, out_off + 4.0, c4);
+    cartan_vec_set_f32(out_ptr, out_off + 5.0, c5);
+    cartan_vec_set_f32(out_ptr, out_off + 6.0, c6);
+    cartan_vec_set_f32(out_ptr, out_off + 7.0, c7);
 }
 
 fn geomind_inverse_randers_backward_project(drift_vector: ptr, lambda_mass_penalty: float, grad_tensor: ptr, velocity: ptr) -> float {
@@ -256,22 +350,120 @@ fn geom_riemannian_norm(v: ptr, metric_diag: ptr, dim: float) -> float {
     return sqrt(geom_riemannian_dot(v, v, metric_diag, dim));
 }
 
-fn geom_finsler_randers_distance(x: ptr, y: ptr, drift_b: ptr, metric_diag: ptr, dim: float) -> float {
-    if (x == 0.0 || y == 0.0 || dim <= 0.0) { return 0.0; }
-    var norm_sq = 0.0;
+// Smoothly bounds a Randers drift 1-form beta so ||beta||_{g^{-1}} <= 0.95 < 1.0 (strict Finsler convexity)
+fn geom_finsler_randers_bound_drift(drift_b: ptr, metric_diag: ptr, dim: float, out_bounded_b: ptr) -> float {
+    if (drift_b == 0.0 || out_bounded_b == 0.0 || dim <= 0.0) { return 0.0; }
+    var stride = floor(dim / 8.0);
+    if (stride < 1.0) { stride = 1.0; }
+    var norm_b_sq = 0.0;
+    var i = 0.0;
+    var b_i = 0.0;
+    var g_i = 1.0;
+    var sub_idx = 0.0;
+    while (i < dim) {
+        b_i = cartan_vec_get_f32(drift_b, i);
+        g_i = 1.0;
+        if (metric_diag != 0.0) {
+            g_i = cartan_vec_get_f32(metric_diag, i);
+        } else {
+            sub_idx = math_mod_val(floor(i / stride), 8.0);
+            g_i = geom_killing_form_dynkin_weight(sub_idx);
+        }
+        if (g_i < 0.0001) { g_i = 1.0; }
+        // Dual inverse metric norm: g^{ii} * b_i^2 = b_i^2 / g_i
+        norm_b_sq = norm_b_sq + (b_i * b_i) / g_i;
+        i = i + 1.0;
+    }
+    let norm_b = sqrt(norm_b_sq);
+    var scale = 0.95;
+    if (norm_b > 0.000001) {
+        scale = 0.95 * (tanh(norm_b) / norm_b);
+    }
+    i = 0.0;
+    while (i < dim) {
+        b_i = cartan_vec_get_f32(drift_b, i);
+        cartan_vec_set_f32(out_bounded_b, i, b_i * scale);
+        i = i + 1.0;
+    }
+    return norm_b * scale;
+}
+
+// Asymmetric Finsler-Randers tangent norm F(x, v) = sqrt(g_{ij} v^i v^j) + tilde{beta}_i v^i
+// Guarantees F(x, v) > 0 for all v != 0 and F(x, v) != F(x, -v) when beta . v != 0
+fn geom_finsler_randers_tangent_norm(v: ptr, drift_b: ptr, metric_diag: ptr, dim: float) -> float {
+    if (v == 0.0 || dim <= 0.0) { return 0.0; }
+    var stride = floor(dim / 8.0);
+    if (stride < 1.0) { stride = 1.0; }
+    var norm_v_sq = 0.0;
+    var norm_b_sq = 0.0;
     var drift_dot = 0.0;
     var i = 0.0;
+    var v_i = 0.0;
+    var g_i = 1.0;
+    var sub_idx = 0.0;
+    var b_i = 0.0;
     while (i < dim) {
-        let diff = x[i] - y[i];
-        var g_i = 1.0;
-        if (metric_diag != 0.0) { g_i = metric_diag[i]; }
-        norm_sq = norm_sq + diff * diff * g_i;
+        v_i = cartan_vec_get_f32(v, i);
+        g_i = 1.0;
+        if (metric_diag != 0.0) {
+            g_i = cartan_vec_get_f32(metric_diag, i);
+        } else {
+            sub_idx = math_mod_val(floor(i / stride), 8.0);
+            g_i = geom_killing_form_dynkin_weight(sub_idx);
+        }
+        if (g_i < 0.0001) { g_i = 1.0; }
+        norm_v_sq = norm_v_sq + (v_i * v_i) * g_i;
         if (drift_b != 0.0) {
-            drift_dot = drift_dot + drift_b[i] * diff;
+            b_i = cartan_vec_get_f32(drift_b, i);
+            norm_b_sq = norm_b_sq + (b_i * b_i) / g_i;
+            drift_dot = drift_dot + b_i * v_i;
         }
         i = i + 1.0;
     }
-    return sqrt(norm_sq) + drift_dot;
+    let alpha = sqrt(norm_v_sq);
+    var beta_term = 0.0;
+    if (drift_b != 0.0) {
+        let norm_b = sqrt(norm_b_sq);
+        var scale = 0.95;
+        if (norm_b > 0.000001) {
+            scale = 0.95 * (tanh(norm_b) / norm_b);
+        }
+        beta_term = drift_dot * scale;
+    }
+    let res = alpha + beta_term;
+    if (res < 0.0) { return 0.0; }
+    return res;
+}
+
+fn geom_finsler_randers_distance(x: ptr, y: ptr, drift_b: ptr, metric_diag: ptr, dim: float) -> float {
+    if (x == 0.0 || y == 0.0 || dim <= 0.0) { return 0.0; }
+    var norm_sq = 0.0;
+    var norm_b_sq = 0.0;
+    var drift_dot = 0.0;
+    var i = 0.0;
+    while (i < dim) {
+        let diff = y[i] - x[i];
+        var g_i = 1.0;
+        if (metric_diag != 0.0) { g_i = metric_diag[i]; }
+        if (g_i < 0.0001) { g_i = 1.0; }
+        norm_sq = norm_sq + diff * diff * g_i;
+        if (drift_b != 0.0) {
+            let b_i = drift_b[i];
+            norm_b_sq = norm_b_sq + (b_i * b_i) / g_i;
+            drift_dot = drift_dot + b_i * diff;
+        }
+        i = i + 1.0;
+    }
+    var scale = 1.0;
+    if (drift_b != 0.0) {
+        let norm_b = sqrt(norm_b_sq);
+        if (norm_b > 0.95) {
+            scale = 0.95 * (tanh(norm_b) / norm_b);
+        }
+    }
+    let f_dist = sqrt(norm_sq) + drift_dot * scale;
+    if (f_dist < 0.0) { return 0.0; }
+    return f_dist;
 }
 
 fn geom_sasaki_phase_space_distance(pos1: ptr, mom1: ptr, pos2: ptr, mom2: ptr, metric_diag: ptr, dim: float) -> float {

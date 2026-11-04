@@ -1,0 +1,215 @@
+// Projects/geomind/Testing-Scratch/test_e8_phase1_gauge_spinor.car
+// Empirical Verification Suite for Phase 1 of CARTAN-E8 (GeoMind v2):
+// [1.1] 120-D so(16) Gauge (+) 128-D S_16^+ Spinor Cross-Gating & Octonionic Fano Algebra
+// [1.2] Asymmetric Finsler-Randers Directional Drift (||tilde{beta}|| < 1, F(x,v) != F(x,-v))
+
+include "src/std/geom.cl";
+include "Projects/geomind/geometry.cl";
+include "Projects/geomind/streams.cl";
+include "Projects/geomind/byte_latent.cl";
+
+fn main() -> int {
+    printf("=== CARTAN-E8 PHASE 1 VERIFICATION SUITE ===\n");
+    cartan_flush(0.0);
+
+    // 1. Verify all 240 E8 roots have squared norm == 2.0 and match std/geom.cl
+    let num_roots = geomind_init_e8_roots_if_needed();
+    printf("[Debug] geomind_init_e8_roots_if_needed returned %.1f\n", num_roots);
+    cartan_flush(0.0);
+    var bad_norms = 0.0;
+    var bad_coords = 0.0;
+    var r = 0.0;
+    var nsq = 0.0;
+    var d = 0.0;
+    var c1 = 0.0;
+    var c2 = 0.0;
+    while (r < 240.0) {
+        nsq = geomind_e8_root_norm_sq(r);
+        if (math_abs_val(nsq - 2.0) > 0.0001) {
+            bad_norms = bad_norms + 1.0;
+        }
+        d = 0.0;
+        while (d < 8.0) {
+            c1 = geomind_e8_get_root_coord(r, d);
+            c2 = geom_e8_root_coordinate(r, d);
+            if (math_abs_val(c1 - c2) > 0.0001) {
+                bad_coords = bad_coords + 1.0;
+            }
+            d = d + 1.0;
+        }
+        r = r + 1.0;
+    }
+    printf("[Test 1.1a] 240 E8 Roots (112 Integer + 128 Spinor): total=%.1f, bad_norms=%.1f, coord_mismatch=%.1f\n", num_roots, bad_norms, bad_coords);
+    cartan_flush(0.0);
+    if (num_roots != 240.0 || bad_norms > 0.0 || bad_coords > 0.0) {
+        printf("FAIL: E8 Root System verification failed.\n");
+        return 1;
+    }
+
+    // 2. Verify Octonion Fano Plane Composition Norm Identity ||a * b|| = ||a|| * ||b||
+    let oct_a = cartan_vec_create();
+    let oct_b = cartan_vec_create();
+    let oct_c = cartan_vec_create();
+    var k = 0.0;
+    var norm_a_sq = 0.0;
+    var norm_b_sq = 0.0;
+    var va = 0.0;
+    var vb = 0.0;
+    var vc = 0.0;
+    while (k < 8.0) {
+        va = 0.3 * (k + 1.0);
+        vb = 0.2 * (8.0 - k) - 0.5;
+        cartan_vec_push_f32(oct_a, va);
+        cartan_vec_push_f32(oct_b, vb);
+        cartan_vec_push_f32(oct_c, 0.0);
+        norm_a_sq = norm_a_sq + va * va;
+        norm_b_sq = norm_b_sq + vb * vb;
+        k = k + 1.0;
+    }
+    geom_octonion_mul_raw8(oct_a, 0.0, oct_b, 0.0, oct_c, 0.0);
+    var norm_c_sq = 0.0;
+    k = 0.0;
+    while (k < 8.0) {
+        vc = cartan_vec_get_f32(oct_c, k);
+        norm_c_sq = norm_c_sq + vc * vc;
+        k = k + 1.0;
+    }
+    let expected_norm = sqrt(norm_a_sq * norm_b_sq);
+    let actual_norm = sqrt(norm_c_sq);
+    let oct_err = math_abs_val(actual_norm - expected_norm);
+    printf("[Test 1.1b] Octonion Fano Composition Norm: ||a||*||b||=%.6f, ||a*b||=%.6f, err=%.8f\n", expected_norm, actual_norm, oct_err);
+    cartan_flush(0.0);
+    if (oct_err > 0.001) {
+        printf("FAIL: Octonion norm identity violated.\n");
+        return 1;
+    }
+
+    // 3. Verify 120-D (+) 128-D E8 Gauge-on-Spinor Cross-Gating & S^247 Norm Conservation
+    let v_in_248 = cartan_vec_create();
+    let v_out_248 = cartan_vec_create();
+    d = 0.0;
+    var in_norm_sq = 0.0;
+    var val = 0.0;
+    while (d < 248.0) {
+        val = sin((d + 1.0) * 0.13) + 0.5 * cos((d + 1.0) * 0.07);
+        cartan_vec_push_f32(v_in_248, val);
+        cartan_vec_push_f32(v_out_248, 0.0);
+        in_norm_sq = in_norm_sq + val * val;
+        d = d + 1.0;
+    }
+    geomind_e8_gauge_spinor_cross_gate(v_in_248, v_out_248, 0.30);
+
+    var out_norm_sq = 0.0;
+    var gauge_delta_sq = 0.0;
+    var spinor_delta_sq = 0.0;
+    var vi = 0.0;
+    var vo = 0.0;
+    var diff = 0.0;
+    d = 0.0;
+    while (d < 248.0) {
+        vi = cartan_vec_get_f32(v_in_248, d);
+        vo = cartan_vec_get_f32(v_out_248, d);
+        out_norm_sq = out_norm_sq + vo * vo;
+        diff = vo - vi;
+        if (d < 120.0) {
+            gauge_delta_sq = gauge_delta_sq + diff * diff;
+        } else {
+            spinor_delta_sq = spinor_delta_sq + diff * diff;
+        }
+        d = d + 1.0;
+    }
+    let norm_in = sqrt(in_norm_sq);
+    let norm_out = sqrt(out_norm_sq);
+    let norm_diff = math_abs_val(norm_in - norm_out);
+    let gauge_delta = sqrt(gauge_delta_sq);
+    let spinor_delta = sqrt(spinor_delta_sq);
+    printf("[Test 1.1c] 248-D Gauge-Spinor Cross-Gate: ||in||=%.6f, ||out||=%.6f, norm_err=%.8f, gauge_delta=%.6f, spinor_delta=%.6f\n", norm_in, norm_out, norm_diff, gauge_delta, spinor_delta);
+    cartan_flush(0.0);
+    if (norm_diff > 0.001 || gauge_delta < 0.01 || spinor_delta < 0.01) {
+        printf("FAIL: Gauge-Spinor cross-gating failed norm conservation or sector excitation.\n");
+        return 1;
+    }
+
+    // 4. Verify Asymmetric Finsler-Randers Directional Drift (F(x, v) != F(x, -v) and ||tilde{beta}|| < 1)
+    let v_pos = cartan_vec_create();
+    let v_neg = cartan_vec_create();
+    let drift_b = cartan_vec_create();
+    let bounded_b = cartan_vec_create();
+    var vv = 0.0;
+    var bb = 0.0;
+    d = 0.0;
+    while (d < 248.0) {
+        vv = 0.4 * cos(d * 0.11) + 0.2;
+        bb = 2.5 * cos(d * 0.11) + 1.0;
+        cartan_vec_push_f32(v_pos, vv);
+        cartan_vec_push_f32(v_neg, 0.0 - vv);
+        cartan_vec_push_f32(drift_b, bb);
+        cartan_vec_push_f32(bounded_b, 0.0);
+        d = d + 1.0;
+    }
+    var null_metric: ptr = 0.0;
+    let bounded_norm = geom_finsler_randers_bound_drift(drift_b, null_metric, 248.0, bounded_b);
+    let f_forward = geom_finsler_randers_tangent_norm(v_pos, drift_b, null_metric, 248.0);
+    let f_reverse = geom_finsler_randers_tangent_norm(v_neg, drift_b, null_metric, 248.0);
+    let frs_ab = geomind_frs_brainstem_distance(v_neg, v_pos, v_pos, v_pos, drift_b, 248.0);
+    let frs_ba = geomind_frs_brainstem_distance(v_pos, v_pos, v_neg, v_pos, drift_b, 248.0);
+    let asym_diff = math_abs_val(f_forward - f_reverse);
+    let frs_asym = math_abs_val(frs_ab - frs_ba);
+    printf("[Test 1.2] Finsler-Randers Convexity & Asymmetry: ||tilde_beta||=%.6f (< 1.0), F(+v)=%.6f, F(-v)=%.6f, |F(+v)-F(-v)|=%.6f, |FRS(A->B)-FRS(B->A)|=%.6f\n", bounded_norm, f_forward, f_reverse, asym_diff, frs_asym);
+    if (bounded_norm >= 1.0 || f_forward <= 0.0 || f_reverse <= 0.0 || asym_diff < 0.1 || frs_asym < 0.1) {
+        printf("FAIL: Finsler-Randers convexity or causal asymmetry check failed.\n");
+        return 1;
+    }
+
+    printf("=== ALL PHASE 1 (120-D (+) 128-D GAUGE-SPINOR & FINSLER-RANDERS) TESTS PASSED ===\n\n");
+    cartan_flush(0.0);
+
+    // 5. Phase 2: Markov-Lagrangian Principle of Least Action (10 epochs on Russell/Cartan passage)
+    printf("=== CARTAN-E8 PHASE 2 & 3 VERIFICATION SUITE ===\n");
+    cartan_flush(0.0);
+    geomind_visualizer_reset();
+    let sample_corpus = "In pure mathematics and differential geometry, the exceptional Lie algebra E8 decomposes into the 120-dimensional orthogonal gauge algebra so(16) and the 128-dimensional Majorana-Weyl spinor representation S16+. Geodesic trajectories minimize the Markov-Lagrangian Action along the Finsler-Randers manifold.";
+    let act_ep1 = geomind_byte_latent_train_corpus(sample_corpus, 1.0, 0.04, 1.0);
+    let act_ep10 = geomind_byte_latent_train_corpus(sample_corpus, 9.0, 0.04, 1.0);
+    let p_th = geomind_markov_get_prob(116.0, 104.0); // 't' -> 'h'
+    let coast_flag = geomind_should_geodesic_coast(116.0, 104.0, 0.02, 0.10);
+    printf("[Test 2.1-2.4] Markov-Lagrangian Action Relaxation: S(ep1)=%.6f -> S(ep10)=%.6f, P('h'|'t')=%.4f, coast_gate=%.1f\n", act_ep1, act_ep10, p_th, coast_flag);
+    cartan_flush(0.0);
+    if (act_ep10 >= act_ep1 || coast_flag != 1.0) {
+        printf("FAIL: Lagrangian Action did not decrease over 10 epochs or geodesic coast gate did not fire.\n");
+        return 1;
+    }
+
+    // 6. Phase 3: Tokenizer-Free Byte-Latent Dynamic Surprisal Patching & Autoregressive Generation
+    let patches = geomind_byte_latent_encode_stream(sample_corpus, 3.2);
+    let total_patch_floats = cartan_vec_len(patches);
+    let num_patches = total_patch_floats / 248.0;
+    let corpus_bytes = cartan_string_length(sample_corpus);
+    let comp_ratio = num_patches / corpus_bytes;
+    let gen_out = geomind_byte_latent_generate("In pure mathematics", 24.0);
+    printf("[Test 3.1-3.4] Byte-Latent Patching: bytes=%.0f, patches=%.0f (ratio=%.3f < 1.0), Generated='%s'\n", corpus_bytes, num_patches, comp_ratio, gen_out);
+    cartan_flush(0.0);
+    if (num_patches <= 0.0 || num_patches >= corpus_bytes) {
+        printf("FAIL: Dynamic byte-latent patching failed compression check.\n");
+        return 1;
+    }
+
+    // 7. Phase 4: Domain-Bounded Web Crawler & Live Manifold Relaxation Visualizer (manifold_relaxation.html)
+    printf("\n=== CARTAN-E8 PHASE 4 VERIFICATION SUITE ===\n");
+    cartan_flush(0.0);
+    let test_html_path = "scratch/test_e8_crawl_sample.html";
+    let sample_html = "<html><head><title>E8 Manifold</title></head><body><h1>Cartan E8</h1><p>In pure mathematics and differential geometry, the exceptional Lie algebra E8 decomposes into so(16) and S16+.</p><a href=\"https://example.org/subpage\">Subpage</a></body></html>";
+    cartan_write_file(test_html_path, sample_html);
+    let crawl_act = geomind_crawl_and_train(test_html_path, "example.org", 0.0, 0.0, 1.0, 3.0, 1.0);
+    let vis_exists = cartan_file_exists("manifold_relaxation.html");
+    printf("[Test 4.1-4.3] Crawler & Visualizer: crawl_action=%.6f, manifold_relaxation.html exists=%.1f\n", crawl_act, vis_exists);
+    cartan_flush(0.0);
+    if (crawl_act <= 0.0 || vis_exists != 1.0) {
+        printf("FAIL: Phase 4 crawler or visualizer export failed.\n");
+        return 1;
+    }
+
+    printf("\n=== ALL CARTAN-E8 (PHASES 1, 2, 3, & 4) VERIFICATION TESTS PASSED 100%% ===\n");
+    cartan_flush(0.0);
+    return 0;
+}

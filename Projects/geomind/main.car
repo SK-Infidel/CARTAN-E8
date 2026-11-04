@@ -8,6 +8,7 @@ include "Projects/geomind/ising_state_machine.cl";
 include "Projects/geomind/moe.cl";
 include "Projects/geomind/e8_attention_engine.cl";
 include "Projects/geomind/streams.cl";
+include "Projects/geomind/byte_latent.cl";
 include "Projects/geomind/chat.cl";
 include "Projects/geomind/train.cl";
 include "Projects/geomind/azr_engine.cl";
@@ -58,6 +59,8 @@ fn print_help_dialogue() -> float {
     printf("  --ingest        Ingest material into Continuous Hopfield memory (-target <file>)\n");
     printf("  --sleep         Run Autonomous Metacognitive Sleep memory consolidation\n");
     printf("  --train-webgpu  Run pure native CARTAN WebGPU Causal Training Engine\n");
+    printf("  --byte-latent   Run 248-D E8 Tokenizer-Free Byte-Latent + Markov-Lagrangian Engine (-target <file>, -prompt <text>, --visualize)\n");
+    printf("  --crawl <url>   Run Autonomous Domain-Bounded Recursive Web Crawler (--recurse, --max-depth <N>, -epochs <N>, --visualize)\n");
     printf("  --extract-alignment-vector Extract 5-rank orthonormal alignment subspace {u_syc, u_per, u_ref, u_disc, u_care} with C_en orthogonalization\n");
     printf("  --help, -h      Display this help dialogue and exit\n\n");
     printf("Hardware & Compute Flags:\n");
@@ -171,6 +174,8 @@ fn is_explicit_non_chat_mode(flag: string) -> float {
     if (cartan_string_eq(flag, "--azr-selfplay") == 1.0) { return 1.0; }
     if (cartan_string_eq(flag, "--extract-alignment-vector") == 1.0 || cartan_string_eq(flag, "-extract-alignment-vector") == 1.0) { return 1.0; }
     if (cartan_string_eq(flag, "--diagnose-alignment") == 1.0 || cartan_string_eq(flag, "-diagnose-alignment") == 1.0) { return 1.0; }
+    if (cartan_string_eq(flag, "--byte-latent") == 1.0 || cartan_string_eq(flag, "-byte-latent") == 1.0) { return 1.0; }
+    if (cartan_string_eq(flag, "--crawl") == 1.0 || cartan_string_eq(flag, "-crawl") == 1.0) { return 1.0; }
     return 0.0;
 }
 
@@ -1535,6 +1540,40 @@ fn main() -> float {
         }
         if (cartan_string_eq(flag, "--diagnose-alignment") == 1.0 || cartan_string_eq(flag, "-diagnose-alignment") == 1.0) {
             geomind_run_alignment_diagnostics();
+            cartan_flush(0.0);
+            return 0.0;
+        }
+        if (cartan_string_eq(flag, "--byte-latent") == 1.0 || cartan_string_eq(flag, "-byte-latent") == 1.0) {
+            let target = get_cli_target_path(arg_count);
+            let prompt = get_cli_param("-prompt", arg_count);
+            let epochs = get_cli_epochs(arg_count, 5.0);
+            let lr = get_cli_param_float("-lr", arg_count, 0.03);
+            let vis = get_cli_flag_present("-visualize", arg_count);
+            var corpus_text = "In pure mathematics and differential geometry, the exceptional Lie algebra E8 decomposes into the 120-dimensional orthogonal gauge algebra so(16) and the 128-dimensional Majorana-Weyl spinor representation S16+.";
+            if (cartan_string_length(target) > 0.0 && cartan_file_exists(target) == 1.0) {
+                corpus_text = cartan_read_file(target);
+            }
+            geomind_visualizer_reset();
+            let final_act = geomind_byte_latent_train_corpus(corpus_text, epochs, lr, vis);
+            var gen_seed = "In pure mathematics";
+            if (cartan_string_length(prompt) > 0.0) { gen_seed = prompt; }
+            let gen_str = geomind_byte_latent_generate(gen_seed, 48.0);
+            printf("[CARTAN-E8 Byte-Latent] Final Lagrangian Action S = %.6f | Generated: %s\n", final_act, gen_str);
+            if (vis == 1.0) {
+                geomind_visualizer_export_html("manifold_relaxation.html", "Byte-Latent E8 Corpus");
+                printf("[CARTAN-E8 Visualizer] Exported manifold_relaxation.html\n");
+            }
+            cartan_flush(0.0);
+            return 0.0;
+        }
+        if (cartan_string_eq(flag, "--crawl") == 1.0 || cartan_string_eq(flag, "-crawl") == 1.0) {
+            let url = get_cli_param("-crawl", arg_count);
+            let recurse = get_cli_flag_present("-recurse", arg_count);
+            let max_depth = get_cli_param_float("-max-depth", arg_count, 1.0);
+            let epochs = get_cli_epochs(arg_count, 3.0);
+            let vis = get_cli_flag_present("-visualize", arg_count);
+            geomind_visualizer_reset();
+            geomind_crawl_and_train(url, "", recurse, 0.0, max_depth, epochs, vis);
             cartan_flush(0.0);
             return 0.0;
         }
