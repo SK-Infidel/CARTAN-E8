@@ -1007,20 +1007,9 @@ fn main() -> float {
         geomind_chat_set_debug_mode(1.0);
         printf("[GeoMind Mode] Debug Telemetry Logging ENABLED\n");
     }
-    // Hardware GPU Acceleration is ENABLED BY DEFAULT (pure WebGPU on physical NVIDIA RTX 2000 Ada GPU)
-    let no_gpu_flag = get_cli_flag_present("-cpu", arg_count) + 
-                      get_cli_flag_present("--cpu", arg_count) + 
-                      get_cli_flag_present("-no-gpu", arg_count) + 
-                      get_cli_flag_present("--no-gpu", arg_count);
-    if (no_gpu_flag == 0.0) {
-        let g_ok = geomind_chat_mount_gpu_if_needed();
-        if (g_ok == 1.0) {
-            printf("[GeoMind Mode] Bare-Metal WebGPU Hardware Acceleration ENABLED (Default)\n");
-        }
-    } else {
-        geomind_chat_set_gpu_enabled(0.0);
-        printf("[GeoMind Mode] CPU-Only Mode: Hardware GPU acceleration disabled.\n");
-    }
+    // Sovereign CARTAN-E8 v2: Never mount legacy v1 manifold_layer_*.bin weights.
+    geomind_chat_set_gpu_enabled(0.0);
+    printf("[CARTAN-E8 Mode] Sovereign 248D Non-Euclidean E8 Manifold Engine (Zero Pretrained Weights Mounted)\n");
     let no_priming = get_cli_flag_present("-no-expert-priming", arg_count) + 
                      get_cli_flag_present("-no-priming", arg_count) +
                      get_cli_flag_present("-raw-neural", arg_count);

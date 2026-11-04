@@ -4945,15 +4945,9 @@ fn geomind_chat_dispatch_gpu_lm_head(h_normed: ptr, out_logits: ptr, mask: ptr) 
 }
 
 fn geomind_chat_mount_gpu_if_needed() -> float {
-    if (g_chat_gpu_disabled == 1.0) { return 0.0; }
-    if (g_chat_gpu_mounted == 1.0) { return 1.0; }
-    let init_ok = gpu_init();
-    if (init_ok != 1.0) { return 0.0; }
-
-    geomind_mount_gpu_resident_layers();
-
+    // Sovereign CARTAN-E8 v2 isolation: never mount legacy v1 manifold_layer_*.bin weights.
     g_chat_gpu_mounted = 1.0;
-    return 1.0;
+    return 0.0;
 }
 
 // Dynamic Tangent Bundle Alignment Debias Globals & State
