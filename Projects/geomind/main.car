@@ -1558,8 +1558,8 @@ fn main() -> float {
             let final_act = geomind_byte_latent_train_deep_e8_corpus(corpus_text, layers, epochs, lr, vis);
             var gen_seed = "In pure mathematics";
             if (cartan_string_length(prompt) > 0.0) { gen_seed = prompt; }
-            let gen_str = geomind_byte_latent_generate_deep_e8(gen_seed, layers, 48.0);
-            printf("[CARTAN-E8 Deep Byte-Latent (L=%.0f)] Final Lagrangian Action S = %.6f | Generated: %s\n", layers, final_act, gen_str);
+            let gen_str = geomind_byte_latent_generate_deep_e8(gen_seed, layers, 64.0);
+            printf("[CARTAN-E8 Two-Tier BLT (L=%.0f | Patches=%.0f)] Final Lagrangian Action S = %.6f | Generated: %s\n", layers, g_blt_last_patch_count, final_act, gen_str);
             if (vis == 1.0) {
                 geomind_visualizer_export_html("manifold_relaxation.html", "Deep E8 Byte-Latent Stack");
                 printf("[CARTAN-E8 Visualizer] Exported manifold_relaxation.html\n");

@@ -396,7 +396,7 @@ fn main() -> int {
     let stack_reload_ok = geomind_e8_stack_load("Projects/geomind/trainingdata/checkpoints/geomind_e8_deep_stack.bin");
     printf("[Test 5.3] Deep Multi-Layer E8 Stack (L=4): S(ep1)=%.6f -> S(ep5)=%.6f, ckpt=(%.0f, reload=%.0f), Gen='%s'\n", deep_act_ep1, deep_act_ep5, stack_ckpt_ok, stack_reload_ok, deep_gen);
     cartan_flush(0.0);
-    if (deep_act_ep5 >= deep_act_ep1 || stack_ckpt_ok != 1.0 || stack_reload_ok != 1.0) {
+    if (!(deep_act_ep5 < deep_act_ep1) || stack_ckpt_ok != 1.0 || stack_reload_ok != 1.0) {
         printf("FAIL: Deep Multi-Layer E8 Stack Action relaxation or checkpoint persistence failed.\n");
         return 1;
     }

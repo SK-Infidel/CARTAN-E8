@@ -520,6 +520,23 @@ fn geomind_e8_stack_backward_step(
     // Scale per-layer learning rate gently with depth to preserve SO(120)/Spin(16) manifold stability
     let layer_lr = lr / sqrt(L);
 
+    var init_gn_sq = 0.0;
+    var ig = 0.0;
+    while (ig < 248.0) {
+        let gv0 = cartan_vec_get_f32(dh_cur, ig);
+        init_gn_sq = init_gn_sq + gv0 * gv0;
+        ig = ig + 1.0;
+    }
+    let init_gn = sqrt(init_gn_sq);
+    if (init_gn > 4.0) {
+        let init_sc = 4.0 / init_gn;
+        ig = 0.0;
+        while (ig < 248.0) {
+            cartan_vec_set_f32(dh_cur, ig, cartan_vec_get_f32(dh_cur, ig) * init_sc);
+            ig = ig + 1.0;
+        }
+    }
+
     var l = L - 1.0;
     while (l >= 0.0) {
         let l_off = l * 248.0;
@@ -581,7 +598,9 @@ fn geomind_e8_stack_backward_step(
                 // Pullback dh_attn_c += w_{r,c} * d_lin_r
                 cartan_vec_set_f32(dh_attn, c, cartan_vec_get_f32(dh_attn, c) + w_rc * d_lin_r);
                 // Riemannian Killing-preconditioned gradient update on W_gauge^{(l)}
-                let w_new = w_rc - (layer_lr * kw_inv) * (d_lin_r * h_attn_c);
+                var w_new = w_rc - (layer_lr * kw_inv) * (d_lin_r * h_attn_c);
+                if (w_new > 2.0) { w_new = 2.0; }
+                if (w_new < -2.0) { w_new = -2.0; }
                 cartan_vec_set_f32(g_e8_stack_w_gauge, row_off + c, w_new);
                 c = c + 1.0;
             }
@@ -605,7 +624,9 @@ fn geomind_e8_stack_backward_step(
                 let sw_rc = cartan_vec_get_f32(g_e8_stack_w_spinor, srow_off + sc);
                 let h_attn_sc = cartan_vec_get_f32(h_attn_l, 120.0 + sc);
                 cartan_vec_set_f32(dh_attn, 120.0 + sc, cartan_vec_get_f32(dh_attn, 120.0 + sc) + sw_rc * d_lin_sr);
-                let sw_new = sw_rc - (layer_lr * skw_inv) * (d_lin_sr * h_attn_sc);
+                var sw_new = sw_rc - (layer_lr * skw_inv) * (d_lin_sr * h_attn_sc);
+                if (sw_new > 2.0) { sw_new = 2.0; }
+                if (sw_new < -2.0) { sw_new = -2.0; }
                 cartan_vec_set_f32(g_e8_stack_w_spinor, srow_off + sc, sw_new);
                 sc = sc + 1.0;
             }
@@ -631,9 +652,18 @@ fn geomind_e8_stack_backward_step(
             let wk = cartan_vec_get_f32(g_e8_stack_w_attn, a_base + 248.0 + d);
             let wv = cartan_vec_get_f32(g_e8_stack_w_attn, a_base + 496.0 + d);
 
-            cartan_vec_set_f32(g_e8_stack_w_attn, a_base + d, wq - layer_lr * dq_d * h_d);
-            cartan_vec_set_f32(g_e8_stack_w_attn, a_base + 248.0 + d, wk - layer_lr * dk_d * h_d);
-            cartan_vec_set_f32(g_e8_stack_w_attn, a_base + 496.0 + d, wv - layer_lr * dv_d * h_d);
+            var wq_new = wq - layer_lr * dq_d * h_d;
+            if (wq_new > 3.0) { wq_new = 3.0; }
+            if (wq_new < -3.0) { wq_new = -3.0; }
+            var wk_new = wk - layer_lr * dk_d * h_d;
+            if (wk_new > 3.0) { wk_new = 3.0; }
+            if (wk_new < -3.0) { wk_new = -3.0; }
+            var wv_new = wv - layer_lr * dv_d * h_d;
+            if (wv_new > 3.0) { wv_new = 3.0; }
+            if (wv_new < -3.0) { wv_new = -3.0; }
+            cartan_vec_set_f32(g_e8_stack_w_attn, a_base + d, wq_new);
+            cartan_vec_set_f32(g_e8_stack_w_attn, a_base + 248.0 + d, wk_new);
+            cartan_vec_set_f32(g_e8_stack_w_attn, a_base + 496.0 + d, wv_new);
 
             // Update Finsler-Randers causal drift 1-form beta^{(l)}
             let cur_b = cartan_vec_get_f32(g_e8_stack_randers_b, l_off + d);
