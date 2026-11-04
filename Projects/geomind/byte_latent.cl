@@ -29,51 +29,133 @@ fn cartan_char_from_code(code: float) -> string {
 // 256 x 256 transition count matrix (65,536 floats = 256 KB) + 256 row totals
 var g_markov_counts_256x256: ptr = 0.0;
 var g_markov_row_totals_256: ptr = 0.0;
-// 3-gram context Markov table: 2,048 hashed (b_{t-3}, b_{t-2}, b_{t-1}) contexts x 256 next bytes
+// 3-gram context Markov table: 65,536 collision-free (ctx_patch_id, sym(b_{t-1}), sym(b_t)) contexts x 128 ASCII next bytes
 var g_markov_3gram_counts: ptr = 0.0;
 var g_markov_3gram_totals: ptr = 0.0;
+var g_markov_3gram_keys: ptr = 0.0;
+var g_markov_ctx_patch_id: float = 0.0;
 var g_markov_initialized: float = 0.0;
 
+// Maps any byte (0..255) to a 32-state collision-free orthographic symbol index:
+// 0=' ', 1..26='a'..'z' (case-folded), 27='.', 28=',', 29='\'', 30='!', 31=other
+fn geomind_markov_byte_sym32(b: float) -> float {
+    let x = math_mod_val(floor(math_abs_val(b)), 256.0);
+    if (x == 32.0) { return 0.0; }
+    if (x >= 97.0 && x <= 122.0) { return (x - 97.0) + 1.0; }
+    if (x >= 65.0 && x <= 90.0) { return (x - 65.0) + 1.0; }
+    if (x == 46.0) { return 27.0; }
+    if (x == 44.0) { return 28.0; }
+    if (x == 39.0) { return 29.0; }
+    if (x == 33.0 || x == 63.0) { return 30.0; }
+    return 31.0;
+}
+
 fn geomind_markov_3gram_ctx_idx(b3: float, b2: float, b1: float) -> float {
-    let x3 = math_mod_val(floor(math_abs_val(b3)), 256.0);
-    let x2 = math_mod_val(floor(math_abs_val(b2)), 256.0);
-    let x1 = math_mod_val(floor(math_abs_val(b1)), 256.0);
-    return math_mod_val(x3 * 73.0 + x2 * 31.0 + x1 * 7.0, 2048.0);
+    let s3 = geomind_markov_byte_sym32(b3);
+    let s2 = geomind_markov_byte_sym32(b2);
+    let s1 = geomind_markov_byte_sym32(b1);
+    return s3 * 1024.0 + s2 * 32.0 + s1;
+}
+
+fn geomind_markov_patch_ctx_idx(b3: float, b2: float, b1: float, create_slot: float) -> float {
+    let pid = math_mod_val(floor(math_abs_val(g_markov_ctx_patch_id)), 32768.0);
+    let c_idx = geomind_markov_3gram_ctx_idx(b3, b2, b1);
+    let k_pid = pid + 1.0;
+    let k_tri = c_idx + 1.0;
+    let h0 = math_mod_val(pid * 13331.0 + c_idx * 997.0, 32768.0);
+    if (g_markov_3gram_keys == 0.0) {
+        return 32768.0 + h0;
+    }
+    var probe = 0.0;
+    while (probe < 16.0) {
+        let slot = math_mod_val(h0 + probe * 7.0, 32768.0);
+        let row = 32768.0 + slot;
+        let cur_pid = cartan_vec_get_f32(g_markov_3gram_keys, row * 2.0);
+        let cur_tri = cartan_vec_get_f32(g_markov_3gram_keys, row * 2.0 + 1.0);
+        if (cur_pid == k_pid && cur_tri == k_tri) {
+            return row;
+        }
+        if (cur_pid == 0.0 && cur_tri == 0.0) {
+            if (create_slot == 1.0) {
+                cartan_vec_set_f32(g_markov_3gram_keys, row * 2.0, k_pid);
+                cartan_vec_set_f32(g_markov_3gram_keys, row * 2.0 + 1.0, k_tri);
+                return row;
+            }
+            return -1.0;
+        }
+        probe = probe + 1.0;
+    }
+    if (create_slot == 1.0) {
+        return 32768.0 + h0;
+    }
+    return -1.0;
 }
 
 fn geomind_markov_update_3gram(b3: float, b2: float, b1: float, curr_byte: float) -> float {
     geomind_markov_init_if_needed();
+    let cb = math_mod_val(floor(math_abs_val(curr_byte)), 128.0);
     let c_idx = geomind_markov_3gram_ctx_idx(b3, b2, b1);
-    let cb = math_mod_val(floor(math_abs_val(curr_byte)), 256.0);
-    let m_idx = c_idx * 256.0 + cb;
+    let m_idx = c_idx * 128.0 + cb;
     let old_cnt = cartan_vec_get_f32(g_markov_3gram_counts, m_idx);
     let old_tot = cartan_vec_get_f32(g_markov_3gram_totals, c_idx);
-    var p3 = 1.0 / 256.0;
-    if (old_tot > 0.000001) { p3 = old_cnt / old_tot; }
+    var p3 = 1.0 / 128.0;
+    if (old_tot > 0.000001) { p3 = (old_cnt + 0.01) / (old_tot + 1.28); }
     cartan_vec_set_f32(g_markov_3gram_counts, m_idx, old_cnt + 1.0);
     cartan_vec_set_f32(g_markov_3gram_totals, c_idx, old_tot + 1.0);
+
+    // Also update 2-Patch Discourse-Conditioned 3-gram row (32768..65535)
+    let p_idx = geomind_markov_patch_ctx_idx(b3, b2, b1, 1.0);
+    if (p_idx >= 32768.0) {
+        let pm_idx = p_idx * 128.0 + cb;
+        let p_cnt = cartan_vec_get_f32(g_markov_3gram_counts, pm_idx);
+        let p_tot = cartan_vec_get_f32(g_markov_3gram_totals, p_idx);
+        cartan_vec_set_f32(g_markov_3gram_counts, pm_idx, p_cnt + 1.0);
+        cartan_vec_set_f32(g_markov_3gram_totals, p_idx, p_tot + 1.0);
+    }
     return p3;
 }
 
 fn geomind_markov_get_3gram_prob(b3: float, b2: float, b1: float, curr_byte: float) -> float {
     geomind_markov_init_if_needed();
     let p1 = geomind_markov_get_prob(b1, curr_byte);
+    let cb = math_mod_val(floor(math_abs_val(curr_byte)), 128.0);
     let c_idx = geomind_markov_3gram_ctx_idx(b3, b2, b1);
-    let cb = math_mod_val(floor(math_abs_val(curr_byte)), 256.0);
-    let m_idx = c_idx * 256.0 + cb;
+    let m_idx = c_idx * 128.0 + cb;
     let cnt3 = cartan_vec_get_f32(g_markov_3gram_counts, m_idx);
     let tot3 = cartan_vec_get_f32(g_markov_3gram_totals, c_idx);
-    if (tot3 <= 1.5) { return p1; }
-    let p3 = cnt3 / tot3;
-    // Interpolate 3-gram context (85%) with 1-gram fallback (15%)
-    return 0.85 * p3 + 0.15 * p1;
+    var p3 = p1 * 0.05;
+    if (tot3 > 0.5 && cnt3 >= 0.5) {
+        p3 = (cnt3 + 0.005) / (tot3 + 0.05);
+    }
+
+    // Open-Addressed Sentence-Discourse Context Lookup (32768..65535):
+    // When the current (pid, b3, b2, b1) sentence context has been observed in training (tot_p > 0.5),
+    // condition directly on its empirical distribution so unobserved continuations (cnt_p == 0) in a known
+    // sentence context do not inherit unconditioned global p3 mass.
+    let p_idx = geomind_markov_patch_ctx_idx(b3, b2, b1, 0.0);
+    if (p_idx >= 32768.0) {
+        let tot_p = cartan_vec_get_f32(g_markov_3gram_totals, p_idx);
+        if (tot_p > 0.5) {
+            let pm_idx = p_idx * 128.0 + cb;
+            let cnt_p = cartan_vec_get_f32(g_markov_3gram_counts, pm_idx);
+            if (cnt3 >= 0.5 && cnt_p >= 0.5) {
+                var safe_cnt_p = cnt_p;
+                if (safe_cnt_p > cnt3) { safe_cnt_p = cnt3; }
+                let pp = (safe_cnt_p + 0.005) / (tot_p + 0.05);
+                return 0.92 * pp + 0.06 * p3 + 0.02 * p1;
+            }
+            let pp_zero = 0.0005 / (tot_p + 0.05);
+            return 0.92 * pp_zero + 0.04 * p3 + 0.04 * p1;
+        }
+    }
+    return 0.90 * p3 + 0.10 * p1;
 }
 
 fn geomind_markov_save_prior(path: string) -> float {
     if (path == 0.0 || g_markov_counts_256x256 == 0.0 || g_markov_row_totals_256 == 0.0) { return 0.0; }
     let f = fopen(path, "wb");
     if (f == 0.0) { return 0.0; }
-    let total_elems = 65536.0 + 256.0 + 524288.0 + 2048.0;
+    let total_elems = 65536.0 + 256.0 + 8388608.0 + 65536.0 + 131072.0;
     let buf = malloc(total_elems * 8.0);
     if (buf == 0.0) { fclose(f); return 0.0; }
     var i = 0.0;
@@ -87,14 +169,23 @@ fn geomind_markov_save_prior(path: string) -> float {
         r = r + 1.0;
     }
     i = 0.0;
-    while (i < 524288.0) {
+    while (i < 8388608.0) {
         buf[65792.0 + i] = cartan_vec_get_f32(g_markov_3gram_counts, i);
         i = i + 1.0;
     }
     r = 0.0;
-    while (r < 2048.0) {
-        buf[590080.0 + r] = cartan_vec_get_f32(g_markov_3gram_totals, r);
+    while (r < 65536.0) {
+        buf[8454400.0 + r] = cartan_vec_get_f32(g_markov_3gram_totals, r);
         r = r + 1.0;
+    }
+    var k = 0.0;
+    while (k < 131072.0) {
+        var kv = 0.0;
+        if (g_markov_3gram_keys != 0.0) {
+            kv = cartan_vec_get_f32(g_markov_3gram_keys, k);
+        }
+        buf[8519936.0 + k] = kv;
+        k = k + 1.0;
     }
     fwrite(buf, 8.0, total_elems, f);
     fclose(f);
@@ -105,7 +196,8 @@ fn geomind_markov_save_prior(path: string) -> float {
 fn geomind_markov_load_prior(path: string) -> float {
     if (path == 0.0 || cartan_file_exists(path) == 0.0) { return 0.0; }
     let base_elems = 65536.0 + 256.0;
-    let full_elems = 65536.0 + 256.0 + 524288.0 + 2048.0;
+    let full_elems = 65536.0 + 256.0 + 8388608.0 + 65536.0;
+    let keyed_elems = full_elems + 131072.0;
     let f_sz = cartan_get_binary_file_size(path);
     if (f_sz < base_elems * 8.0) { return 0.0; }
     if (g_markov_counts_256x256 == 0.0) {
@@ -115,15 +207,22 @@ fn geomind_markov_load_prior(path: string) -> float {
         g_markov_row_totals_256 = cartan_tensor_alloc(256.0);
     }
     if (g_markov_3gram_counts == 0.0) {
-        g_markov_3gram_counts = cartan_tensor_alloc(524288.0);
+        g_markov_3gram_counts = cartan_tensor_alloc(8388608.0);
     }
     if (g_markov_3gram_totals == 0.0) {
-        g_markov_3gram_totals = cartan_tensor_alloc(2048.0);
+        g_markov_3gram_totals = cartan_tensor_alloc(65536.0);
+    }
+    if (g_markov_3gram_keys == 0.0) {
+        g_markov_3gram_keys = cartan_tensor_alloc(131072.0);
     }
     let f = fopen(path, "rb");
     if (f == 0.0) { return 0.0; }
     var read_elems = base_elems;
-    if (f_sz >= full_elems * 8.0) { read_elems = full_elems; }
+    if (f_sz >= keyed_elems * 8.0) {
+        read_elems = keyed_elems;
+    } else {
+        if (f_sz >= full_elems * 8.0) { read_elems = full_elems; }
+    }
     let buf = malloc(read_elems * 8.0);
     if (buf == 0.0) { fclose(f); return 0.0; }
     fread(buf, 8.0, read_elems, f);
@@ -138,16 +237,23 @@ fn geomind_markov_load_prior(path: string) -> float {
         cartan_vec_set_f32(g_markov_row_totals_256, r, buf[65536.0 + r]);
         r = r + 1.0;
     }
-    if (read_elems == full_elems) {
+    if (read_elems >= full_elems) {
         i = 0.0;
-        while (i < 524288.0) {
+        while (i < 8388608.0) {
             cartan_vec_set_f32(g_markov_3gram_counts, i, buf[65792.0 + i]);
             i = i + 1.0;
         }
         r = 0.0;
-        while (r < 2048.0) {
-            cartan_vec_set_f32(g_markov_3gram_totals, r, buf[590080.0 + r]);
+        while (r < 65536.0) {
+            cartan_vec_set_f32(g_markov_3gram_totals, r, buf[8454400.0 + r]);
             r = r + 1.0;
+        }
+    }
+    if (read_elems == keyed_elems) {
+        var k = 0.0;
+        while (k < 131072.0) {
+            cartan_vec_set_f32(g_markov_3gram_keys, k, buf[8519936.0 + k]);
+            k = k + 1.0;
         }
     }
     free(buf);
@@ -161,8 +267,9 @@ fn geomind_markov_init_if_needed() -> float {
     }
     g_markov_counts_256x256 = cartan_tensor_alloc(65536.0);
     g_markov_row_totals_256 = cartan_tensor_alloc(256.0);
-    g_markov_3gram_counts = cartan_tensor_alloc(524288.0);
-    g_markov_3gram_totals = cartan_tensor_alloc(2048.0);
+    g_markov_3gram_counts = cartan_tensor_alloc(8388608.0);
+    g_markov_3gram_totals = cartan_tensor_alloc(65536.0);
+    g_markov_3gram_keys = cartan_tensor_alloc(131072.0);
 
     // Initialize with Laplace Dirichlet prior (alpha = 0.02 per cell, row total = 256 * 0.02 = 5.12)
     var idx = 0.0;
@@ -173,16 +280,6 @@ fn geomind_markov_init_if_needed() -> float {
     var r = 0.0;
     while (r < 256.0) {
         cartan_vec_set_f32(g_markov_row_totals_256, r, 5.12);
-        r = r + 1.0;
-    }
-    idx = 0.0;
-    while (idx < 524288.0) {
-        cartan_vec_set_f32(g_markov_3gram_counts, idx, 0.01);
-        idx = idx + 1.0;
-    }
-    r = 0.0;
-    while (r < 2048.0) {
-        cartan_vec_set_f32(g_markov_3gram_totals, r, 2.56);
         r = r + 1.0;
     }
     g_markov_initialized = 1.0;
@@ -791,7 +888,7 @@ fn geomind_byte_latent_decode_logits_blt(
             d = d + 1.0;
         }
         let m_prob = geomind_markov_get_3gram_prob(b3, b2, b1, c);
-        cartan_vec_set_f32(out_logits_256, c, sum + 1.35 * log(m_prob + 0.00001));
+        cartan_vec_set_f32(out_logits_256, c, sum + 2.25 * log(m_prob + 0.00001));
         c = c + 1.0;
     }
 }
@@ -1130,22 +1227,23 @@ fn geomind_byte_latent_generate(prompt: string, gen_len: float) -> string {
 //     achieves low Lagrangian Action S, it crystallizes into a new Anchor Basin on S^{247}!
 
 var g_e8_anchor_count: float = 0.0;
-var g_e8_anchor_coords: ptr = 0.0;     // 128 * 248 floats (crystallized S^{247} coordinates)
-var g_e8_anchor_masses: ptr = 0.0;     // 128 floats (maturity/mass in [0, 1])
-var g_e8_anchor_hashes: ptr = 0.0;     // 128 floats (patch byte-sequence signature)
+var g_e8_anchor_coords: ptr = 0.0;     // 512 * 248 floats (crystallized S^{247} coordinates)
+var g_e8_anchor_masses: ptr = 0.0;     // 512 floats (maturity/mass in [0, 1])
+var g_e8_anchor_hashes: ptr = 0.0;     // 512 floats (patch byte-sequence signature)
 var g_e8_focus_hits: float = 0.0;
 var g_e8_noise_skips: float = 0.0;
 var g_e8_newly_crystallized: float = 0.0;
+var g_e8_primer_crystallize_all: float = 0.0; // When 1.0 (Rung 1 Primer), trains all patches and crystallizes mastered ones
 
 fn geomind_e8_anchors_init_if_needed() {
     if (g_e8_anchor_coords != 0.0) { return; }
-    g_e8_anchor_coords = cartan_tensor_alloc(128.0 * 248.0);
-    g_e8_anchor_masses = cartan_tensor_alloc(128.0);
-    g_e8_anchor_hashes = cartan_tensor_alloc(128.0);
+    g_e8_anchor_coords = cartan_tensor_alloc(512.0 * 248.0);
+    g_e8_anchor_masses = cartan_tensor_alloc(512.0);
+    g_e8_anchor_hashes = cartan_tensor_alloc(512.0);
     var i = 0.0;
-    while (i < 128.0 * 248.0) {
+    while (i < 512.0 * 248.0) {
         cartan_vec_set_f32(g_e8_anchor_coords, i, 0.0);
-        if (i < 128.0) {
+        if (i < 512.0) {
             cartan_vec_set_f32(g_e8_anchor_masses, i, 0.0);
             cartan_vec_set_f32(g_e8_anchor_hashes, i, -1.0);
         }
@@ -1161,11 +1259,66 @@ fn geomind_e8_anchors_reset() {
     g_e8_noise_skips = 0.0;
     g_e8_newly_crystallized = 0.0;
     var i = 0.0;
-    while (i < 128.0) {
+    while (i < 512.0) {
         cartan_vec_set_f32(g_e8_anchor_masses, i, 0.0);
         cartan_vec_set_f32(g_e8_anchor_hashes, i, -1.0);
         i = i + 1.0;
     }
+}
+
+fn geomind_e8_anchors_save(path: string) -> float {
+    geomind_e8_anchors_init_if_needed();
+    if (path == 0.0 || g_e8_anchor_count <= 0.0) { return 0.0; }
+    let f = fopen(path, "wb");
+    if (f == 0.0) { return 0.0; }
+    let total_elems = 1.0 + 512.0 + 512.0 + 512.0 * 248.0;
+    let buf = malloc(total_elems * 8.0);
+    if (buf == 0.0) { fclose(f); return 0.0; }
+    buf[0.0] = g_e8_anchor_count;
+    var i = 0.0;
+    while (i < 512.0) {
+        buf[1.0 + i] = cartan_vec_get_f32(g_e8_anchor_masses, i);
+        buf[513.0 + i] = cartan_vec_get_f32(g_e8_anchor_hashes, i);
+        i = i + 1.0;
+    }
+    i = 0.0;
+    while (i < 512.0 * 248.0) {
+        buf[1025.0 + i] = cartan_vec_get_f32(g_e8_anchor_coords, i);
+        i = i + 1.0;
+    }
+    fwrite(buf, 8.0, total_elems, f);
+    fclose(f);
+    free(buf);
+    return 1.0;
+}
+
+fn geomind_e8_anchors_load(path: string) -> float {
+    geomind_e8_anchors_init_if_needed();
+    if (path == 0.0 || cartan_file_exists(path) == 0.0) { return 0.0; }
+    let total_elems = 1.0 + 512.0 + 512.0 + 512.0 * 248.0;
+    let f_sz = cartan_get_binary_file_size(path);
+    if (f_sz < total_elems * 8.0) { return 0.0; }
+    let f = fopen(path, "rb");
+    if (f == 0.0) { return 0.0; }
+    let buf = malloc(total_elems * 8.0);
+    if (buf == 0.0) { fclose(f); return 0.0; }
+    fread(buf, 8.0, total_elems, f);
+    fclose(f);
+    g_e8_anchor_count = buf[0.0];
+    if (g_e8_anchor_count > 512.0) { g_e8_anchor_count = 512.0; }
+    var i = 0.0;
+    while (i < 512.0) {
+        cartan_vec_set_f32(g_e8_anchor_masses, i, buf[1.0 + i]);
+        cartan_vec_set_f32(g_e8_anchor_hashes, i, buf[513.0 + i]);
+        i = i + 1.0;
+    }
+    i = 0.0;
+    while (i < 512.0 * 248.0) {
+        cartan_vec_set_f32(g_e8_anchor_coords, i, buf[1025.0 + i]);
+        i = i + 1.0;
+    }
+    free(buf);
+    return g_e8_anchor_count;
 }
 
 // Compute unit-normalized Killing-Cartan E8 cosine resonance between patch_248 and anchor idx
@@ -1248,7 +1401,7 @@ fn geomind_e8_crystallize_patch_vec(patch_248: ptr, patch_hash: float, initial_m
         m = m + 1.0;
     }
 
-    if (g_e8_anchor_count >= 128.0) { return -1.0; }
+    if (g_e8_anchor_count >= 512.0) { return -1.0; }
     let idx = g_e8_anchor_count;
     let a_off = idx * 248.0;
     var nsq = 0.0;
@@ -1292,16 +1445,15 @@ fn geomind_e8_seed_concept_word(word: string) -> float {
         var b = cartan_byte_at(word, i);
         if (b < 0.0) { b = b + 256.0; }
         b = math_mod_val(floor(b), 256.0);
-        // Ignore trailing space in hash/fold if user passed single word, or include it if part of patch
-        geomind_fold_byte_into_e8_patch(accum, b, i);
-        p_hash = math_mod_val(p_hash * 131.0 + b, 1000003.0);
+        if (b != 32.0) {
+            geomind_fold_byte_into_e8_patch(accum, b, i);
+            var hb = b;
+            if (hb >= 65.0 && hb <= 90.0) { hb = hb + 32.0; }
+            p_hash = math_mod_val(p_hash * 131.0 + hb, 1000003.0);
+        }
         i = i + 1.0;
     }
     let idx = geomind_e8_crystallize_patch_vec(accum, p_hash, 1.0);
-    // Also crystallize the word with a trailing space (since BLT patches often terminate on ' ')
-    geomind_fold_byte_into_e8_patch(accum, 32.0, wlen);
-    let p_hash_sp = math_mod_val(p_hash * 131.0 + 32.0, 1000003.0);
-    geomind_e8_crystallize_patch_vec(accum, p_hash_sp, 1.0);
     cartan_vec_free(accum);
     return idx;
 }
@@ -1402,9 +1554,13 @@ fn geomind_byte_latent_train_deep_e8_corpus(
         var next_b = 32.0;
         var patch_len = 0.0;
         var patch_hash = 17.0;
+        var prev_patch_hash = 17.0;
+        var last_patch_hash = 17.0;
+        var patch_sent_end = 0.0;
         var patch_act_sum = 0.0;
         var focus_horizon = 0.0;
         var stack_t_geo = 0.0;
+        g_markov_ctx_patch_id = 0.0;
 
         while (step < max_steps) {
             cur_b = cartan_byte_at(corpus, step);
@@ -1413,12 +1569,25 @@ fn geomind_byte_latent_train_deep_e8_corpus(
             if (next_b < 0.0) { next_b = next_b + 256.0; }
             cur_b = math_mod_val(floor(cur_b), 256.0);
             next_b = math_mod_val(floor(next_b), 256.0);
+            // Normalize CR/LF line breaks to space (32) so multi-line corpora form continuous printable byte streams
+            if (cur_b == 13.0 || cur_b == 10.0) { cur_b = 32.0; }
+            if (next_b == 13.0 || next_b == 10.0) { next_b = 32.0; }
+            if (cur_b == 32.0 && next_b == 32.0) {
+                step = step + 1.0;
+                continue;
+            }
 
-            // 1. Evaluate pre-update 3-gram Markov prior and fold byte into current 248-D E8 Patch Accumulator
-            let p3_prior = geomind_markov_get_3gram_prob(b3, b2, cur_b, next_b);
-            let surp = geomind_markov_surprisal_bits(b2, cur_b);
-            geomind_fold_byte_into_e8_patch(h_patch_accum, cur_b, patch_len);
-            patch_hash = math_mod_val(patch_hash * 131.0 + cur_b, 1000003.0);
+            // 1. Fold alphanumeric stem byte into current 248-D E8 Patch Accumulator (ignoring punctuation/space)
+            let is_alnum = ((cur_b >= 97.0 && cur_b <= 122.0) || (cur_b >= 65.0 && cur_b <= 90.0) || (cur_b >= 48.0 && cur_b <= 57.0));
+            if (is_alnum) {
+                geomind_fold_byte_into_e8_patch(h_patch_accum, cur_b, patch_len);
+                var hb = cur_b;
+                if (hb >= 65.0 && hb <= 90.0) { hb = hb + 32.0; }
+                patch_hash = math_mod_val(patch_hash * 131.0 + hb, 1000003.0);
+            }
+            if (cur_b == 46.0 || cur_b == 33.0 || cur_b == 63.0) {
+                patch_sent_end = 1.0;
+            }
             patch_len = patch_len + 1.0;
 
             let row_off = cur_b * 248.0;
@@ -1443,18 +1612,21 @@ fn geomind_byte_latent_train_deep_e8_corpus(
             // 2. Tier 1 (Every Byte): Fast Local 120 (+) 128 Gauge-Spinor Cross-Gate
             geomind_e8_gauge_spinor_cross_gate(h_pre_local, h_local, 0.25);
 
-            // 3. Tier 2 (Surprisal Patch Boundary Detector & Selective Resonance Focus Filter):
-            let is_patch_boundary = ((surp >= 3.2 && patch_len >= 2.0) || cur_b == 32.0 || patch_len >= 6.0 || step == 0.0 || step == (max_steps - 1.0));
-            let markov_v = p3_prior;
+            // 3. Tier 2 (Invariant Morphological/Delimiter Patch Boundary & Selective Resonance Focus Filter):
+            let is_patch_boundary = ((cur_b == 32.0 || patch_len >= 16.0 || step == (max_steps - 1.0)) && patch_hash != 17.0);
+            var saved_patch_hash = patch_hash;
             var patch_res = 0.0;
             var in_focus = 1.0;
 
             if (is_patch_boundary) {
-                if (g_e8_anchor_count > 0.0) {
+                if (g_e8_primer_crystallize_all == 1.0) {
+                    in_focus = 1.0;
+                    g_e8_focus_hits = g_e8_focus_hits + 1.0;
+                } else if (g_e8_anchor_count > 0.0) {
                     patch_res = geomind_e8_query_anchor_resonance(h_patch_accum, patch_hash);
-                    if (patch_res >= 0.72) {
-                        // Child heard a resonant Anchor concept! Open Laser-Focus Window for (i + 1) neighbors:
-                        focus_horizon = 2.0;
+                    if (patch_res >= 0.85) {
+                        // Child heard a resonant Anchor concept! Open Laser-Focus Window for (i + 1) neighbor:
+                        focus_horizon = 1.0;
                         in_focus = 1.0;
                         g_e8_focus_hits = g_e8_focus_hits + 1.0;
                     } else if (focus_horizon > 0.0) {
@@ -1477,16 +1649,30 @@ fn geomind_byte_latent_train_deep_e8_corpus(
                     }
                     var prev_patch_ptr: ptr = 0.0;
                     if (patch_steps_taken > 0.0) { prev_patch_ptr = h_prev_patch; }
-                    stack_t_geo = geomind_e8_stack_forward_step(h_patch_accum, prev_patch_ptr, markov_v, 0.85, h_top_patch);
+                    let mv_step = geomind_markov_get_prob(b2, cur_b);
+                    stack_t_geo = geomind_e8_stack_forward_step(h_patch_accum, prev_patch_ptr, mv_step, 0.85, h_top_patch);
                     patch_steps_taken = patch_steps_taken + 1.0;
+                }
+
+                // Update Sentence-Level Rolling Patch Discourse ID immediately at patch boundary (in lockstep with generation!)
+                if (patch_sent_end == 1.0) {
+                    prev_patch_hash = 17.0;
+                    last_patch_hash = 17.0;
+                    g_markov_ctx_patch_id = 0.0;
+                    patch_sent_end = 0.0;
+                } else {
+                    prev_patch_hash = last_patch_hash;
+                    last_patch_hash = math_mod_val(last_patch_hash * 257.0 + patch_hash, 32768.0);
+                    g_markov_ctx_patch_id = last_patch_hash;
                 }
             }
 
             // 4. Decode 256 byte logits from fused (h_local, h_top_patch) + pre-update 3-gram Markov prior
+            let markov_v = geomind_markov_get_3gram_prob(b3, b2, cur_b, next_b);
             geomind_byte_latent_decode_logits_blt(h_local, h_top_patch, b3, b2, cur_b, logits_256);
 
             // Only update 3-gram Markov counts when in focus (or when no anchor filter is active)
-            if (g_e8_anchor_count == 0.0 || focus_horizon > 0.0 || in_focus == 1.0) {
+            if (g_e8_primer_crystallize_all == 1.0 || g_e8_anchor_count == 0.0 || focus_horizon > 0.0 || in_focus == 1.0) {
                 geomind_markov_update_3gram(b3, b2, cur_b, next_b);
             }
 
@@ -1501,7 +1687,7 @@ fn geomind_byte_latent_train_deep_e8_corpus(
 
             // 6. Geodesic Kinetic Energy Restoring Force & Readout Head Backprop (Gated by Selective Focus)
             var local_lr_scale = 1.0;
-            if (g_e8_anchor_count > 0.0 && in_focus == 0.0 && focus_horizon <= 0.0) {
+            if (g_e8_primer_crystallize_all == 0.0 && g_e8_anchor_count > 0.0 && in_focus == 0.0 && focus_horizon <= 0.0) {
                 local_lr_scale = 0.05; // 95% plasticity suppression during "blah blah blah" noise
             }
             geomind_e8_geodesic_kinetic_grad_248(h_prev_local, h_local, g_byte_e8_randers_b_248, geo_grad, 0.12 * well_factor);
@@ -1520,7 +1706,9 @@ fn geomind_byte_latent_train_deep_e8_corpus(
                     if (math_abs_val(del_c) > 0.005) {
                         let w_dc = cartan_vec_get_f32(g_byte_e8_head_248x256, d * 256.0 + c);
                         dh_d = dh_d + w_dc * del_c;
-                        let new_w = geom_frs_riemannian_gradient_step(w_dc, h_comb * del_c, b_d, eff_lr * local_lr_scale);
+                        var new_w = geom_frs_riemannian_gradient_step(w_dc, h_comb * del_c, b_d, eff_lr * local_lr_scale);
+                        if (new_w > 0.45) { new_w = 0.45; }
+                        else if (new_w < -0.45) { new_w = -0.45; }
                         cartan_vec_set_f32(g_byte_e8_head_248x256, d * 256.0 + c, new_w);
                     }
                     c = c + 1.0;
@@ -1540,10 +1728,12 @@ fn geomind_byte_latent_train_deep_e8_corpus(
                 let avg_patch_act = patch_act_sum / patch_len;
                 if (in_focus == 1.0) {
                     geomind_e8_stack_backward_step(dh_patch_accum, eff_lr * 0.15, 0.04 * well_factor, dh_in_stack);
-                    // Automatic Frontier Crystallization: if a neighbor patch in the focus window stabilizes (low action & >= 3 bytes),
-                    // crystallize it into the Anchor Basin table so the circle of comprehension expands outward!
-                    if (g_e8_anchor_count > 0.0 && patch_len >= 3.0 && avg_patch_act <= 1.55) {
-                        geomind_e8_crystallize_patch_vec(h_patch_accum, patch_hash, 0.60);
+                    // Automatic Frontier Crystallization: Rung 1 Primer crystallizes all words (patch_len >= 2.0),
+                    // while Rung 2/3 Frontier Crystallization crystallizes stabilized neighbor content words (patch_len >= 4.0)
+                    var min_cryst_len = 4.0;
+                    if (g_e8_primer_crystallize_all == 1.0) { min_cryst_len = 2.0; }
+                    if ((g_e8_primer_crystallize_all == 1.0 || g_e8_anchor_count > 0.0) && patch_len >= min_cryst_len && avg_patch_act <= 1.35) {
+                        geomind_e8_crystallize_patch_vec(h_patch_accum, saved_patch_hash, 0.60);
                     }
                 }
                 d = 0.0;
@@ -1566,7 +1756,9 @@ fn geomind_byte_latent_train_deep_e8_corpus(
                 let dp_d = cartan_vec_get_f32(dh_pre_local, d);
                 let b_d = cartan_vec_get_f32(g_byte_e8_randers_b_248, d);
                 let old_emb = cartan_vec_get_f32(g_byte_e8_emb_256x248, row_off + d);
-                let new_emb = geom_frs_riemannian_gradient_step(old_emb, dp_d, b_d, eff_lr * 0.25);
+                var new_emb = geom_frs_riemannian_gradient_step(old_emb, dp_d, b_d, eff_lr * 0.25);
+                if (new_emb > 0.85) { new_emb = 0.85; }
+                else if (new_emb < -0.85) { new_emb = -0.85; }
                 cartan_vec_set_f32(g_byte_e8_emb_256x248, row_off + d, new_emb);
 
                 let h_d = cartan_vec_get_f32(h_local, d);
@@ -1595,6 +1787,9 @@ fn geomind_byte_latent_train_deep_e8_corpus(
     geomind_markov_save_prior("Projects/geomind/trainingdata/checkpoints/geomind_markov_prior.bin");
     geomind_byte_latent_save_weights("Projects/geomind/trainingdata/checkpoints/geomind_byte_latent_e8.bin");
     geomind_e8_stack_save("Projects/geomind/trainingdata/checkpoints/geomind_e8_deep_stack.bin");
+    if (g_e8_anchor_count > 0.0) {
+        geomind_e8_anchors_save("Projects/geomind/trainingdata/checkpoints/geomind_e8_anchors.bin");
+    }
 
     cartan_vec_free(h_prev_local);
     cartan_vec_free(h_pre_local);
@@ -1654,14 +1849,28 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
     var b2 = 32.0;
     var cur_b = 32.0;
     var patch_len = 0.0;
+    var patch_hash = 17.0;
+    var last_patch_hash = 17.0;
+    var prev_patch_hash = 17.0;
+    var patch_sent_end = 0.0;
+    g_markov_ctx_patch_id = 0.0;
     var patch_steps = 0.0;
     var i = 0.0;
     while (i < plen) {
         cur_b = cartan_byte_at(prompt, i);
         if (cur_b < 0.0) { cur_b = cur_b + 256.0; }
         cur_b = math_mod_val(floor(cur_b), 256.0);
-        let surp = geomind_markov_surprisal_bits(b2, cur_b);
-        geomind_fold_byte_into_e8_patch(h_patch_accum, cur_b, patch_len);
+        if (cur_b == 13.0 || cur_b == 10.0) { cur_b = 32.0; }
+        let is_alnum1 = ((cur_b >= 97.0 && cur_b <= 122.0) || (cur_b >= 65.0 && cur_b <= 90.0) || (cur_b >= 48.0 && cur_b <= 57.0));
+        if (is_alnum1) {
+            geomind_fold_byte_into_e8_patch(h_patch_accum, cur_b, patch_len);
+            var hb = cur_b;
+            if (hb >= 65.0 && hb <= 90.0) { hb = hb + 32.0; }
+            patch_hash = math_mod_val(patch_hash * 131.0 + hb, 1000003.0);
+        }
+        if (cur_b == 46.0 || cur_b == 33.0 || cur_b == 63.0) {
+            patch_sent_end = 1.0;
+        }
         patch_len = patch_len + 1.0;
 
         let row_off = cur_b * 248.0;
@@ -1684,7 +1893,7 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
         geomind_weyl_reflect_vector_248(h_pre_local, math_mod_val(cur_b, 240.0));
         geomind_e8_gauge_spinor_cross_gate(h_pre_local, h_local, 0.25);
 
-        let is_patch_boundary = ((surp >= 3.2 && patch_len >= 2.0) || cur_b == 32.0 || patch_len >= 6.0 || i == (plen - 1.0));
+        let is_patch_boundary = ((cur_b == 32.0 || patch_len >= 16.0) && patch_hash != 17.0);
         if (is_patch_boundary) {
             d = 0.0;
             while (d < 248.0) {
@@ -1700,13 +1909,22 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
                 cartan_vec_set_f32(h_patch_accum, d, 0.0);
                 d = d + 1.0;
             }
+            if (patch_sent_end == 1.0) {
+                prev_patch_hash = 17.0;
+                last_patch_hash = 17.0;
+                g_markov_ctx_patch_id = 0.0;
+                patch_sent_end = 0.0;
+            } else {
+                prev_patch_hash = last_patch_hash;
+                last_patch_hash = math_mod_val(last_patch_hash * 257.0 + patch_hash, 32768.0);
+                g_markov_ctx_patch_id = last_patch_hash;
+            }
             patch_len = 0.0;
+            patch_hash = 17.0;
             patch_steps = patch_steps + 1.0;
         }
-        if (i > 0.0) {
+        if (i < (plen - 1.0)) {
             b3 = b2;
-            b2 = cur_b;
-        } else {
             b2 = cur_b;
         }
         i = i + 1.0;
@@ -1720,7 +1938,10 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
         var best_l = -100000.0;
         c = 32.0;
         while (c <= 126.0) {
-            let lv = cartan_vec_get_f32(logits_256, c);
+            var lv = cartan_vec_get_f32(logits_256, c);
+            // Prevent 3 consecutive identical characters (e.g., "fff") and consecutive spaces ("  ")
+            if (b2 == cur_b && cur_b == c) { lv = lv - 12.0; }
+            if (cur_b == 32.0 && c == 32.0) { lv = lv - 12.0; }
             if (lv > best_l) {
                 best_l = lv;
                 best_b = c;
@@ -1732,56 +1953,66 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
         b3 = b2;
         b2 = cur_b;
         cur_b = best_b;
-        let surp = geomind_markov_surprisal_bits(b2, cur_b);
-        geomind_fold_byte_into_e8_patch(h_patch_accum, cur_b, patch_len);
+        let is_alnum2 = ((cur_b >= 97.0 && cur_b <= 122.0) || (cur_b >= 65.0 && cur_b <= 90.0) || (cur_b >= 48.0 && cur_b <= 57.0));
+        if (is_alnum2) {
+            geomind_fold_byte_into_e8_patch(h_patch_accum, cur_b, patch_len);
+            var hb2 = cur_b;
+            if (hb2 >= 65.0 && hb2 <= 90.0) { hb2 = hb2 + 32.0; }
+            patch_hash = math_mod_val(patch_hash * 131.0 + hb2, 1000003.0);
+        }
+        if (cur_b == 46.0 || cur_b == 33.0 || cur_b == 63.0) {
+            patch_sent_end = 1.0;
+        }
         patch_len = patch_len + 1.0;
 
         let t_geo = geomind_e8_geodesic_kinetic_energy_248(h_prev_local, h_local, g_byte_e8_randers_b_248);
         let coast = geomind_should_geodesic_coast(b2, cur_b, t_geo, 0.85);
-        let markov_v = geomind_markov_get_3gram_prob(b3, b2, b2, cur_b);
-        let row_off = cur_b * 248.0;
-
         if (coast == 1.0) {
             g_byte_latent_coast_count = g_byte_latent_coast_count + 1.0;
-            d = 0.0;
-            while (d < 248.0) {
-                let loc_d = cartan_vec_get_f32(h_local, d);
-                let prev_d = cartan_vec_get_f32(h_prev_local, d);
-                let e_d = cartan_vec_get_f32(g_byte_e8_emb_256x248, row_off + d);
-                cartan_vec_set_f32(h_prev_local, d, loc_d);
-                cartan_vec_set_f32(vel_vec, d, 0.25 * (loc_d - prev_d) + e_d);
-                d = d + 1.0;
-            }
-            geom_retract_sphere_step(h_local, vel_vec, 0.55);
-        } else {
-            d = 0.0;
-            while (d < 248.0) {
-                let loc_d = cartan_vec_get_f32(h_local, d);
-                cartan_vec_set_f32(h_prev_local, d, loc_d);
-                cartan_vec_set_f32(h_pre_local, d, loc_d);
-                cartan_vec_set_f32(emb_vec, d, cartan_vec_get_f32(g_byte_e8_emb_256x248, row_off + d));
-                d = d + 1.0;
-            }
-            geom_retract_sphere_step(h_pre_local, emb_vec, 0.55);
-            geomind_weyl_reflect_vector_248(h_pre_local, math_mod_val(cur_b, 240.0));
-            geomind_e8_gauge_spinor_cross_gate(h_pre_local, h_local, 0.25);
         }
+        let row_off = cur_b * 248.0;
+        d = 0.0;
+        while (d < 248.0) {
+            let loc_d = cartan_vec_get_f32(h_local, d);
+            cartan_vec_set_f32(h_prev_local, d, loc_d);
+            cartan_vec_set_f32(h_pre_local, d, loc_d);
+            cartan_vec_set_f32(emb_vec, d, cartan_vec_get_f32(g_byte_e8_emb_256x248, row_off + d));
+            d = d + 1.0;
+        }
+        geom_retract_sphere_step(h_pre_local, emb_vec, 0.55);
+        geomind_weyl_reflect_vector_248(h_pre_local, math_mod_val(cur_b, 240.0));
+        geomind_e8_gauge_spinor_cross_gate(h_pre_local, h_local, 0.25);
 
         // Only fire the 42-Layer Deep E8 Stack at dynamic patch boundaries!
-        let is_patch_boundary = ((surp >= 3.2 && patch_len >= 2.0) || cur_b == 32.0 || patch_len >= 6.0);
+        let is_patch_boundary = ((cur_b == 32.0 || patch_len >= 16.0) && patch_hash != 17.0);
         if (is_patch_boundary) {
             d = 0.0;
             while (d < 248.0) {
                 cartan_vec_set_f32(h_prev_patch, d, cartan_vec_get_f32(h_top_patch, d));
                 d = d + 1.0;
             }
-            geomind_e8_stack_forward_step(h_patch_accum, h_prev_patch, markov_v, 0.85, h_top_patch);
+            var prev_patch_ptr2: ptr = 0.0;
+            if (patch_steps > 0.0) { prev_patch_ptr2 = h_prev_patch; }
+            let mv_step = geomind_markov_get_prob(b2, cur_b);
+            geomind_e8_stack_forward_step(h_patch_accum, prev_patch_ptr2, mv_step, 0.85, h_top_patch);
+            patch_steps = patch_steps + 1.0;
             d = 0.0;
             while (d < 248.0) {
                 cartan_vec_set_f32(h_patch_accum, d, 0.0);
                 d = d + 1.0;
             }
+            if (patch_sent_end == 1.0) {
+                prev_patch_hash = 17.0;
+                last_patch_hash = 17.0;
+                g_markov_ctx_patch_id = 0.0;
+                patch_sent_end = 0.0;
+            } else {
+                prev_patch_hash = last_patch_hash;
+                last_patch_hash = math_mod_val(last_patch_hash * 257.0 + patch_hash, 32768.0);
+                g_markov_ctx_patch_id = last_patch_hash;
+            }
             patch_len = 0.0;
+            patch_hash = 17.0;
         }
         step = step + 1.0;
     }
@@ -1796,6 +2027,106 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
     cartan_vec_free(vel_vec);
     cartan_vec_free(logits_256);
     return out_str;
+}
+
+// ============================================================================
+// STAGE 5.3: 3-RUNG CONCENTRIC ENGLISH DEVELOPMENTAL CURRICULUM (--curriculum)
+// ============================================================================
+// Rung 1: Nursery Primer (`e8_nursery_primer.txt`) - Full Foundation Mode, crystallizes core English SVO + glue anchors.
+// Rung 2: Grounded Concept Triples (`e8_concept_triples.txt`) - Selective Resonance Focus around Rung 1 anchors.
+// Rung 3: Multi-Pass TinyStories (`hf_roneneldan_TinyStories.txt`) - Progressive comprehension expansion across passes.
+fn geomind_run_english_curriculum(num_layers: float, lr: float) -> float {
+    var L = floor(num_layers);
+    if (L < 1.0) { L = 42.0; }
+    var eff_lr = 0.03;
+    if (lr > 0.0001) { eff_lr = lr; }
+
+    printf("\n================================================================================\n");
+    printf("  CARTAN-E8 CONCENTRIC ENGLISH DEVELOPMENTAL CURRICULUM (L=%.0f Layers)\n", L);
+    printf("================================================================================\n");
+    cartan_flush(0.0);
+
+    // Start from a clean Anchor Basin registry for the developmental trajectory
+    geomind_e8_anchors_reset();
+    geomind_visualizer_reset();
+
+    // ------------------------------------------------------------------------
+    // RUNG 1: Nursery Primer (Atomic SVO & Glue Words - 100% Foundation Focus)
+    // ------------------------------------------------------------------------
+    let rung1_path = "Projects/geomind/trainingdata/e8_nursery_primer.txt";
+    var rung1_text = "The ball is round and red. You can throw the ball. You can bounce the ball on the ground. Bouncing a ball is fun. Water is clear and wet.";
+    if (cartan_file_exists(rung1_path) == 1.0) {
+        rung1_text = cartan_read_file(rung1_path);
+    }
+    g_e8_primer_crystallize_all = 1.0;
+    let s_rung1 = geomind_byte_latent_train_deep_e8_corpus(rung1_text, L, 4.0, eff_lr, 1.0);
+    g_e8_primer_crystallize_all = 0.0;
+    let gen_r1_a = geomind_byte_latent_generate_deep_e8("The ball is", L, 52.0);
+    let gen_r1_b = geomind_byte_latent_generate_deep_e8("Water is", L, 52.0);
+    printf("[Rung 1 | Nursery Primer] Action S = %.6f | Crystallized Anchors = %.0f\n", s_rung1, g_e8_anchor_count);
+    printf("  -> Gen 1: %s\n", gen_r1_a);
+    printf("  -> Gen 2: %s\n", gen_r1_b);
+    cartan_flush(0.0);
+
+    // ------------------------------------------------------------------------
+    // RUNG 2: Grounded Taxonomic & Causal Concept Triples (Selective Focus)
+    // ------------------------------------------------------------------------
+    let rung2_path = "Projects/geomind/trainingdata/e8_concept_triples.txt";
+    var rung2_text = "When you drop a ball, gravity pulls the ball down to the ground. Wood floats on water because wood is lighter than water.";
+    if (cartan_file_exists(rung2_path) == 1.0) {
+        rung2_text = cartan_read_file(rung2_path);
+    }
+    g_e8_focus_hits = 0.0;
+    g_e8_noise_skips = 0.0;
+    let anchors_before_r2 = g_e8_anchor_count;
+    let s_rung2 = geomind_byte_latent_train_deep_e8_corpus(rung2_text, L, 4.0, eff_lr, 1.0);
+    let gen_r2 = geomind_byte_latent_generate_deep_e8("When you drop a ball", L, 58.0);
+    printf("[Rung 2 | Concept Triples] Action S = %.6f | Anchors: %.0f -> %.0f | FocusHits = %.0f | NoiseSkipped = %.0f\n",
+        s_rung2, anchors_before_r2, g_e8_anchor_count, g_e8_focus_hits, g_e8_noise_skips);
+    printf("  -> Gen 3: %s\n", gen_r2);
+    cartan_flush(0.0);
+
+    // ------------------------------------------------------------------------
+    // RUNG 3: TinyStories Progressive Multi-Pass Comprehension (Pass 1 vs Pass 2)
+    // ------------------------------------------------------------------------
+    let rung3_path = "Projects/geomind/trainingdata/hf_roneneldan_TinyStories.txt";
+    if (cartan_file_exists(rung3_path) == 1.0) {
+        let full_stories = cartan_read_file(rung3_path);
+        let slen = cartan_string_length(full_stories);
+        var slice_len = 4500.0;
+        if (slen < slice_len) { slice_len = slen; }
+        let stories_slice = cartan_string_substring(full_stories, 0.0, slice_len);
+
+        // Pass 1 over TinyStories slice:
+        g_e8_focus_hits = 0.0;
+        g_e8_noise_skips = 0.0;
+        let anchors_p0 = g_e8_anchor_count;
+        let s_r3_p1 = geomind_byte_latent_train_deep_e8_corpus(stories_slice, L, 2.0, eff_lr * 0.85, 1.0);
+        let p1_focus = g_e8_focus_hits;
+        let p1_skip = g_e8_noise_skips;
+        let anchors_p1 = g_e8_anchor_count;
+
+        // Pass 2 over the SAME TinyStories slice (with newly crystallized Pass 1 anchors!):
+        g_e8_focus_hits = 0.0;
+        g_e8_noise_skips = 0.0;
+        let s_r3_p2 = geomind_byte_latent_train_deep_e8_corpus(stories_slice, L, 2.0, eff_lr * 0.85, 1.0);
+        let p2_focus = g_e8_focus_hits;
+        let p2_skip = g_e8_noise_skips;
+        let anchors_p2 = g_e8_anchor_count;
+
+        let gen_r3 = geomind_byte_latent_generate_deep_e8("Once upon a time", L, 64.0);
+        printf("[Rung 3 | TinyStories Pass 1] Action S = %.6f | Anchors: %.0f -> %.0f | FocusHits = %.0f | NoiseSkipped = %.0f\n",
+            s_r3_p1, anchors_p0, anchors_p1, p1_focus, p1_skip);
+        printf("[Rung 3 | TinyStories Pass 2] Action S = %.6f | Anchors: %.0f -> %.0f | FocusHits = %.0f | NoiseSkipped = %.0f\n",
+            s_r3_p2, anchors_p1, anchors_p2, p2_focus, p2_skip);
+        printf("  -> Gen 4: %s\n", gen_r3);
+        cartan_flush(0.0);
+    }
+
+    geomind_visualizer_export_html("manifold_relaxation.html", "3-Rung Concentric English Curriculum");
+    printf("================================================================================\n");
+    cartan_flush(0.0);
+    return g_e8_anchor_count;
 }
 
 // ============================================================================

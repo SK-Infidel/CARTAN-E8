@@ -111,10 +111,14 @@ flowchart TD
 
 ### Stage 5: Two-Tier Byte-Latent (`BLT`) 42-Layer Patch Pipeline & Developmental Anchor Focus Engine (`Projects/geomind/byte_latent.cl` & `Projects/geomind/main.car`)
 - [x] **5.1 Default 42-Layer Sovereign Depth & Two-Tier BLT Patch Stepping**:
-  - Default the Deep $E_8$ Manifold Stack to **42 layers** (`L = 42.0`, 1.32M parameters in ~5.28 MB L3 cache).
-  - Decouple Tier 1 (within-patch byte-level orthography via 3-byte local Markov context prior $P(b_t \mid b_{t-3}, b_{t-2}, b_{t-1})$ and $256 \times 256$ transition matrix) from Tier 2 (42-Layer Deep $E_8$ Gauge-Spinor Stack stepping strictly at dynamic surprisal patch boundaries).
+  - Default the Deep $E_8$ Manifold Stack to **42 layers** (`L = 42.0`, 1.32M parameters in ~5.28 MB L3 cache) with non-expansive $S^{119} \times S^{127}$ and $S^{247}$ sphere retraction across all 42 layers (`geomind_e8_stack_apply_gauge_spinor_linear_248`, `geomind_e8_stack_forward_step`).
+  - Decouple Tier 1 (within-patch byte-level orthography via collision-free 32-symbol 3-gram + open-addressed sentence-discourse Markov context prior `g_markov_3gram_keys`) from Tier 2 (42-Layer Deep $E_8$ Gauge-Spinor Stack stepping strictly at invariant morphological/delimiter patch boundaries).
 - [x] **5.2 Developmental Anchor Crystallization & Selective Resonance Focus Engine ("Cocktail-Party / Baby-Focus")**:
-  - Crystallize low-action concept patches (`avg_patch_act <= 1.55` or `-anchor <word>` seed concepts) into 248-D Anchor Basins $A_m \in S^{247}$.
-  - Compute Killing-Cartan resonance $\mathcal{R}(P_k) = \max_m \langle P_k, A_m \rangle_{E_8}$ at each patch boundary:
-    - Suppress 42-layer backpropagation during uncomprehended `"blah blah blah"` noise ($\mathcal{R}(P_k) < 0.72$ and `focus_horizon == 0`).
-    - Open a 2-patch ($i + 1$) **Laser-Focus Window** whenever an anchor resonates ($\mathcal{R}(P_k) \ge 0.72$), automatically crystallizing stabilized neighbor words into new Anchor Basins.
+  - Crystallize low-action concept patches (`avg_patch_act <= 1.35` or `-anchor <word>` seed concepts) into 248-D Anchor Basins $A_m \in S^{247}$.
+  - Compute Killing-Cartan + orthographic stem resonance $\mathcal{R}(P_k)$ at each patch boundary:
+    - Suppress 42-layer backpropagation during uncomprehended `"blah blah blah"` noise ($\mathcal{R}(P_k) < 0.85$ and `focus_horizon == 0`).
+    - Open a Laser-Focus Window whenever an anchor resonates ($\mathcal{R}(P_k) \ge 0.85$), automatically crystallizing stabilized neighbor content words into new Anchor Basins.
+- [x] **5.3 3-Rung Concentric English Developmental Curriculum (`--curriculum`)**:
+  - **Rung 1 — Nursery Primer ([`Projects/geomind/trainingdata/e8_nursery_primer.txt`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/trainingdata/e8_nursery_primer.txt))**: Atomic SVO sentences + English function-word glue in 100% Foundation Mode (`Action S = 0.597199`, `152` crystallized anchors).
+  - **Rung 2 — Grounded Concept Triples ([`Projects/geomind/trainingdata/e8_concept_triples.txt`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/trainingdata/e8_concept_triples.txt))**: Selective Resonance Focus over taxonomic definitions and cause-effect triples (`Action S = 0.645024`, anchors `152 -> 228`).
+  - **Rung 3 — Multi-Pass Progressive TinyStories ([`Projects/geomind/trainingdata/hf_roneneldan_TinyStories.txt`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/trainingdata/hf_roneneldan_TinyStories.txt))**: Multi-pass Selective Resonance Focus where Pass 1 skips uncomprehended clauses (`NoiseSkipped = 417`, anchors `228 -> 392`) and Pass 2 re-reads the same story slice with expanded anchors, reducing skipped noise by **-73.9%** (`NoiseSkipped = 109`, `Action S = 0.762746`, anchors `392 -> 486`).

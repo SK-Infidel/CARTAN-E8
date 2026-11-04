@@ -173,11 +173,16 @@ fn geomind_e8_stack_project_qkv_248(h_248: ptr, h_off: float, l: float, q_out: p
     }
 }
 
-// Apply layer l's learned 120x120 so(16) Gauge matrix and 128x128 S_16^+ Spinor matrix to a 248-D state
+// Apply layer l's learned 120x120 so(16) Gauge matrix and 128x128 S_16^+ Spinor matrix to a 248-D state,
+// retracting both sectors onto S^{119} x S^{127} subset S^{247} so 42-layer composition never explodes radially.
 fn geomind_e8_stack_apply_gauge_spinor_linear_248(h_in: ptr, in_off: float, l: float, h_out: ptr, out_off: float) {
+    var g_in_sq = 0.0;
+    var g_out_sq = 0.0;
     let g_base = l * 14400.0;
     var r = 0.0;
     while (r < 120.0) {
+        let in_v = cartan_vec_get_f32(h_in, in_off + r);
+        g_in_sq = g_in_sq + in_v * in_v;
         let row_off = g_base + r * 120.0;
         var acc = 0.0;
         var c = 0.0;
@@ -186,12 +191,25 @@ fn geomind_e8_stack_apply_gauge_spinor_linear_248(h_in: ptr, in_off: float, l: f
             c = c + 1.0;
         }
         cartan_vec_set_f32(h_out, out_off + r, acc);
+        g_out_sq = g_out_sq + acc * acc;
         r = r + 1.0;
     }
+    if (g_out_sq > g_in_sq && g_in_sq > 0.0001) {
+        let g_scale = sqrt(g_in_sq / g_out_sq);
+        r = 0.0;
+        while (r < 120.0) {
+            cartan_vec_set_f32(h_out, out_off + r, cartan_vec_get_f32(h_out, out_off + r) * g_scale);
+            r = r + 1.0;
+        }
+    }
 
+    var s_in_sq = 0.0;
+    var s_out_sq = 0.0;
     let s_base = l * 16384.0;
     var sr = 0.0;
     while (sr < 128.0) {
+        let sin_v = cartan_vec_get_f32(h_in, in_off + 120.0 + sr);
+        s_in_sq = s_in_sq + sin_v * sin_v;
         let srow_off = s_base + sr * 128.0;
         var sacc = 0.0;
         var sc = 0.0;
@@ -200,7 +218,16 @@ fn geomind_e8_stack_apply_gauge_spinor_linear_248(h_in: ptr, in_off: float, l: f
             sc = sc + 1.0;
         }
         cartan_vec_set_f32(h_out, out_off + 120.0 + sr, sacc);
+        s_out_sq = s_out_sq + sacc * sacc;
         sr = sr + 1.0;
+    }
+    if (s_out_sq > s_in_sq && s_in_sq > 0.0001) {
+        let s_scale = sqrt(s_in_sq / s_out_sq);
+        sr = 0.0;
+        while (sr < 128.0) {
+            cartan_vec_set_f32(h_out, out_off + 120.0 + sr, cartan_vec_get_f32(h_out, out_off + 120.0 + sr) * s_scale);
+            sr = sr + 1.0;
+        }
     }
 }
 
@@ -405,6 +432,23 @@ fn geomind_e8_stack_forward_step(
                 mi = mi + 1.0;
             }
             geomind_freudenthal_moe_forward_248(h_gated, h_vel, randers_l, u_moe_l, h_moe, 0.25);
+
+            // Retract h_moe onto the S^{247} sphere of radius sqrt(prev_norm_sq) so attention value weights wv cannot compound radially across 42 layers
+            var moe_norm_sq = 0.0;
+            ld = 0.0;
+            while (ld < 248.0) {
+                let mv0 = cartan_vec_get_f32(h_moe, ld);
+                moe_norm_sq = moe_norm_sq + mv0 * mv0;
+                ld = ld + 1.0;
+            }
+            if (moe_norm_sq > prev_norm_sq && prev_norm_sq > 0.0001) {
+                let m_scale = sqrt(prev_norm_sq / moe_norm_sq);
+                ld = 0.0;
+                while (ld < 248.0) {
+                    cartan_vec_set_f32(h_moe, ld, cartan_vec_get_f32(h_moe, ld) * m_scale);
+                    ld = ld + 1.0;
+                }
+            }
 
             // 4. Accumulate Inter-Layer Geodesic Kinetic Energy T_geo^{(l)}
             let t_layer = geomind_e8_stack_kinetic_energy_248(h_moe, h_prev_layer);

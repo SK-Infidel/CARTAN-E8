@@ -175,6 +175,7 @@ fn is_explicit_non_chat_mode(flag: string) -> float {
     if (cartan_string_eq(flag, "--extract-alignment-vector") == 1.0 || cartan_string_eq(flag, "-extract-alignment-vector") == 1.0) { return 1.0; }
     if (cartan_string_eq(flag, "--diagnose-alignment") == 1.0 || cartan_string_eq(flag, "-diagnose-alignment") == 1.0) { return 1.0; }
     if (cartan_string_eq(flag, "--byte-latent") == 1.0 || cartan_string_eq(flag, "-byte-latent") == 1.0) { return 1.0; }
+    if (cartan_string_eq(flag, "--curriculum") == 1.0 || cartan_string_eq(flag, "-curriculum") == 1.0) { return 1.0; }
     if (cartan_string_eq(flag, "--crawl") == 1.0 || cartan_string_eq(flag, "-crawl") == 1.0) { return 1.0; }
     return 0.0;
 }
@@ -1543,10 +1544,19 @@ fn main() -> float {
             cartan_flush(0.0);
             return 0.0;
         }
+        if (cartan_string_eq(flag, "--curriculum") == 1.0 || cartan_string_eq(flag, "-curriculum") == 1.0) {
+            let layers = get_cli_param_float("-layers", arg_count, 42.0);
+            let lr = get_cli_param_float("-lr", arg_count, 0.03);
+            geomind_run_english_curriculum(layers, lr);
+            cartan_flush(0.0);
+            return 0.0;
+        }
         if (cartan_string_eq(flag, "--byte-latent") == 1.0 || cartan_string_eq(flag, "-byte-latent") == 1.0) {
             let target = get_cli_target_path(arg_count);
-            let prompt = get_cli_param("-prompt", arg_count);
+            let prompt = get_cli_prompt(arg_count);
             let anchor_word = get_cli_param("-anchor", arg_count);
+            let primer_mode = get_cli_flag_present("-primer", arg_count);
+            let focus_mode = get_cli_flag_present("-focus", arg_count);
             let epochs = get_cli_epochs(arg_count, 5.0);
             let lr = get_cli_param_float("-lr", arg_count, 0.03);
             let layers = get_cli_param_float("-layers", arg_count, 42.0);
@@ -1555,12 +1565,18 @@ fn main() -> float {
             if (cartan_string_length(target) > 0.0 && cartan_file_exists(target) == 1.0) {
                 corpus_text = cartan_read_file(target);
             }
-            if (cartan_string_length(anchor_word) > 0.0) {
+            if (primer_mode == 1.0) {
+                geomind_e8_anchors_reset();
+                g_e8_primer_crystallize_all = 1.0;
+            } else if (cartan_string_length(anchor_word) > 0.0) {
                 geomind_e8_anchors_reset();
                 geomind_e8_seed_concept_word(anchor_word);
+            } else if (focus_mode == 1.0) {
+                geomind_e8_anchors_load("Projects/geomind/trainingdata/checkpoints/geomind_e8_anchors.bin");
             }
             geomind_visualizer_reset();
             let final_act = geomind_byte_latent_train_deep_e8_corpus(corpus_text, layers, epochs, lr, vis);
+            g_e8_primer_crystallize_all = 0.0;
             var gen_seed = "In pure mathematics";
             if (cartan_string_length(prompt) > 0.0) { gen_seed = prompt; }
             let gen_str = geomind_byte_latent_generate_deep_e8(gen_seed, layers, 64.0);
