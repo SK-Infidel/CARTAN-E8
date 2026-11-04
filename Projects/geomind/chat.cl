@@ -9521,7 +9521,7 @@ fn geomind_chat_apply_correction(prompt: string, correct_reply: string) -> float
 // ============================================================================
 fn geomind_chat_e8_deep_generate(prompt: string, num_layers: float, max_bytes: float) -> string {
     var L = floor(num_layers);
-    if (L < 1.0) { L = 16.0; }
+    if (L < 1.0) { L = 42.0; }
     let reply = geomind_byte_latent_generate_deep_e8(prompt, L, max_bytes);
     printf("[CARTAN-E8 Deep Chat] (L=%.0f layers | Seq Coasts=%.0f | Layer Coasts=%.0f | Kinetic T_geo=%.6f)\n",
         L, geomind_byte_latent_get_coast_count(), g_e8_stack_layer_coasts, g_e8_stack_last_kinetic_energy);

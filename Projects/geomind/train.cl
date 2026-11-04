@@ -3502,7 +3502,7 @@ fn geomind_train_e8_deep_streaming(
     max_epochs: float
 ) -> float {
     var L = floor(num_layers);
-    if (L < 1.0) { L = 16.0; }
+    if (L < 1.0) { L = 42.0; }
     printf("================================================================================\n");
     printf("  CARTAN-E8 DEEP NON-EUCLIDEAN GAUGE-SPINOR MANIFOLD STREAMING TRAINER\n");
     printf("  248-D E8 = so(16)_120 (+) S16+_128 | %.0f Layers | 4x4 Freudenthal Magic Square MoE\n", L);

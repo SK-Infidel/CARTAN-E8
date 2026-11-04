@@ -1013,7 +1013,7 @@ fn geomind_byte_latent_train_deep_e8_corpus(
 ) -> float {
     geomind_byte_latent_init_if_needed();
     var L = floor(num_layers);
-    if (L < 1.0) { L = 16.0; }
+    if (L < 1.0) { L = 42.0; }
     geomind_e8_stack_init(L);
     if (cartan_file_exists("Projects/geomind/trainingdata/checkpoints/geomind_e8_deep_stack.bin") == 1.0) {
         geomind_e8_stack_load("Projects/geomind/trainingdata/checkpoints/geomind_e8_deep_stack.bin");
@@ -1195,7 +1195,7 @@ fn geomind_byte_latent_train_deep_e8_corpus(
 fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_len: float) -> string {
     geomind_byte_latent_init_if_needed();
     var L = floor(num_layers);
-    if (L < 1.0) { L = 16.0; }
+    if (L < 1.0) { L = 42.0; }
     geomind_e8_stack_init(L);
 
     let h_prev = cartan_vec_create();

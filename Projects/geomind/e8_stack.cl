@@ -32,7 +32,7 @@ var g_e8_stack_layer_coasts: float = 0.0;
 // Initialize the L-layer Deep E8 Gauge-Spinor Manifold Stack
 fn geomind_e8_stack_init(num_layers: float) {
     var L = floor(num_layers);
-    if (L < 1.0) { L = 16.0; }
+    if (L < 1.0) { L = 42.0; }
     if (L > 42.0) { L = 42.0; }
     if (g_e8_stack_num_layers == L && g_e8_stack_w_gauge != 0.0) {
         return;

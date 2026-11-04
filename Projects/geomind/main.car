@@ -1548,7 +1548,7 @@ fn main() -> float {
             let prompt = get_cli_param("-prompt", arg_count);
             let epochs = get_cli_epochs(arg_count, 5.0);
             let lr = get_cli_param_float("-lr", arg_count, 0.03);
-            let layers = get_cli_param_float("-layers", arg_count, 4.0);
+            let layers = get_cli_param_float("-layers", arg_count, 42.0);
             let vis = get_cli_flag_present("-visualize", arg_count);
             var corpus_text = "In pure mathematics and differential geometry, the exceptional Lie algebra E8 decomposes into the 120-dimensional orthogonal gauge algebra so(16) and the 128-dimensional Majorana-Weyl spinor representation S16+.";
             if (cartan_string_length(target) > 0.0 && cartan_file_exists(target) == 1.0) {
