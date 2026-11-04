@@ -4,6 +4,92 @@ All notable changes to the CARTAN programming language, self-hosting compiler (`
 
 In accordance with User Rule 3 and project standards, GeoMind cognitive model releases are tracked independently in [`Projects/geomind/CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/CHANGELOG.md).
 
+## [8.554.0] - 2026-11-03 (Stdlib Sprint 554: JSON Object Array Parser (`json_parse_object_array`) & SQLite Cognitive Rules Engine (`cognitive_rules`))
+
+### Completed & Validated
+- **JSON Object Array Parser ([`src/std/json.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/json.cl)) (`[ISSUE-434]`)**:
+  - Added [`json_parse_object_array(array_str: string) -> ptr`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/json.cl#L399-L452) to parse nested JSON arrays of objects (`"[{...}, {...}]"`) into a `cartan_tree` list of raw object substrings while respecting string literals and nested brace depth.
+- **Persistent `cognitive_rules` Schema & CRUD Operations ([`src/std/sqlite_vec.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/sqlite_vec.cl)) (`[ISSUE-434]`)**:
+  - Added the `cognitive_rules` table (`rule_id`, `enabled`, `priority`, `trigger_cond`, `action_hook`, `directive`, `source`, `updated_at`) to [`sqlite_vec_init_schema`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/sqlite_vec.cl#L125-L131).
+  - Implemented [`sqlite_vec_upsert_cognitive_rule`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/sqlite_vec.cl#L632-L656), [`sqlite_vec_get_cognitive_rule_source`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/sqlite_vec.cl#L658-L670), [`sqlite_vec_set_cognitive_rule_enabled`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/sqlite_vec.cl#L672-L683), [`sqlite_vec_delete_cognitive_rule`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/sqlite_vec.cl#L685-L695), [`sqlite_vec_prepare_cognitive_rules`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/sqlite_vec.cl#L697-L704), and [`sqlite_vec_get_cognitive_rule_count`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/sqlite_vec.cl#L706-L716) (plus `cartan_sqlite_*` aliases).
+
+## [8.553.0] - 2026-11-03 (Stdlib & Tooling Sprint 553: 2-Way Set-Associative LRU Rotation for Session PLE Cache (`s_pli_cache_next_way`) & Layer 32 Weight-Space Subspace Debias Baking Tool (`tools/bake_layer_debias.car`))
+
+### Completed & Validated
+- **True 2-Way Set-Associative LRU Replacement in Session PLE Cache ([`src/std/transformer.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl)) (`[ISSUE-431]`)**:
+  - Added `s_pli_cache_next_way` (`1,024` sets, `line 55`) in [`cartan_init_pli_session_cache`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl#L290-L318) and [`cartan_update_pli_cache_if_needed`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl#L319-L362) so cache hits steer replacement away from the hit way (`1.0 - hit_way`) and cache misses rotate across both Way 0 (`slot0`) and Way 1 (`slot1`) without pinning `slot0` forever or incurring `memcpy` overhead.
+- **Self-Adjoint Weight-Space Subspace Debias Baker ([`tools/bake_layer_debias.car`](file:///C:/Users/rich-/source/repos/CARTAN/tools/bake_layer_debias.car)) (`[ISSUE-432]`)**:
+  - Built [`tools/bake_layer_debias.car`](file:///C:/Users/rich-/source/repos/CARTAN/tools/bake_layer_debias.car) to bake neutral ($\alpha = 0.65$) rank-5 subspace attenuation directly into `w_o`, `w_down`, and `w_ple_proj` of `manifold_layer_32.bin` using the self-adjoint post-norm identity $\langle D W x, u_k \rangle = \langle W x, D u_k \rangle$ and re-quantize `manifold_layer_32_int8.bin` and `manifold_layer_32_int4.bin`.
+
+## [8.552.0] - 2026-11-02 (Stdlib Sprint 552: 2,048-Slot 2-Way Set-Associative Session PLE Cache, Zero-`tanh` Stage-1 LM Head (`op == 20.0`), Fused Single-Barrier QKV INT4 GEMV (`op == 22.0`), & KV-Group-Fused 2-Head GQA Attention (`op == 19.0`))
+
+### Completed & Validated
+- **2,048-Slot 2-Way Set-Associative Session PLE Cache ([`src/std/transformer.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl)) (`[ISSUE-429]`)**:
+  - Upgraded [`cartan_init_pli_session_cache`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl#L289-L315), [`cartan_update_pli_cache_if_needed`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl#L316-L411), and [`cartan_precompute_prompt_pli`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl#L413-L515) from 512 direct-mapped slots to 2,048 2-way set-associative slots (`88 MB`, 1,024 sets x 2 ways), pinning core vocabulary in Way 0 and caching dynamic tokens in Way 1 to eliminate multi-turn PLE cache thrashing.
+- **Zero-`tanh()` Stage 1 + Bounded 96-Candidate Stage 2 LM Head (`op == 20.0`) ([`src/std/transformer.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl)) (`[ISSUE-429]`)**:
+  - Eliminated all 167,243 transcendental `tanh()` calls in Stage 1 of `op == 20.0` (`lines 2835-2889`), storing raw `dot_i8` directly, refining at most `96` top candidates per thread (`raw_val >= local_max_dot - 1.50`) using exact FP32 dot product + exact `30.0 * tanh(...)`, and converting remaining logits via a 3-op rational Padé softcap.
+- **Fused Single-Barrier `W_q + W_k + W_v` INT4 GEMV (`op == 22.0`) ([`src/std/transformer.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl)) (`[ISSUE-429]`)**:
+  - Added [`cartan_trans_pool_dispatch_int4_qkv_gemv`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl#L3539-L3680) (`op == 22.0`, using disjoint pointer slots `16.0` and `17.0` for `out_k` and `out_v`) to compute `W_q`, `W_k`, and `W_v` in a single thread-pool barrier across all 24 KV-producing layers (`lines 4916-5018`), eliminating 48 thread-pool barriers per token and keeping `h_norm1` hot in L1 cache.
+- **KV-Group-Fused 2-Head GQA Attention (`op == 19.0`) & Vectorized Prefill V-Accumulation ([`src/std/transformer.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl)) (`[ISSUE-429]`)**:
+  - Updated `op == 19.0` (`lines 2608-2762`, `5340-5645`) to fuse pairs of Query heads sharing the same KV head (`(0,1)`, `(2,3)`, `(4)`, `(5,6)`, `(7,8)`, `(9)` for `q_heads == 10.0`; `(0,1)`, `(2,3)`, `(4)` for `q_heads == 5.0`), halving KV-cache RAM bandwidth on long multi-turn contexts, and replaced scalar batched prefill V-accumulation loops with `cartan_simd_axpy_f32`.
+
+## [8.551.0] - 2026-11-02 (Stdlib Sprint 551: Two-Stage INT8+FP32 Exact LM Head Scan, 512-Slot Session PLE Cache, 8-Thread Parallel PLE Projection & GQA Attention (`q_heads == 10.0` / `5.0`), & Active Spin-Wait Barrier Optimization)
+
+### Completed & Validated
+- **Two-Stage INT8 Scan + Exact FP32 Refinement LM Head (`op == 20.0`, `op == 21.0`) ([`src/std/transformer.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl)) (`[ISSUE-427]`)**:
+  - Added [`cartan_trans_pool_quantize_emb_int8`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl#L4387-L4430) (`op == 21.0`) to quantize 262,144 FP32 embedding rows to symmetric per-row INT8 + FP32 scale across all 8 threads.
+  - Added [`cartan_trans_pool_dispatch_lm_head_int8_indexed`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl#L4304-L4385) (`op == 20.0`) to scan all 167,243 active vocabulary rows in 8-thread AVX2 INT8 (`cartan_simd_dot_i8_f32`, streaming `428 MB` instead of `1.71 GB` FP32) and refine the top candidate band (`dot >= local_max_dot - 6.0`) using exact FP32 dot products (`cartan_simd_dot_f32`), guaranteeing 100% bit-identical token selection.
+- **512-Slot Session PLE Token Cache & 8-Thread Parallel PLE Projection GEMV ([`src/std/transformer.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl)) (`[ISSUE-427]`)**:
+  - Added a 512-slot LRU/ring Session PLE Token Cache (`s_pli_cache_tokens`, `s_pli_cache_data`, `22 MB`) in [`cartan_update_pli_cache_if_needed`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl#L316-L405) and [`cartan_precompute_prompt_pli`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl#L407-L500) so any token already projected during prefill or earlier decode steps skips the 110 MB `10752 x 2560` PLE projection GEMV in $O(1)$.
+  - Replaced single-threaded PLE projection GEMVs on cache misses with 8-thread AVX2 `cartan_trans_pool_dispatch(2.0, 10752.0, 2560.0, g_ple_model_proj_ptr, g_trans_null_ptr, emb_row, s_cached_proj_all)`.
+- **8-Thread Parallel GQA Attention for `q_heads == 10.0` & `5.0` & Active Worker Spin Threshold ([`src/std/transformer.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl)) (`[ISSUE-427]`)**:
+  - Updated `op == 19.0` (`lines 2671-2776`, `5032-5165`) from `q_heads == 8.0` to `q_heads >= 4.0 && max_seq >= 4.0` with strided head assignment (`qh = start_row; while (qh < q_heads) { ... qh = qh + 8.0; }`) and expanded `g_attn_scores_scratch` to `16 * max_seq`, activating 8-thread parallel attention across all 35 sliding layers (`q_heads == 10.0`) and 7 global layers (`q_heads == 5.0`).
+  - Increased the active-mode worker spin threshold from `4096.0` to `2000000.0` iterations before `SwitchToThread()`, eliminating kernel context-switch wake latency across the 42-layer GPU/CPU hybrid loop, and defaulted `g_early_exit_enabled = 0.0`.
+
+## [8.550.0] - 2026-11-02 (Compiler & Stdlib Sprint 550: `@cartan_simd_axpy_f32` AVX2 FMA Intrinsic, 8-Thread GQA Attention & PLE Dispatch, Inlined Vector Indexing, & Disjoint LM Head Partitioning)
+
+### Completed & Validated
+- **AVX2 FMA `@cartan_simd_axpy_f32` Intrinsic ([`src/cartanc/core_runtime.car`](file:///C:/Users/rich-/source/repos/CARTAN/src/cartanc/core_runtime.car), [`src/cartanc/llvm_codegen.car`](file:///C:/Users/rich-/source/repos/CARTAN/src/cartanc/llvm_codegen.car)) (`[ISSUE-425]`)**:
+  - Declared `extern fn cartan_simd_axpy_f32(dst: ptr, src: ptr, scale: float, count: float) -> void;` (`line 22`) and emitted the `alwaysinline` `<8 x float>` AVX2 FMA vector accumulation loop (`dst[i..i+7] += scale * src[i..i+7]`) in `llvm_codegen.car` (`line 1202`).
+  - Rebuilt self-hosted `bin/cartanc.exe` and `cartanc.exe`.
+- **8-Thread GQA Causal Attention, AVX2 V-Accumulation & 8-Thread PLE Gating ([`src/std/transformer.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl)) (`[ISSUE-425]`)**:
+  - Parallelized Step 6 GQA causal attention (`op == 19.0`, `lines 2656-2753`, `4752-4916`) across all 8 worker threads (`1 head/thread`) with per-head score scratch buffers (`8 * g_kv_cache_max_seq`) and vectorized V-cache accumulation via `@cartan_simd_axpy_f32`.
+  - Parallelized Step 10 Per-Layer Embedding (PLE) Gating (`lines 4948-4998`, `512 x 2560` Gate + `2560 x 512` Projection across 42 layers = 55M MACs/token) across the 8-thread pool.
+  - Partitioned the parallel clear range in [`cartan_trans_pool_dispatch_lm_head_indexed`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl#L4242-L4295) by `[active_indices[ti * chunk], active_indices[end_r])` so each thread clears and populates a strictly disjoint slice of `out_logits`.
+- **Inlined 64-Bit Vector Slot Indexing in Hot Loops ([`src/std/transformer.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl), [`src/std/tokenizer.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/tokenizer.cl), [`src/std/reasoning.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/reasoning.cl)) (`[ISSUE-425]`)**:
+  - Replaced out-of-line `cartan_vec_get_f32` / `cartan_vec_set_f32` calls in LM head projection, top-$k$/top-$p$ sampling, and confidence/entropy evaluation with direct inlined `v_ptr[2.0 + idx]` indexing, eliminating ~3.5M function calls per generated token.
+
+## [8.549.0] - 2026-11-02 (Compiler & Stdlib Sprint 549: Windows Console UTF-8 Initialization, 2048-Token Sliding Window Horizon, IC Penalty Removal & Nucleus/Min-P Sampling)
+
+### Completed & Validated
+- **Windows Console UTF-8 Codepage Initialization ([`src/cartanc/llvm_codegen.car`](file:///C:/Users/rich-/source/repos/CARTAN/src/cartanc/llvm_codegen.car)) (`[ISSUE-409]`)**:
+  - Declared `SetConsoleOutputCP` and `SetConsoleCP` (`dllimport i32 (i32)`) in Win32 runtime declarations (`lines 508-509`).
+  - Emitted `call i32 @SetConsoleOutputCP(i32 65001)` and `call i32 @SetConsoleCP(i32 65001)` in `@cartan_crt_init` (`lines 1173-1174`), eliminating CP437 console mojibake (`ΓÇö`, `ƒº`, `ƒôÉ`) across all compiled CARTAN binaries on Windows.
+- **Transformer Sliding Attention Horizon & Unbiased Logit Projection ([`src/std/transformer.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl)) (`[ISSUE-409]`)**:
+  - Expanded `g_attention_window_size` from `256.0` to `2048.0` (`line 121`), preserving multi-turn conversation history and full prompt context across long generations.
+  - Removed the unconditional `- 0.35 * (6.0 - ic)` Zipfian Information Content (IC) logit penalty on common English function words (`ic < 6.0`) in `op == 6.0` (`line 1983`) and `op == 12.0` (`line 2645`).
+- **Top-P Nucleus & Min-P Relative Probability Sampling ([`src/std/tokenizer.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/tokenizer.cl)) (`[ISSUE-409]`)**:
+  - Updated `cartan_tokenizer_sample_topp_topk` (`lines 334-398`) to sort top-$k$ candidates in descending logit order and apply `top_p = 0.85` cumulative probability truncation and `min_p = 0.08 * p_max` relative probability filtering before multinomial sampling.
+
+## [8.548.0] - 2026-11-02 (Compiler Core Sprint 548: AST Optimizer Constant Folding, TypeChecker Soundness & Native CLI/LSP/Pkg Pipeline)
+
+### Completed & Validated
+- **AST Optimizer Pass & Constant Folding ([`src/cartanc/optimizer.car`](file:///C:/Users/rich-/source/repos/CARTAN/src/cartanc/optimizer.car), [`src/cartanc/llvm_codegen.car`](file:///C:/Users/rich-/source/repos/CARTAN/src/cartanc/llvm_codegen.car)) (`[ISSUE-406]`)**:
+  - Aligned `optimize_expr` with canonical `ast.ch` discriminants (`UnaryOp = 15.0`, `BinaryOp = 16.0`, `StructInit = 14.0`, `FunctionCall = 17.0`, `MethodCall = 18.0`, `PropertyAccess = 20.0`, `IndexAccess = 21.0`, `Assignment = 22.0`, `BroadcastOp = 23.0`, `ArrayDecl = 24.0`).
+  - Replaced `cartan_tree_get_f32` on literal values with direct 64-bit IEEE 754 `double` slot indexing (`left[1]`, `right[1]`), preserving fractional float accuracy and `Expr::Integer` vs `Expr::Float` variants during constant folding, plus algebraic identity folding (`x + 0.0`, `x - 0.0`, `x * 1.0`, `x / 1.0`, `0.0 + x`, `1.0 * x`).
+  - Implemented recursive `optimize_block` and `optimize_stmt` across all statement types (`ExprStmt`, `VarDecl`, `StructDecl`, `TensorDecl`, `ParameterDecl`, `VectorDecl`, `FunctionDecl`, `IfStmt`, `WhileStmt`, `ForStmt`, `TryCatch`, `ReturnStmt`, `ImplDecl`, `JitBlock`, `Block`, `AsyncCompute`, `MatchStmt`) and wired `optimize_ast` to optimize the full AST.
+- **Native CLI Flag Loop, TOML Package Manager, REPL & Dynamic LSP Server ([`src/cartanc/main.car`](file:///C:/Users/rich-/source/repos/CARTAN/src/cartanc/main.car)) (`[ISSUE-407]`)**:
+  - Implemented `toml_trim_quotes`, `toml_extract_package_field`, and `toml_format_dependencies_lock` for `cartanc pkg`, parsing `[package]` (`name`, `version`) and `[dependencies]` from `cartan.toml` into `cartan.lock`.
+  - Wired `cartanc lsp` (`lsp_analyze_file`, `lsp_format_hover_json`, `lsp_format_completion_json`) to run the Lexer -> Parser -> `ast_expansion_pass` -> `typechecker_check` pipeline and serve live symbol counts and completion items from `TypeChecker`.
+  - Updated `cartanc repl` to run `ast_expansion_pass` and `typechecker_check` before `optimize_ast` and `generate`.
+  - Implemented a full `2.0 .. argc` flag loop in `cartanc build` supporting `-o <file>`, `-I <dir>` (via `ast_expansion_pass_with_dirs`), `-L <dir>`, `-l<lib>`, `--release`/`-O3`, `-O2`, `-O0`, `-c`/`--emit-llvm`, and `-v`/`--verbose`.
+- **TypeChecker Discriminant Alignment & Typed Parameter Resolution ([`src/cartanc/type_checker.car`](file:///C:/Users/rich-/source/repos/CARTAN/src/cartanc/type_checker.car)) (`[ISSUE-408]`)**:
+  - Removed `disc == 7.0` (`ParameterDecl`) and `disc == 8.0` (`VectorDecl`) from function registration in `typechecker_check` and unshadowed `FunctionDecl` (`14.0`) in `tc_visit_stmt`.
+  - Resolved function parameter type annotations via `parse_type_annotation(self_ptr, p_type_str)` instead of hardcoding `CartanType::Float`, enabling struct field access on typed function parameters.
+- **Self-Hosting Fixpoint & Regression Verification**:
+  - Verified 3-stage self-hosting fixpoint convergence (`Stage 2 SHA256 == Stage 3 SHA256 == AFF8C8CDA4769CB1019BE34586704FAA162DF47703A2DC2B8F0DA8F22D34BFC7`) and updated `cartanc.exe` / `bin/cartanc.exe`.
+  - Added Target 95 ([`Projects/geomind/Testing-scratch/test_compiler_issues_406_407_408.car`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/Testing-scratch/test_compiler_issues_406_407_408.car)) and verified 13/13 Sprint 548 regression targets pass.
+
 ## [8.528.0] - 2026-10-07 (Prompt Injection & Dynamic Preamble Excision - Total Invariance)
 
 ### Completed & Validated

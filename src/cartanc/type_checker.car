@@ -94,7 +94,7 @@ fn type_checker_init() -> TypeChecker {
             var stmt = cartan_tree_get_f32(ast, idx_stmt);
             var disc = cartan_tree_get_f32(stmt, 0.0);
             idx_stmt = idx_stmt + 1.0;
-            if (disc == 7.0 || disc == 14.0 || disc == 8.0 || disc == 15.0) { // FunctionDecl or ExternFunctionDecl
+            if (disc == 14.0 || disc == 15.0 || disc == 131.0 || disc == 137.0 || disc == 138.0) { // FunctionDecl or ExternFunctionDecl
                 let d_name = cartan_tree_get_f32(stmt, 1.0);
                 var decls = cartan_dict_get(self_ptr.functions, d_name);
                 if (decls == 0.0) {
@@ -102,6 +102,27 @@ fn type_checker_init() -> TypeChecker {
                     cartan_dict_set(self_ptr.functions, d_name, decls);
                 }
                 cartan_tree_push(decls, stmt);
+            } else if (disc == 34.0 || disc == 157.0) { // ImplDecl methods
+                let methods = cartan_tree_get_f32(stmt, 3.0);
+                if (methods != 0.0) {
+                    var idx_m = 0.0;
+                    while (idx_m < cartan_tree_len(methods)) {
+                        let m_stmt = cartan_tree_get_f32(methods, idx_m);
+                        if (m_stmt != 0.0) {
+                            let m_disc = cartan_tree_get_f32(m_stmt, 0.0);
+                            if (m_disc == 14.0 || m_disc == 131.0 || m_disc == 137.0) {
+                                let m_name = cartan_tree_get_f32(m_stmt, 1.0);
+                                var m_decls = cartan_dict_get(self_ptr.functions, m_name);
+                                if (m_decls == 0.0) {
+                                    m_decls = cartan_tree_create();
+                                    cartan_dict_set(self_ptr.functions, m_name, m_decls);
+                                }
+                                cartan_tree_push(m_decls, m_stmt);
+                            }
+                        }
+                        idx_m = idx_m + 1.0;
+                    }
+                }
             }
         }
         var idx_stmt2 = 0.0;
@@ -241,7 +262,7 @@ fn type_checker_init() -> TypeChecker {
             if (value != 0.0) {
                 tc_visit_expr(self_ptr, value);
             }
-        } else if (disc == 7.0 || disc == 14.0) { // FunctionDecl
+        } else if (disc == 14.0 || disc == 131.0 || disc == 137.0) { // FunctionDecl
             let mangled = cartan_tree_get_f32(stmt, 1.0); 
             let params = cartan_tree_get_f32(stmt, 3.0);
             let body = cartan_tree_get_f32(stmt, 6.0);
@@ -254,7 +275,12 @@ fn type_checker_init() -> TypeChecker {
                     let param = cartan_tree_get_f32(params, idx_param);
                     if (param != 0.0) {
                         let p_name = cartan_tree_get_f32(param, 0.0);
-                        cartan_dict_set(scope, p_name, CartanType::Float);
+                        let p_type_str = cartan_tree_get_f32(param, 1.0);
+                        var p_type = CartanType::Float;
+                        if (p_type_str != 0.0 && cartan_string_length(p_type_str) > 0.0) {
+                            p_type = parse_type_annotation(self_ptr, p_type_str);
+                        }
+                        cartan_dict_set(scope, p_name, p_type);
                     }
                     idx_param = idx_param + 1.0;
                 }
@@ -283,7 +309,11 @@ fn type_checker_init() -> TypeChecker {
         } else if (disc == 3.0) { // VarDecl
             let name = cartan_tree_get_f32(stmt, 1.0);
             let value = cartan_tree_get_f32(stmt, 3.0);
-            let val_type = tc_visit_expr(self_ptr, value);
+            let type_ann = cartan_tree_get_f32(stmt, 4.0);
+            var val_type = tc_visit_expr(self_ptr, value);
+            if (type_ann != 0.0 && cartan_string_length(type_ann) > 0.0) {
+                val_type = parse_type_annotation(self_ptr, type_ann);
+            }
             var scope = cartan_tree_get_f32(self_ptr.symbol_table, cartan_tree_len(self_ptr.symbol_table) - 1.0);
             cartan_dict_set(scope, name, val_type);
         } else if (disc == 41.0) { // MatchStmt
@@ -526,9 +556,15 @@ fn type_checker_init() -> TypeChecker {
     }
 
     fn tc_visit_expr(self_ptr: TypeChecker, expr: ptr) -> ptr {
+        if (expr == 0.0) { return CartanType::Unknown; }
         var disc = cartan_tree_get_f32(expr, 0.0);
         
-        if (disc == 21.0) { // IndexAccess
+        if (disc == 15.0) { // UnaryOp
+            let op = cartan_tree_get_f32(expr, 1.0);
+            let r_type = tc_visit_expr(self_ptr, cartan_tree_get_f32(expr, 2.0));
+            if (op == "!") { return CartanType::Boolean; }
+            return r_type;
+        } else if (disc == 21.0) { // IndexAccess
             tc_visit_expr(self_ptr, cartan_tree_get_f32(expr, 1.0));
             tc_visit_expr(self_ptr, cartan_tree_get_f32(expr, 2.0));
             return CartanType::Float;
@@ -538,6 +574,14 @@ fn type_checker_init() -> TypeChecker {
         } else if (disc == 23.0) { // BroadcastOp
             tc_visit_expr(self_ptr, cartan_tree_get_f32(expr, 1.0));
             return tc_visit_expr(self_ptr, cartan_tree_get_f32(expr, 3.0));
+        } else if (disc == 24.0) { // ArrayDecl
+            let elems = cartan_tree_get_f32(expr, 1.0);
+            var idx_e = 0.0;
+            while (idx_e < cartan_tree_len(elems)) {
+                tc_visit_expr(self_ptr, cartan_tree_get_f32(elems, idx_e));
+                idx_e = idx_e + 1.0;
+            }
+            return CartanType::Pointer(CartanType::Float);
         } else if (disc == 26.0 || disc == 90.0) { // FusedKernel
             let block_stmt = cartan_tree_get_f32(expr, 1.0);
             var last_type = CartanType::Unknown;

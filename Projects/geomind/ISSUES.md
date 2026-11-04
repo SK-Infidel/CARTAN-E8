@@ -4056,3 +4056,88 @@ Core CARTAN programming language, compiler, runtime, and general-purpose standar
   3. **Excised Angle-Bracket Clamping**: Removed conditional suppression of raw `<` characters.
   4. **Clean Tool Schema Residency**: Simplified `geomind_chat_requires_tool_definitions()` to strictly check `geomind_is_tool_action_intent() == 1.0`.
   5. **Empirical Verification**: Built native `bin/geomind.exe` with `cartanc.exe`. Verified 100% pure neural token generation across acute emergency prompts with zero prompt tampering. Verified full compiler regression suite (8/8 targets passed in 70.34s).
+
+---
+
+## [ISSUE-424] [RESOLVED] Multi-Turn Token-Salad Collapse, Destructive Additive Repetition Penalty, Veterinary Preamble Priming, & Subword Suffix Splitting
+
+- **Severity**: Critical (Conversational Coherence, Multi-Turn Stability, & Subword Rendering)
+- **Component**: [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl)
+- **Description**:
+  1. **Destructive Additive Repetition Penalty & Token-Salad Collapse**: `cartan_apply_repetition_penalty` applied cumulative additive logit penalties (`-5.75`, `-10.0`, `-12.0`, and `-0.75 * occ_count`) across the entire context buffer (`ctx_ptr`, including system preamble and user prompts) and included `<turn|>` (`106.0`), newlines (`108.0`), and sentence punctuation. After ~350 tokens of generation, normal English vocabulary and stop tokens were crushed, forcing the sampler into unpenalized LaTeX/code/punctuation tokens (`}`, `$`, `\`, `;`, `` ` ``) and causing runaway token-salad collapse.
+  2. **Out-of-Context Veterinary/Biology Domain Priming**: `geomind_chat_build_cognitive_preamble_for_prompt` contained the phrase `"across sciences, biology, veterinary care, engineering, and philosophy"` inside the permanent 96-token attention sink (`g_attention_sink_tokens`), priming attention heads to hallucinate veterinary/animal examples (`veterinary cardiology`, `mixed avian/ursine systems`, `canine park fires`, `poultry farm data`) during general AI discussions.
+  3. **Zipfian IC Function-Word Damping in LM Head**: `geomind_compute_e8_logits`, `cartan_tensor_compute_lm_head_logits`, and the WGSL LM head shader `geomind_get_chat_lm_head_shader` subtracted `0.35 * (6.0 - ic)` from common English function words (`ic < 6.0`), producing telegraphic phrasing and broken markdown markers (`* *`).
+  4. **Subword Morphological Suffix Splitting**: `geomind_ensure_subword_spacing` unconditionally inserted a space after any word ending in `-ing` before a lowercase token, splitting words like `"fascinatingly"` into `"fascinating ly"`.
+- **Resolution (Sprint 549)**:
+  1. **Standard Multiplicative + Bounded Frequency Repetition Penalty**: Rewrote [`cartan_apply_repetition_penalty`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl#L384-L454) to inspect only the most recent 64 generated tokens, deduce unique tokens (`already_seen`), exempt structural/stop/punctuation tokens (`106.0`, `1.0`, `107.0`, `108.0`, `.`, `,`, `:`, `;`, `-`, `(`, `)`, `'`, `"`), and apply standard multiplicative scaling (`cur / 1.18` if `cur > 0.0` else `cur * 1.18`) plus a bounded frequency penalty (`0.20 * (occ_count - 1)`, capped at `1.20`).
+  2. **De-Primed Sovereign Cognitive Preamble**: Removed `"biology, veterinary care"` from [`geomind_chat_build_cognitive_preamble_for_prompt`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl#L3267-L3280) so the attention sink remains domain-neutral unless prompted by the user.
+  3. **Removed Zipfian IC Damping & Neutralized Artificial Logit Perturbations**: Removed `- 0.35 * (6.0 - ic)` from `geomind_compute_e8_logits`, `cartan_tensor_compute_lm_head_logits`, and `geomind_get_chat_lm_head_shader`, and neutralized `geomind_apply_stream_gated_logit_bias`.
+  4. **Morphological Suffix Spacing Fix**: Updated [`geomind_ensure_subword_spacing`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl#L246-L261) to allow `"ly"`, `"s"`, and `"ed"` suffixes to attach directly to `-ing` stems without inserting a space.
+  5. **Progressive Sentence-Boundary `<turn|>` Wrap-Up & Degenerate Symbol Loop Guard**: Added a progressive `<turn|>` (`106.0`) logit boost at sentence boundaries (`just_ended_sentence == 1.0`) after 220 generated tokens and implemented `geomind_is_degenerate_symbol_token` (lines 7268–7287, 7930–7970) to terminate immediately if consecutive symbol/brace noise tokens ever occur.
+  6. **Empirical Verification**: Rebuilt `bin/cartanc.exe` and `Projects/geomind/geomind.exe` (`bin/geomind.exe`). Verified live two-turn GPU inference on Rick's exact prompts (`task-553`): Turn 1 (`204.0` tokens, `4.0 tok/s`) and Turn 2 (`516.0` tokens, `2.6 tok/s`, Context Horizon: `886`) produced clean UTF-8 typography (`—`), fluent English grammar, zero veterinary hallucinations, and clean sentence-boundary termination with zero token-salad collapse.
+
+---
+
+## [ISSUE-426] [RESOLVED] Per-Layer Decode Heap Allocation Churn, Redundant Per-Token Reflective Doubt Scans, & Un-Hoisted Intent String Scans
+
+- **Severity**: High (Inference Token Generation Latency)
+- **Component**: [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl)
+- **Description**:
+  1. **Per-Layer Heap Allocation Churn**: [`geomind_execute_manifold_decode_step`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl#L5216-L5236) called `cartan_manifold_layer_forward_raw` on all 42 layers, allocating and freeing a new 2,560-float `h_out` buffer on every layer (`42` `calloc` + `free` pairs per generated token).
+  2. **Redundant 2.1 MB Zero-Fill in LM Head Logits**: [`cartan_tensor_compute_lm_head_logits`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl#L1006-L1013) allocated `logits` via `cartan_tensor_alloc(262144.0)` (`calloc`), synchronously zero-filling 2.1 MB on Thread 0 before the 8-thread pool immediately overwrote all 262,144 entries.
+  3. **Redundant Per-Token Reflective Doubt Scans & String Scans**: In [`geomind_chat_generate_reply_multimodal`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl#L7876-L7898), `cartan_tensor_compute_confidence(logits_vec, 50.0)` (scanning 262,144 logits) executed on every token `step >= 2.0` even though reflective rewind is only intended as an initial post-prefill confidence gate at `step == 2.0`, and `geomind_is_tool_action_intent(prompt)` re-scanned the prompt string on every token step.
+- **Resolution (Sprint 550)**:
+  1. Updated [`geomind_execute_manifold_decode_step`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl#L5216-L5236) to invoke `cartan_manifold_layer_forward_native(cur_h, cur_h, ...)` in-place across all 42 layers with zero intermediate heap allocations.
+  2. Updated [`cartan_tensor_compute_lm_head_logits`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl#L1006-L1013) to allocate `logits = malloc((vocab_size + 2.0) * 8.0)` when the 8-thread LM head pool initializes all 262,144 entries in parallel.
+  3. Restricted the initial reflective doubt gate to `step == 2.0`, hoisted `is_tool_intent` above the decode loop, and replaced hot-path `cartan_vec_get_f32`/`cartan_vec_set_f32` calls in `chat.cl` with inlined `v_ptr[2.0 + idx]` indexing.
+  4. **Empirical Verification (`task-805`, `task-809`, `task-897`)**:
+     - Short-context generation accelerated from `5.3–5.8 tok/s` to **`6.7–7.3 tok/s`** (**+26% speedup**, WebGPU hybrid) and from `4.9–5.0 tok/s` to **`5.7–5.8 tok/s`** (**+16% speedup**, CPU-only).
+     - Multi-turn 2-turn conversation (`task-897`, 375 generated tokens across 2 turns) accelerated from `4.0 tok/s` to **`5.0–7.1 tok/s`** on Turn 1 and from `2.6 tok/s` to **`4.9–5.6 tok/s`** on Turn 2 (**+88% speedup — nearly 2x faster on Turn 2**) with 100% identical English output.
+
+---
+
+## [ISSUE-428] [RESOLVED] Two-Stage INT8+FP32 Exact LM Head Cache & Multi-Turn Workstation Throughput Breakthrough (`9.7 tok/s` Peak, `7.5 tok/s` Turn 2)
+
+- **Severity**: High (Workstation Inference Throughput & Memory Bandwidth Efficiency)
+- **Component**: [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl), [`src/std/transformer.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl)
+- **Description**:
+  1. Even after active Latin/English vocabulary pruning (`167,243` rows), scanning `167,243 x 2560` in FP32 streamed `1.71 GB` of host RAM on every generated token (`~38 ms/tok`).
+  2. Per-Layer Embedding (PLE) projection (`10752 x 2560`, `110 MB`) executed single-threaded on Thread 0 without session-level token caching, and GQA causal attention (`q_heads == 10.0` sliding, `q_heads == 5.0` global) bypassed the 8-thread pool due to a `q_heads == 8.0` guard.
+- **Resolution (Sprint 551)**:
+  1. Added `g_full_emb_i8_buf` (`671 MB`) and `g_full_emb_scales_buf` (`1 MB`) in [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl#L464-L465), automatically quantizing and caching `geomind_embeddings_full_262k_int8.bin` and `geomind_embeddings_full_262k_scales.bin` via 8-thread `cartan_trans_pool_quantize_emb_int8` in [`geomind_load_e8_assets_if_needed`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl#L774-L796).
+  2. Updated [`cartan_tensor_compute_lm_head_logits`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl#L1085-L1090) to dispatch [`cartan_trans_pool_dispatch_lm_head_int8_indexed`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl#L4304-L4385), performing a 4x lower-bandwidth AVX2 INT8 scan across all 167,243 active tokens followed by exact FP32 dot-product refinement (`cartan_simd_dot_f32`) on the top candidate band.
+  3. Combined with the 512-slot Session PLE Token Cache, 8-thread parallel PLE projection GEMV, 8-thread GQA attention across `q_heads == 10.0` and `5.0`, and 2M-iteration active worker spin threshold (`[ISSUE-427]`), verified empirical workstation performance (`task-1173`, `task-1179`, `task-1191`):
+     - **20-Token Benchmark (`task-1173`)**: Accelerated to **`9.1–9.2 tok/s`** (up from `5.8 tok/s` in Sprint 549 and `7.1 tok/s` in Sprint 550 — **+58.6% speedup**) with 100% bit-identical output.
+     - **Full 2-Turn Interactive Benchmark (`task-1179`)**:
+       - **Turn 1 (163 tokens)**: Peaked at **`9.7 tok/s`** and sustained **`7.8 tok/s`** (up from `4.0 tok/s` in Sprint 549 and `6.0 tok/s` in Sprint 550 — **+95% Turn 1 speedup**).
+       - **Turn 2 (435 tokens)**: Sustained **`7.1–7.5 tok/s`** (up from **`2.6 tok/s`** in Sprint 549 and `4.9 tok/s` in Sprint 550 — **+188% (`2.88x`) Turn 2 speedup**) with 100% bit-identical multi-turn prose.
+
+---
+
+## [ISSUE-430] [RESOLVED] Multi-Turn Sustained Throughput Decay Under Growing Context & Full-FP32 Reflective Rewind Stall
+
+- **Severity**: High (Sustained Multi-Turn Inference Throughput)
+- **Component**: [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl), [`src/std/transformer.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl)
+- **Description**:
+  1. Over multi-turn conversations, tokens/sec gradually declined as (a) the 512-slot direct-mapped Session PLE Cache suffered hash collisions once session vocabulary exceeded ~512 unique tokens, (b) GQA attention read the growing `K_cache` and `V_cache` 5 times per KV head across separate Query-head threads, and (c) complex prompts triggered the `step == 2.0` reflective doubt check in [`Projects/geomind/chat.cl:7918`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl#L7918), which called the legacy slow `cartan_tensor_compute_lm_head_logits_full` (`1.71 GB` FP32 scan).
+- **Resolution (Sprint 552)**:
+  1. Replaced `cartan_tensor_compute_lm_head_logits_full` at [`Projects/geomind/chat.cl:7918`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl#L7918) with the fast two-stage `cartan_tensor_compute_lm_head_logits` (`op == 20.0`).
+  2. Combined with the 2,048-slot 2-way set-associative Session PLE Cache, zero-`tanh()` Stage 1 + bounded 96-candidate Stage 2 LM head (`op == 20.0`), fused single-barrier `W_q + W_k + W_v` INT4 GEMV (`op == 22.0`), and KV-group-fused 2-head GQA causal attention (`op == 19.0`) in [`src/std/transformer.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/transformer.cl) (`[ISSUE-429]`), verified empirical multi-turn throughput (`task-1381`):
+     - **Turn 1 (174 tokens)**: Peaked at **`11.9 tok/s`** and sustained **`10.2–11.9 tok/s`** through the entire turn (up from `7.8–9.7 tok/s` in Sprint 551 and `4.0 tok/s` in Sprint 549).
+     - **Turn 2 (363+ tokens, 670+ total context)**: Started at **`11.5 tok/s`** and sustained **`9.5–11.5 tok/s`** all the way past 360 generated tokens (up from `7.1–7.5 tok/s` in Sprint 551 and `2.6 tok/s` in Sprint 549 — **3.65x faster sustained Turn 2 throughput**).
+
+---
+
+## [ISSUE-434] [RESOLVED] Static `"system_preamble"` Config String & Hardcoded Behavioral Triggers Replaced by Hybrid Self-Deterministic Cognitive Rule Engine
+
+- **Severity**: Medium (Self-Deterministic Cognitive Architecture & Maintainability)
+- **Component**: [`Projects/geomind/geomind_config.json`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/geomind_config.json), [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl), [`Projects/geomind/main.car`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/main.car)
+- **Description**:
+  1. Behavioral instructions, camera biometric triggers, identity/tool context injection, and runtime sampling adjustments were either hardcoded in [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl) or flattened into a single `"system_preamble"` line in [`Projects/geomind/geomind_config.json`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/geomind_config.json).
+  2. The model lacked a structured rule engine supporting conditional state/intent triggers, action/tool-use event triggers (`on_tool`, `on_tool_ok`, `on_tool_error` with `A:...|B:...` branching), time-based/turn-cadence triggers (`startup`, `every_n_turns:N`, `interval:20m`, `idle:15m`), and autonomous self-mutation (`<rule_op .../>`).
+- **Resolution (Sprint 554)**:
+  1. Replaced `"system_preamble"` with a structured `"rules"` array in [`Projects/geomind/geomind_config.json`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/geomind_config.json) synced two-way with the `cognitive_rules` SQLite table in `cognitive_memory.db`.
+  2. Implemented state/intent triggers (`always`, `domain:...`, `user:...`, `intent:tool`, `keyword:...`), time/turn triggers (`startup`, `every_n_turns:N`, `interval:20m`, `idle:15m`), and tool-use event triggers (`on_tool`, `on_tool_ok`, `on_tool_error` with `A:...|B:...` branching) in [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl#L5298-L5778).
+  3. Wired `<rule_op .../>` self-mutation, conversational rule editing, and `/rules` + `/rule` REPL commands, and verified clean compilation (`task-1313`) and runtime execution (`task-1324`).
+
+

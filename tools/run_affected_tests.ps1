@@ -110,15 +110,16 @@ $TargetCatalog = @{
     92 = @{ Name = "test_stdlib_algebra_geometric"; File = "Projects/geomind/Testing-scratch/test_stdlib_algebra_geometric.car"; Run = $true; Negative = $false }
     93 = @{ Name = "test_stdlib_algebra_lie"; File = "Projects/geomind/Testing-scratch/test_stdlib_algebra_lie.car"; Run = $true; Negative = $false }
     94 = @{ Name = "test_stdlib_algebra_abstract"; File = "Projects/geomind/Testing-scratch/test_stdlib_algebra_abstract.car"; Run = $true; Negative = $false }
+    95 = @{ Name = "test_compiler_issues_406_407_408"; File = "Projects/geomind/Testing-scratch/test_compiler_issues_406_407_408.car"; Run = $true; Negative = $false }
 }
 
 # -----------------------------------------------------------------------------
 # Sprint Preset Mapping
 # -----------------------------------------------------------------------------
 $SprintMapping = @{
-    550 = @(1, 2, 3, 4, 5, 10, 18, 20, 24, 82, 89, 90)
-    549 = @(1, 2, 3, 4, 5, 10, 18, 20, 24, 82, 89, 90)
-    548 = @(1, 2, 3, 4, 5, 10, 18, 20, 24, 82, 89, 90)
+    550 = @(1, 2, 3, 4, 5, 10, 18, 20, 24, 82, 89, 90, 95)
+    549 = @(1, 2, 3, 4, 5, 10, 18, 20, 24, 82, 89, 90, 95)
+    548 = @(1, 2, 3, 4, 5, 10, 18, 20, 24, 82, 89, 90, 95)
     547 = @(1, 2, 3, 4, 5, 10, 18, 20, 24, 82, 89, 90, 91, 92, 93, 94)
     546 = @(1, 2, 3, 4, 5, 10, 18, 20, 24, 82, 89, 90, 91, 92, 93)
     545 = @(1, 2, 3, 4, 5, 10, 18, 20, 24, 82, 89, 90, 91, 92)

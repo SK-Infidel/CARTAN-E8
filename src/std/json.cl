@@ -395,6 +395,62 @@ fn json_parse_string_array(array_str: string) -> ptr {
     return list;
 }
 
+// Parses a JSON array of objects "[{...}, {...}]" into a cartan_tree list of raw object substrings
+fn json_parse_object_array(array_str: string) -> ptr {
+    let list = cartan_tree_create();
+    if (array_str == 0.0) { return list; }
+    let len = cartan_string_length(array_str);
+    if (len < 2.0) { return list; }
+
+    var p = 0.0;
+    while (p < len && cartan_byte_at(array_str, p) != 91.0) { // '['
+        p = p + 1.0;
+    }
+    if (p >= len) { return list; }
+    p = p + 1.0;
+
+    var in_str = 0.0;
+    var brace_depth = 0.0;
+    var obj_start = -1.0;
+
+    while (p < len) {
+        let b = cartan_byte_at(array_str, p);
+        if (b == 34.0) { // '"'
+            var backslashes = 0.0;
+            var back_p = p - 1.0;
+            while (back_p >= 0.0 && cartan_byte_at(array_str, back_p) == 92.0) {
+                backslashes = backslashes + 1.0;
+                back_p = back_p - 1.0;
+            }
+            let rem = backslashes - (floor(backslashes / 2.0) * 2.0);
+            if (rem == 0.0) {
+                if (in_str == 1.0) { in_str = 0.0; }
+                else { in_str = 1.0; }
+            }
+        } else if (in_str == 0.0) {
+            if (b == 123.0) { // '{'
+                if (brace_depth == 0.0) {
+                    obj_start = p;
+                }
+                brace_depth = brace_depth + 1.0;
+            } else if (b == 125.0) { // '}'
+                if (brace_depth > 0.0) {
+                    brace_depth = brace_depth - 1.0;
+                    if (brace_depth == 0.0 && obj_start >= 0.0) {
+                        let obj_slice = cartan_string_substring(array_str, obj_start, p + 1.0);
+                        cartan_tree_push(list, obj_slice);
+                        obj_start = -1.0;
+                    }
+                }
+            } else if (b == 93.0 && brace_depth == 0.0) { // ']'
+                break;
+            }
+        }
+        p = p + 1.0;
+    }
+    return list;
+}
+
 // Deallocates string pointers stored in tree list, then frees tree structure
 fn json_free_string_array(t: ptr) {
     if (t == 0.0) { return; }

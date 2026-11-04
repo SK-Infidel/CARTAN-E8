@@ -49,10 +49,10 @@ extern fn getenv(name: string) -> string;
 
 fn print_usage() {
     printf("Cartan Compiler (Self-Hosted) v2.0\n");
-    printf("Usage: cartanc build <file.car> -o <out.exe>\n");
+    printf("Usage: cartanc build <file.car> [-o <out.exe>] [--release] [-O0|-O2|-O3] [-c] [-v] [-I <dir>] [-L <dir>]\n");
 }
 
-fn ast_expansion_pass(ast: ptr, visited_files: ptr) -> ptr {
+fn ast_expansion_pass_with_dirs(ast: ptr, visited_files: ptr, include_dirs: ptr) -> ptr {
     let new_ast = cartan_tree_create();
     let has_rt1 = contains_string(visited_files, "src/cartanc/core_runtime.car");
     let has_rt2 = contains_string(visited_files, "core_runtime.car");
@@ -95,6 +95,19 @@ fn ast_expansion_pass(ast: ptr, visited_files: ptr) -> ptr {
                 var path = cartan_tree_get_f32(stmt, 1.0);
                 if (cartan_string_starts_with(path, "../../") != 0.0) {
                     path = cartan_string_substring(path, 6.0, cartan_string_length(path));
+                }
+                if (cartan_file_exists(path) == 0.0 && include_dirs != 0.0) {
+                    let num_inc = cartan_tree_len_f(include_dirs);
+                    var inc_i = 0.0;
+                    while (inc_i < num_inc) {
+                        let dir = cartan_tree_get_f32(include_dirs, inc_i);
+                        let candidate = cartan_string_concat(dir, cartan_string_concat("/", path));
+                        if (cartan_file_exists(candidate) != 0.0) {
+                            path = candidate;
+                            break;
+                        }
+                        inc_i = inc_i + 1.0;
+                    }
                 }
                 if (cartan_file_exists(path) == 0.0) {
                     if (cartan_string_contains(path, ".car") != 0.0) {
@@ -168,7 +181,7 @@ fn ast_expansion_pass(ast: ptr, visited_files: ptr) -> ptr {
                         }
                         let parser = parser_init(tokens);
                         let sub_ast = parse(parser);
-                        let expanded_sub_ast = ast_expansion_pass(sub_ast, visited_files);
+                        let expanded_sub_ast = ast_expansion_pass_with_dirs(sub_ast, visited_files, include_dirs);
                         let sub_len = cartan_tree_len_f(expanded_sub_ast);
                         var j = 0.0;
                         while (j < sub_len) {
@@ -184,6 +197,279 @@ fn ast_expansion_pass(ast: ptr, visited_files: ptr) -> ptr {
         i = i + 1.0;
     }
     return new_ast;
+}
+
+fn ast_expansion_pass(ast: ptr, visited_files: ptr) -> ptr {
+    return ast_expansion_pass_with_dirs(ast, visited_files, 0.0);
+}
+
+fn toml_trim_quotes(s: string) -> string {
+    if (s == 0.0) { return ""; }
+    let len = cartan_string_length(s);
+    var st = 0.0;
+    while (st < len) {
+        let ch = cartan_string_get_char(s, st);
+        if (ch == 32.0 || ch == 9.0 || ch == 10.0 || ch == 13.0 || ch == 34.0) {
+            st = st + 1.0;
+        } else {
+            break;
+        }
+    }
+    var en = len;
+    while (en > st) {
+        let ch = cartan_string_get_char(s, en - 1.0);
+        if (ch == 32.0 || ch == 9.0 || ch == 10.0 || ch == 13.0 || ch == 34.0) {
+            en = en - 1.0;
+        } else {
+            break;
+        }
+    }
+    return cartan_string_substring(s, st, en);
+}
+
+fn toml_extract_package_field(content: string, key: string, default_val: string) -> string {
+    if (content == 0.0) { return default_val; }
+    let len = cartan_string_length(content);
+    var line_start = 0.0;
+    var in_package = 1.0;
+    var i = 0.0;
+    while (i <= len) {
+        var ch = 10.0;
+        if (i < len) { ch = cartan_string_get_char(content, i); }
+        if (ch == 10.0) {
+            let line = toml_trim_quotes(cartan_string_substring(content, line_start, i));
+            if (cartan_string_starts_with(line, "[") != 0.0) {
+                if (cartan_string_starts_with(line, "[package]") != 0.0) {
+                    in_package = 1.0;
+                } else {
+                    in_package = 0.0;
+                }
+            } else if (in_package != 0.0 && cartan_string_starts_with(line, key) != 0.0) {
+                let l_len = cartan_string_length(line);
+                var eq_idx = -1.0;
+                var k = 0.0;
+                while (k < l_len) {
+                    if (cartan_string_get_char(line, k) == 61.0) {
+                        eq_idx = k;
+                        break;
+                    }
+                    k = k + 1.0;
+                }
+                if (eq_idx > 0.0) {
+                    let lhs = toml_trim_quotes(cartan_string_substring(line, 0.0, eq_idx));
+                    if (cartan_string_eq(lhs, key) != 0.0) {
+                        let rhs = toml_trim_quotes(cartan_string_substring(line, eq_idx + 1.0, l_len));
+                        if (cartan_string_length(rhs) > 0.0) {
+                            return rhs;
+                        }
+                    }
+                }
+            }
+            line_start = i + 1.0;
+        }
+        i = i + 1.0;
+    }
+    return default_val;
+}
+
+fn toml_format_dependencies_lock(content: string) -> string {
+    if (content == 0.0) { return ""; }
+    let len = cartan_string_length(content);
+    var line_start = 0.0;
+    var in_deps = 0.0;
+    var out = "";
+    var i = 0.0;
+    while (i <= len) {
+        var ch = 10.0;
+        if (i < len) { ch = cartan_string_get_char(content, i); }
+        if (ch == 10.0) {
+            let line = toml_trim_quotes(cartan_string_substring(content, line_start, i));
+            if (cartan_string_starts_with(line, "[") != 0.0) {
+                if (cartan_string_starts_with(line, "[dependencies]") != 0.0) {
+                    in_deps = 1.0;
+                } else {
+                    in_deps = 0.0;
+                }
+            } else if (in_deps != 0.0 && cartan_string_length(line) > 0.0 && cartan_string_starts_with(line, "#") == 0.0) {
+                let l_len = cartan_string_length(line);
+                var eq_idx = -1.0;
+                var k = 0.0;
+                while (k < l_len) {
+                    if (cartan_string_get_char(line, k) == 61.0) {
+                        eq_idx = k;
+                        break;
+                    }
+                    k = k + 1.0;
+                }
+                if (eq_idx > 0.0) {
+                    let dep_name = toml_trim_quotes(cartan_string_substring(line, 0.0, eq_idx));
+                    let dep_ver = toml_trim_quotes(cartan_string_substring(line, eq_idx + 1.0, l_len));
+                    if (cartan_string_length(dep_name) > 0.0 && cartan_string_length(dep_ver) > 0.0) {
+                        let dep_sig = cartan_string_concat(dep_name, cartan_string_concat("@", dep_ver));
+                        let dep_hash = cartan_float_to_string(cartan_hash_string(dep_sig));
+                        var entry = "\n[[dependencies]]\nname = \"";
+                        entry = cartan_string_concat(entry, dep_name);
+                        entry = cartan_string_concat(entry, "\"\nversion = \"");
+                        entry = cartan_string_concat(entry, dep_ver);
+                        entry = cartan_string_concat(entry, "\"\nchecksum = \"");
+                        entry = cartan_string_concat(entry, dep_hash);
+                        entry = cartan_string_concat(entry, "\"\n");
+                        out = cartan_string_concat(out, entry);
+                    }
+                }
+            }
+            line_start = i + 1.0;
+        }
+        i = i + 1.0;
+    }
+    return out;
+}
+
+fn lsp_analyze_file(input_file: string) -> ptr {
+    if (input_file == 0.0 || cartan_file_exists(input_file) == 0.0) { return 0.0; }
+    let source = cartan_read_file(input_file);
+    let length = cartan_string_length(source);
+    if (length <= 0.0) { return 0.0; }
+    let lexer = lexer_init(source, length);
+    let tokens = cartan_tree_create();
+    while (1.0) {
+        let tok = lexer_next_token(lexer);
+        cartan_tree_push(tokens, tok);
+        if (tok.token_type[0] == 168.0) { break; }
+    }
+    let parser = parser_init(tokens);
+    let ast = parse(parser);
+    let visited_files = cartan_tree_create();
+    cartan_tree_push(visited_files, input_file);
+    let expanded_ast = ast_expansion_pass(ast, visited_files);
+    let tc = type_checker_init();
+    typechecker_check(tc, expanded_ast);
+    return tc;
+}
+
+fn lsp_format_hover_json(tc: ptr, req: string) -> string {
+    var hover_md = "**CARTAN Symbol**: Native symbol in compilation scope.";
+    if (tc != 0.0) {
+        let fn_table = cartan_tree_get_f32(tc, 0.0);
+        let struct_table = cartan_tree_get_f32(tc, 2.0);
+        let fn_count = cartan_tree_len(fn_table);
+        let st_count = cartan_tree_len(struct_table);
+        var matched_sym = 0.0;
+
+        var i = 0.0;
+        while (i < fn_count) {
+            let pair = cartan_tree_get_f32(fn_table, i);
+            if (pair != 0.0) {
+                let fn_name = cartan_tree_get_f32(pair, 0.0);
+                let decls = cartan_tree_get_f32(pair, 1.0);
+                if (fn_name != 0.0 && cartan_string_length(fn_name) > 0.0 && cartan_string_contains(req, fn_name) != 0.0) {
+                    var ret_str = "void";
+                    var param_cnt = 0.0;
+                    if (decls != 0.0 && cartan_tree_len(decls) > 0.0) {
+                        let first_decl = cartan_tree_get_f32(decls, 0.0);
+                        let d_disc = cartan_tree_get_f32(first_decl, 0.0);
+                        if (d_disc == 14.0 || d_disc == 131.0 || d_disc == 137.0) {
+                            let params = cartan_tree_get_f32(first_decl, 3.0);
+                            if (params != 0.0) { param_cnt = cartan_tree_len(params); }
+                            let rt = cartan_tree_get_f32(first_decl, 4.0);
+                            if (rt != 0.0 && cartan_string_length(rt) > 0.0) { ret_str = rt; }
+                        } else {
+                            let params = cartan_tree_get_f32(first_decl, 2.0);
+                            if (params != 0.0) { param_cnt = cartan_tree_len(params); }
+                            let rt = cartan_tree_get_f32(first_decl, 3.0);
+                            if (rt != 0.0 && cartan_string_length(rt) > 0.0) { ret_str = rt; }
+                        }
+                    }
+                    hover_md = cartan_string_concat("**CARTAN Function** `fn ", fn_name);
+                    hover_md = cartan_string_concat(hover_md, "(");
+                    hover_md = cartan_string_concat(hover_md, cartan_int_to_string(param_cnt));
+                    hover_md = cartan_string_concat(hover_md, " params) -> ");
+                    hover_md = cartan_string_concat(hover_md, ret_str);
+                    hover_md = cartan_string_concat(hover_md, "`");
+                    matched_sym = 1.0;
+                    break;
+                }
+            }
+            i = i + 1.0;
+        }
+
+        if (matched_sym == 0.0) {
+            var j = 0.0;
+            while (j < st_count) {
+                let pair = cartan_tree_get_f32(struct_table, j);
+                if (pair != 0.0) {
+                    let st_name = cartan_tree_get_f32(pair, 0.0);
+                    let fields = cartan_tree_get_f32(pair, 1.0);
+                    if (st_name != 0.0 && cartan_string_length(st_name) > 0.0 && cartan_string_contains(req, st_name) != 0.0) {
+                        var f_cnt = 0.0;
+                        if (fields != 0.0) { f_cnt = cartan_tree_len(fields); }
+                        hover_md = cartan_string_concat("**CARTAN Struct** `struct ", st_name);
+                        hover_md = cartan_string_concat(hover_md, "` (");
+                        hover_md = cartan_string_concat(hover_md, cartan_int_to_string(f_cnt));
+                        hover_md = cartan_string_concat(hover_md, " fields)");
+                        matched_sym = 1.0;
+                        break;
+                    }
+                }
+                j = j + 1.0;
+            }
+        }
+
+        if (matched_sym == 0.0) {
+            hover_md = cartan_string_concat("**CARTAN Workspace Scope**: ", cartan_int_to_string(fn_count));
+            hover_md = cartan_string_concat(hover_md, " functions, ");
+            hover_md = cartan_string_concat(hover_md, cartan_int_to_string(st_count));
+            hover_md = cartan_string_concat(hover_md, " structs indexed in TypeChecker.");
+        }
+    }
+    var resp = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\"";
+    resp = cartan_string_concat(resp, hover_md);
+    resp = cartan_string_concat(resp, "\"}}}\n");
+    return resp;
+}
+
+fn lsp_format_completion_json(tc: ptr) -> string {
+    var items = "{\"label\":\"fn\",\"kind\":14},{\"label\":\"let\",\"kind\":14},{\"label\":\"var\",\"kind\":14},{\"label\":\"include\",\"kind\":14},{\"label\":\"struct\",\"kind\":7}";
+    if (tc != 0.0) {
+        let fn_table = cartan_tree_get_f32(tc, 0.0);
+        let fn_count = cartan_tree_len(fn_table);
+        var limit = fn_count;
+        if (limit > 25.0) { limit = 25.0; }
+        var i = 0.0;
+        while (i < limit) {
+            let pair = cartan_tree_get_f32(fn_table, fn_count - 1.0 - i);
+            if (pair != 0.0) {
+                let fn_name = cartan_tree_get_f32(pair, 0.0);
+                if (fn_name != 0.0 && cartan_string_length(fn_name) > 0.0) {
+                    var item = ",{\"label\":\"";
+                    item = cartan_string_concat(item, fn_name);
+                    item = cartan_string_concat(item, "\",\"kind\":3}");
+                    items = cartan_string_concat(items, item);
+                }
+            }
+            i = i + 1.0;
+        }
+        let struct_table = cartan_tree_get_f32(tc, 2.0);
+        let st_count = cartan_tree_len(struct_table);
+        var j = 0.0;
+        while (j < st_count) {
+            let pair = cartan_tree_get_f32(struct_table, j);
+            if (pair != 0.0) {
+                let st_name = cartan_tree_get_f32(pair, 0.0);
+                if (st_name != 0.0 && cartan_string_length(st_name) > 0.0) {
+                    var item = ",{\"label\":\"";
+                    item = cartan_string_concat(item, st_name);
+                    item = cartan_string_concat(item, "\",\"kind\":7}");
+                    items = cartan_string_concat(items, item);
+                }
+            }
+            j = j + 1.0;
+        }
+    }
+    var resp = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"isIncomplete\":false,\"items\":[";
+    resp = cartan_string_concat(resp, items);
+    resp = cartan_string_concat(resp, "]}}\n");
+    return resp;
 }
 
 fn generate_c_header(type_checker: ptr, input_file: string, out_h: string) -> float {
@@ -254,25 +540,42 @@ fn main() -> float {
 
     if (cartan_string_starts_with(command, "pkg") != 0.0) {
         printf("CARTAN Native Package Manager (v2.0.0)\n");
-        let manifest_path = "cartan.toml";
+        var manifest_path = "cartan.toml";
+        if (argc >= 3.0) {
+            let arg_manifest = sys_get_arg(2.0);
+            if (cartan_string_length(arg_manifest) > 0.0) {
+                manifest_path = arg_manifest;
+            }
+        }
         if (cartan_file_exists(manifest_path) == 0.0) {
             printf(" -> Manifest cartan.toml not found. Emitting new package manifest...\n");
             let m = cartan_tree_create();
             cartan_tree_push(m, "[package]\nname = \"cartan_app\"\nversion = \"0.1.0\"\nauthors = [\"CARTAN Developer\"]\n\n[dependencies]\nstd = \"2.0.0\"\n");
             cartan_tree_write_file(manifest_path, m);
         } else {
-            printf(" -> Verified existing manifest: cartan.toml\n");
+            printf(" -> Verified existing manifest: %s\n", manifest_path);
         }
         printf(" -> Generating dependency lockfile cartan.lock...\n");
         let manifest_content = cartan_read_file(manifest_path);
+        let pkg_name = toml_extract_package_field(manifest_content, "name", "cartan_app");
+        let pkg_version = toml_extract_package_field(manifest_content, "version", "0.1.0");
+        let deps_lock = toml_format_dependencies_lock(manifest_content);
         let hash_val = cartan_hash_string(manifest_content);
         let hash_str = cartan_float_to_string(hash_val);
-        let lock_text = cartan_string_concat("# CARTAN Auto-Generated Lockfile\n[[package]]\nname = \"cartan_app\"\nversion = \"0.1.0\"\nchecksum = \"", hash_str);
-        let lock_full = cartan_string_concat(lock_text, "\"\n");
+
+        var lock_full = "# CARTAN Auto-Generated Lockfile\n[[package]]\nname = \"";
+        lock_full = cartan_string_concat(lock_full, pkg_name);
+        lock_full = cartan_string_concat(lock_full, "\"\nversion = \"");
+        lock_full = cartan_string_concat(lock_full, pkg_version);
+        lock_full = cartan_string_concat(lock_full, "\"\nchecksum = \"");
+        lock_full = cartan_string_concat(lock_full, hash_str);
+        lock_full = cartan_string_concat(lock_full, "\"\n");
+        lock_full = cartan_string_concat(lock_full, deps_lock);
+
         let lock = cartan_tree_create();
         cartan_tree_push(lock, lock_full);
         cartan_tree_write_file("cartan.lock", lock);
-        printf(" -> Package resolution and lockfile write complete.\n");
+        printf(" -> Package resolution and lockfile write complete (%s v%s).\n", pkg_name, pkg_version);
         cartan_flush(0.0);
         return 0.0;
     }
@@ -302,7 +605,12 @@ fn main() -> float {
                 }
                 let parser = parser_init(tokens);
                 let ast = parse(parser);
-                let opt_ast = optimize_ast(ast);
+                let visited_files = cartan_tree_create();
+                cartan_tree_push(visited_files, "repl_session.car");
+                let expanded_ast = ast_expansion_pass(ast, visited_files);
+                let type_checker = type_checker_init();
+                typechecker_check(type_checker, expanded_ast);
+                let opt_ast = optimize_ast(expanded_ast);
                 let codegen = llvm_codegen_init();
                 let ir = generate(codegen, opt_ast);
                 cartan_tree_write_file("repl_tmp.ll", ir);
@@ -354,6 +662,16 @@ fn main() -> float {
 
     if (cartan_string_starts_with(command, "lsp") != 0.0) {
         printf("CARTAN Native Language Server Protocol Engine (lsp v4.3.0)\n");
+        var active_tc: ptr = 0.0;
+        if (argc >= 3.0) {
+            let target_file = sys_get_arg(2.0);
+            active_tc = lsp_analyze_file(target_file);
+        }
+        if (active_tc == 0.0) {
+            if (cartan_file_exists("src/cartanc/core_runtime.car") != 0.0) {
+                active_tc = lsp_analyze_file("src/cartanc/core_runtime.car");
+            }
+        }
         printf(" -> Listening on stdio (JSON-RPC 2.0)...\n");
         cartan_flush(0.0);
         while (1.0) {
@@ -365,10 +683,12 @@ fn main() -> float {
                 printf("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"completionProvider\":{\"resolveProvider\":true}}}}\n");
                 cartan_flush(0.0);
             } else if (cartan_string_contains(req, "textDocument/hover") != 0.0) {
-                printf("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\"**CARTAN Symbol**: Native symbol in compilation scope.\"}}}\n");
+                let hover_resp = lsp_format_hover_json(active_tc, req);
+                printf("%s", hover_resp);
                 cartan_flush(0.0);
             } else if (cartan_string_contains(req, "textDocument/completion") != 0.0) {
-                printf("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"isIncomplete\":false,\"items\":[{\"label\":\"fn\",\"kind\":14},{\"label\":\"let\",\"kind\":14},{\"label\":\"include\",\"kind\":14},{\"label\":\"struct\",\"kind\":7}]}}\n");
+                let comp_resp = lsp_format_completion_json(active_tc);
+                printf("%s", comp_resp);
                 cartan_flush(0.0);
             } else if (cartan_string_contains(req, "shutdown") != 0.0) {
                 printf("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":null}\n");
@@ -441,17 +761,66 @@ fn main() -> float {
             printf("Error: Missing input file.\n");
             return 1.0;
         }
-        var input_file = sys_get_arg(2.0);
+        var input_file = "";
+        var output_file = "out.exe";
+        var opt_flag = "-O2";
+        var emit_ir_only = 0.0;
+        var is_verbose = 0.0;
+        var extra_clang_flags = "";
+        let include_dirs = cartan_tree_create();
+
+        var arg_idx = 2.0;
+        while (arg_idx < argc) {
+            let arg = sys_get_arg(arg_idx);
+            if (cartan_string_eq(arg, "-o") != 0.0 && arg_idx + 1.0 < argc) {
+                output_file = sys_get_arg(arg_idx + 1.0);
+                arg_idx = arg_idx + 2.0;
+            } else if (cartan_string_eq(arg, "-I") != 0.0 && arg_idx + 1.0 < argc) {
+                cartan_tree_push(include_dirs, sys_get_arg(arg_idx + 1.0));
+                arg_idx = arg_idx + 2.0;
+            } else if (cartan_string_eq(arg, "-L") != 0.0 && arg_idx + 1.0 < argc) {
+                let l_dir = sys_get_arg(arg_idx + 1.0);
+                extra_clang_flags = cartan_string_concat(extra_clang_flags, cartan_string_concat(" -L\"", cartan_string_concat(l_dir, "\"")));
+                arg_idx = arg_idx + 2.0;
+            } else if (cartan_string_starts_with(arg, "-l") != 0.0) {
+                extra_clang_flags = cartan_string_concat(extra_clang_flags, cartan_string_concat(" ", arg));
+                arg_idx = arg_idx + 1.0;
+            } else if (cartan_string_eq(arg, "--release") != 0.0 || cartan_string_eq(arg, "-O3") != 0.0) {
+                opt_flag = "-O3";
+                arg_idx = arg_idx + 1.0;
+            } else if (cartan_string_eq(arg, "-O2") != 0.0) {
+                opt_flag = "-O2";
+                arg_idx = arg_idx + 1.0;
+            } else if (cartan_string_eq(arg, "-O0") != 0.0) {
+                opt_flag = "-O0";
+                arg_idx = arg_idx + 1.0;
+            } else if (cartan_string_eq(arg, "-c") != 0.0 || cartan_string_eq(arg, "--emit-llvm") != 0.0) {
+                emit_ir_only = 1.0;
+                arg_idx = arg_idx + 1.0;
+            } else if (cartan_string_eq(arg, "-v") != 0.0 || cartan_string_eq(arg, "--verbose") != 0.0) {
+                is_verbose = 1.0;
+                arg_idx = arg_idx + 1.0;
+            } else if (cartan_string_starts_with(arg, "-") == 0.0 && cartan_string_length(input_file) == 0.0) {
+                input_file = arg;
+                arg_idx = arg_idx + 1.0;
+            } else {
+                arg_idx = arg_idx + 1.0;
+            }
+        }
+
+        if (cartan_string_length(input_file) == 0.0) {
+            printf("Error: Missing input file.\n");
+            return 1.0;
+        }
         if (cartan_file_exists(input_file) == 0.0) {
             printf("Error: Input file '%s' not found.\n", input_file);
             cartan_flush(0.0);
             return 1.0;
         }
-        var output_file = "out.exe";
-        if (argc >= 5.0) {
-            if (cartan_string_starts_with(sys_get_arg(3.0), "-o") != 0.0) {
-                output_file = sys_get_arg(4.0);
-            }
+
+        if (is_verbose != 0.0) {
+            printf("[verbose] Compiling '%s' -> '%s' (opt=%s)\n", input_file, output_file, opt_flag);
+            cartan_flush(0.0);
         }
 
         let source = cartan_read_file(input_file);
@@ -479,7 +848,7 @@ fn main() -> float {
         
         let visited_files = cartan_tree_create();
         cartan_tree_push(visited_files, input_file);
-        let expanded_ast = ast_expansion_pass(ast, visited_files);
+        let expanded_ast = ast_expansion_pass_with_dirs(ast, visited_files, include_dirs);
         printf("Expanded AST len: %f\n", cartan_tree_len_f(expanded_ast));
         cartan_flush(0.0);
         
@@ -497,12 +866,20 @@ fn main() -> float {
         printf("Codegen finished! IR len: %f\n", cartan_tree_len_f(ir));
         cartan_flush(0.0);
         
-        let out_ll = cartan_string_replace(output_file, ".exe", ".ll");
+        var out_ll = cartan_string_replace(output_file, ".exe", ".ll");
+        if (cartan_string_contains(out_ll, ".ll") == 0.0) {
+            out_ll = cartan_string_concat(out_ll, ".ll");
+        }
         cartan_tree_write_file(out_ll, ir);
         
         printf("Successfully wrote LLVM IR to ");
         printf(out_ll);
         printf("\n");
+
+        if (emit_ir_only != 0.0) {
+            cartan_flush(0.0);
+            return 0.0;
+        }
         
         if (is_jit == 1.0) {
             printf("Executing in-memory CARTAN JIT Engine...\n");
@@ -511,13 +888,16 @@ fn main() -> float {
             return jit_res;
         }
 
-        printf("Compiling and linking native executable via Clang (-O2 AVX2/FMA MSVC)...\n");
+        printf("Compiling and linking native executable via Clang (%s AVX2/FMA MSVC)...\n", opt_flag);
         cartan_flush(0.0);
         let clang_exe = cartan_resolve_compiler_path();
         let lib_flags = cartan_get_compiler_lib_flags();
         var cmd = cartan_string_concat("\"", clang_exe);
-        cmd = cartan_string_concat(cmd, "\" -target x86_64-pc-windows-msvc -g -O2 -mavx2 -mfma -Wno-override-module -Wl,/FORCE:MULTIPLE -Wl,/STACK:67108864");
+        cmd = cartan_string_concat(cmd, "\" -target x86_64-pc-windows-msvc -g ");
+        cmd = cartan_string_concat(cmd, opt_flag);
+        cmd = cartan_string_concat(cmd, " -mavx2 -mfma -Wno-override-module -Wl,/FORCE:MULTIPLE -Wl,/STACK:67108864");
         cmd = cartan_string_concat(cmd, lib_flags);
+        cmd = cartan_string_concat(cmd, extra_clang_flags);
         cmd = cartan_string_concat(cmd, " -DCARTAN_GPU_RUNTIME_LINKED -DCARTAN_COMPILED_LLVM -D_CRT_SECURE_NO_WARNINGS -x ir \"");
         cmd = cartan_string_concat(cmd, out_ll);
         cmd = cartan_string_concat(cmd, "\" -o \"");

@@ -5,56 +5,283 @@ include "ast.ch";
 
 fn optimize_expr(expr: ptr) -> ptr {
     if (expr == 0.0) { return 0.0; }
-    let disc = cartan_tree_get_f32(expr, 0.0);
-    
-    // Constant folding for BinaryOp (disc 24.0)
-    if (disc == 24.0) {
-        let left = optimize_expr(cartan_tree_get_f32(expr, 1.0));
-        let op = cartan_tree_get_f32(expr, 2.0);
-        let right = optimize_expr(cartan_tree_get_f32(expr, 3.0));
-        
-        let l_disc = cartan_tree_get_f32(left, 0.0);
-        let r_disc = cartan_tree_get_f32(right, 0.0);
-        
-        // Literal arithmetic optimization (Literal op Literal)
-        if ((l_disc == 0.0 || l_disc == 1.0) && (r_disc == 0.0 || r_disc == 1.0)) {
-            let val_l = cartan_tree_get_f32(left, 1.0);
-            let val_r = cartan_tree_get_f32(right, 1.0);
-            if (cartan_string_eq(op, "+") != 0.0) {
-                return Expr::Float(val_l + val_r);
-            }
-            if (cartan_string_eq(op, "-") != 0.0) {
-                return Expr::Float(val_l - val_r);
-            }
-            if (cartan_string_eq(op, "*") != 0.0) {
-                return Expr::Float(val_l * val_r);
-            }
-            if (cartan_string_eq(op, "/") != 0.0 && val_r != 0.0) {
-                return Expr::Float(val_l / val_r);
-            }
-        }
+    let disc = expr[0];
 
-        // Variable Identity Folding (expr op 0.0 / expr op 1.0)
-        if (r_disc == 0.0 || r_disc == 1.0) {
-            let val_r = cartan_tree_get_f32(right, 1.0);
-            if (val_r == 0.0 && (cartan_string_eq(op, "+") != 0.0 || cartan_string_eq(op, "-") != 0.0)) {
-                return left;
-            }
-            if (val_r == 1.0 && (cartan_string_eq(op, "*") != 0.0 || cartan_string_eq(op, "/") != 0.0)) {
-                return left;
+    // Constant folding and recursion for UnaryOp (disc 15.0)
+    if (disc == 15.0) {
+        let op = cartan_tree_get_f32(expr, 1.0);
+        let right: ptr = optimize_expr(cartan_tree_get_f32(expr, 2.0));
+        expr[2] = right;
+        if (right != 0.0) {
+            let r_disc = right[0];
+            if (r_disc == 0.0 || r_disc == 1.0) {
+                let val_r = right[1];
+                if (cartan_string_eq(op, "!") != 0.0) {
+                    if (val_r == 0.0) { return Expr::Float(1.0); }
+                    return Expr::Float(0.0);
+                }
             }
         }
-        if (l_disc == 0.0 || l_disc == 1.0) {
-            let val_l = cartan_tree_get_f32(left, 1.0);
-            if (val_l == 0.0 && cartan_string_eq(op, "+") != 0.0) {
-                return right;
+        return expr;
+    }
+
+    // Constant folding for BinaryOp (disc 16.0)
+    if (disc == 16.0) {
+        let left: ptr = optimize_expr(cartan_tree_get_f32(expr, 1.0));
+        let op = cartan_tree_get_f32(expr, 2.0);
+        let right: ptr = optimize_expr(cartan_tree_get_f32(expr, 3.0));
+        expr[1] = left;
+        expr[3] = right;
+
+        if (left != 0.0 && right != 0.0) {
+            let l_disc = left[0];
+            let r_disc = right[0];
+
+            // Literal arithmetic optimization (Literal op Literal)
+            if ((l_disc == 0.0 || l_disc == 1.0) && (r_disc == 0.0 || r_disc == 1.0)) {
+                let val_l = left[1];
+                let val_r = right[1];
+                var both_int = 0.0;
+                if (l_disc == 0.0 && r_disc == 0.0) { both_int = 1.0; }
+                if (cartan_string_eq(op, "+") != 0.0) {
+                    if (both_int != 0.0) { return Expr::Integer(val_l + val_r); }
+                    return Expr::Float(val_l + val_r);
+                }
+                if (cartan_string_eq(op, "-") != 0.0 && val_l >= val_r) {
+                    if (both_int != 0.0) { return Expr::Integer(val_l - val_r); }
+                    return Expr::Float(val_l - val_r);
+                }
+                if (cartan_string_eq(op, "*") != 0.0) {
+                    if (both_int != 0.0) { return Expr::Integer(val_l * val_r); }
+                    return Expr::Float(val_l * val_r);
+                }
+                if (cartan_string_eq(op, "/") != 0.0 && val_r != 0.0) {
+                    return Expr::Float(val_l / val_r);
+                }
             }
-            if (val_l == 1.0 && cartan_string_eq(op, "*") != 0.0) {
-                return right;
+
+            // Variable Identity Folding (expr op 0.0 / expr op 1.0)
+            if (r_disc == 0.0 || r_disc == 1.0) {
+                let val_r = right[1];
+                if (val_r == 0.0 && (cartan_string_eq(op, "+") != 0.0 || cartan_string_eq(op, "-") != 0.0)) {
+                    return left;
+                }
+                if (val_r == 1.0 && (cartan_string_eq(op, "*") != 0.0 || cartan_string_eq(op, "/") != 0.0)) {
+                    return left;
+                }
+            }
+            if (l_disc == 0.0 || l_disc == 1.0) {
+                let val_l = left[1];
+                if (val_l == 0.0 && cartan_string_eq(op, "+") != 0.0) {
+                    return right;
+                }
+                if (val_l == 1.0 && cartan_string_eq(op, "*") != 0.0) {
+                    return right;
+                }
+            }
+        }
+        return expr;
+    }
+
+    // StructInit (disc 14.0)
+    if (disc == 14.0) {
+        let fields = cartan_tree_get_f32(expr, 2.0);
+        if (fields != 0.0) {
+            let n = cartan_tree_len_f(fields);
+            var i = 0.0;
+            while (i < n) {
+                let f_pair = cartan_tree_get_f32(fields, i);
+                if (f_pair != 0.0) {
+                    let f_expr = cartan_tree_get_f32(f_pair, 1.0);
+                    cartan_tree_set(f_pair, 1.0, optimize_expr(f_expr));
+                }
+                i = i + 1.0;
+            }
+        }
+        return expr;
+    }
+
+    // FunctionCall (disc 17.0)
+    if (disc == 17.0) {
+        let args = cartan_tree_get_f32(expr, 2.0);
+        if (args != 0.0) {
+            let n = cartan_tree_len_f(args);
+            var i = 0.0;
+            while (i < n) {
+                let arg_e = cartan_tree_get_f32(args, i);
+                cartan_tree_set(args, i, optimize_expr(arg_e));
+                i = i + 1.0;
+            }
+        }
+        return expr;
+    }
+
+    // MethodCall (disc 18.0)
+    if (disc == 18.0) {
+        let obj: ptr = optimize_expr(cartan_tree_get_f32(expr, 1.0));
+        expr[1] = obj;
+        let args = cartan_tree_get_f32(expr, 3.0);
+        if (args != 0.0) {
+            let n = cartan_tree_len_f(args);
+            var i = 0.0;
+            while (i < n) {
+                let arg_e = cartan_tree_get_f32(args, i);
+                cartan_tree_set(args, i, optimize_expr(arg_e));
+                i = i + 1.0;
+            }
+        }
+        return expr;
+    }
+
+    // PropertyAccess (disc 20.0)
+    if (disc == 20.0) {
+        let obj: ptr = optimize_expr(cartan_tree_get_f32(expr, 1.0));
+        expr[1] = obj;
+        return expr;
+    }
+
+    // IndexAccess (disc 21.0) & Assignment (disc 22.0)
+    if (disc == 21.0 || disc == 22.0) {
+        let e1: ptr = optimize_expr(cartan_tree_get_f32(expr, 1.0));
+        let e2: ptr = optimize_expr(cartan_tree_get_f32(expr, 2.0));
+        expr[1] = e1;
+        expr[2] = e2;
+        return expr;
+    }
+
+    // BroadcastOp (disc 23.0)
+    if (disc == 23.0) {
+        let e1: ptr = optimize_expr(cartan_tree_get_f32(expr, 1.0));
+        let e3: ptr = optimize_expr(cartan_tree_get_f32(expr, 3.0));
+        expr[1] = e1;
+        expr[3] = e3;
+        return expr;
+    }
+
+    // ArrayDecl (disc 24.0)
+    if (disc == 24.0) {
+        let elems = cartan_tree_get_f32(expr, 1.0);
+        if (elems != 0.0) {
+            let n = cartan_tree_len_f(elems);
+            var i = 0.0;
+            while (i < n) {
+                let el = cartan_tree_get_f32(elems, i);
+                cartan_tree_set(elems, i, optimize_expr(el));
+                i = i + 1.0;
+            }
+        }
+        return expr;
+    }
+
+    return expr;
+}
+
+fn optimize_block(blk_node: ptr) {
+    if (blk_node == 0.0) { return; }
+    let stmts = cartan_tree_get_f32(blk_node, 0.0);
+    if (stmts == 0.0) { return; }
+    let len = cartan_tree_len_f(stmts);
+    var i = 0.0;
+    while (i < len) {
+        let s = cartan_tree_get_f32(stmts, i);
+        let opt_s = optimize_stmt(s);
+        cartan_tree_set(stmts, i, opt_s);
+        i = i + 1.0;
+    }
+}
+
+fn optimize_stmt(stmt: ptr) -> ptr {
+    if (stmt == 0.0) { return 0.0; }
+    let disc = stmt[0];
+
+    if (disc == 1.0) { // ExprStmt
+        let e: ptr = optimize_expr(cartan_tree_get_f32(stmt, 1.0));
+        stmt[1] = e;
+    } else if (disc == 3.0) { // VarDecl
+        let val: ptr = optimize_expr(cartan_tree_get_f32(stmt, 3.0));
+        stmt[3] = val;
+    } else if (disc == 5.0) { // StructDecl
+        let fields = cartan_tree_get_f32(stmt, 2.0);
+        if (fields != 0.0) {
+            let n = cartan_tree_len_f(fields);
+            var i = 0.0;
+            while (i < n) {
+                let f = cartan_tree_get_f32(fields, i);
+                cartan_tree_set(fields, i, optimize_stmt(f));
+                i = i + 1.0;
+            }
+        }
+    } else if (disc == 6.0 || disc == 7.0) { // TensorDecl / ParameterDecl
+        let shape = cartan_tree_get_f32(stmt, 2.0);
+        if (shape != 0.0) {
+            let n = cartan_tree_len_f(shape);
+            var i = 0.0;
+            while (i < n) {
+                let d_expr = cartan_tree_get_f32(shape, i);
+                cartan_tree_set(shape, i, optimize_expr(d_expr));
+                i = i + 1.0;
+            }
+        }
+    } else if (disc == 8.0) { // VectorDecl
+        let dim: ptr = optimize_expr(cartan_tree_get_f32(stmt, 3.0));
+        stmt[3] = dim;
+    } else if (disc == 14.0) { // FunctionDecl
+        let body = cartan_tree_get_f32(stmt, 6.0);
+        optimize_block(body);
+    } else if (disc == 17.0) { // IfStmt
+        let cond: ptr = optimize_expr(cartan_tree_get_f32(stmt, 1.0));
+        stmt[1] = cond;
+        optimize_block(cartan_tree_get_f32(stmt, 2.0));
+        optimize_block(cartan_tree_get_f32(stmt, 3.0));
+    } else if (disc == 18.0) { // WhileStmt
+        let cond: ptr = optimize_expr(cartan_tree_get_f32(stmt, 1.0));
+        stmt[1] = cond;
+        optimize_block(cartan_tree_get_f32(stmt, 2.0));
+    } else if (disc == 19.0) { // ForStmt
+        let iter: ptr = optimize_expr(cartan_tree_get_f32(stmt, 2.0));
+        stmt[2] = iter;
+        optimize_block(cartan_tree_get_f32(stmt, 3.0));
+    } else if (disc == 20.0) { // TryCatch
+        optimize_block(cartan_tree_get_f32(stmt, 1.0));
+        optimize_block(cartan_tree_get_f32(stmt, 3.0));
+    } else if (disc == 21.0 || disc == 24.0 || disc == 44.0 || disc == 61.0 || disc == 62.0) { // Throw / ReturnStmt / Backward / PruneGraph / EmitSpike
+        let e: ptr = optimize_expr(cartan_tree_get_f32(stmt, 1.0));
+        stmt[1] = e;
+    } else if (disc == 34.0) { // ImplDecl
+        let methods = cartan_tree_get_f32(stmt, 3.0);
+        if (methods != 0.0) {
+            let n = cartan_tree_len_f(methods);
+            var i = 0.0;
+            while (i < n) {
+                let m = cartan_tree_get_f32(methods, i);
+                cartan_tree_set(methods, i, optimize_stmt(m));
+                i = i + 1.0;
+            }
+        }
+    } else if (disc == 39.0 || disc == 40.0 || disc == 43.0) { // JitBlock / Block / AsyncCompute
+        optimize_block(cartan_tree_get_f32(stmt, 1.0));
+    } else if (disc == 41.0) { // MatchStmt
+        let cond: ptr = optimize_expr(cartan_tree_get_f32(stmt, 1.0));
+        stmt[1] = cond;
+        let arms = cartan_tree_get_f32(stmt, 2.0);
+        if (arms != 0.0) {
+            let n = cartan_tree_len_f(arms);
+            var i = 0.0;
+            while (i < n) {
+                let arm = cartan_tree_get_f32(arms, i);
+                if (arm != 0.0) {
+                    let pat = cartan_tree_get_f32(arm, 0.0);
+                    if (pat != 0.0) {
+                        cartan_tree_set(arm, 0.0, optimize_expr(pat));
+                    }
+                    let arm_body = cartan_tree_get_f32(arm, 1.0);
+                    cartan_tree_set(arm, 1.0, optimize_stmt(arm_body));
+                }
+                i = i + 1.0;
             }
         }
     }
-    return expr;
+    return stmt;
 }
 
 fn optimize_ast(ast: ptr) -> ptr {
@@ -64,7 +291,8 @@ fn optimize_ast(ast: ptr) -> ptr {
     var i = 0.0;
     while (i < len) {
         let stmt = cartan_tree_get_f32(ast, i);
-        cartan_tree_push(opt_tree, stmt);
+        let opt_s = optimize_stmt(stmt);
+        cartan_tree_push(opt_tree, opt_s);
         i = i + 1.0;
     }
     return opt_tree;

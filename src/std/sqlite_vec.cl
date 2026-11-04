@@ -121,10 +121,10 @@ fn sqlite_vec_errmsg(db: ptr) -> string {
     return msg;
 }
 
-// Initialize the 6-table Cognitive Memory Schema
+// Initialize the 7-table Cognitive Memory Schema (including Self-Deterministic cognitive_rules)
 fn sqlite_vec_init_schema(db: ptr) -> float {
     if (db == 0.0) { return 0.0; }
-    let schema = "CREATE TABLE IF NOT EXISTS domains (domain_id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, description TEXT, is_active INTEGER DEFAULT 1, created_at DATETIME DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS rule_elements (element_id INTEGER PRIMARY KEY, domain_id INTEGER, element_type TEXT NOT NULL, content TEXT NOT NULL, is_strict INTEGER DEFAULT 0, confidence REAL DEFAULT 1.0, status TEXT DEFAULT 'active', access_count INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, last_accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP, decay_half_life_days REAL DEFAULT 30.0); CREATE TABLE IF NOT EXISTS dependencies (dependency_id INTEGER PRIMARY KEY, source_element_id INTEGER, target_element_id INTEGER, relationship_type TEXT NOT NULL, weight REAL DEFAULT 1.0, last_traversed DATETIME DEFAULT CURRENT_TIMESTAMP, UNIQUE(source_element_id, target_element_id, relationship_type)); CREATE TABLE IF NOT EXISTS randomicity_fragments (fragment_id INTEGER PRIMARY KEY, domain_id INTEGER, fragment_text TEXT NOT NULL, entropy_tier INTEGER DEFAULT 1, usage_count INTEGER DEFAULT 0); CREATE TABLE IF NOT EXISTS episodes (episode_id INTEGER PRIMARY KEY, session_id TEXT NOT NULL, domain_id INTEGER, speaker TEXT NOT NULL, content TEXT NOT NULL, consolidated INTEGER DEFAULT 0, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS entity_states (state_id INTEGER PRIMARY KEY, domain_id INTEGER, entity_name TEXT NOT NULL, attribute_name TEXT NOT NULL, attribute_value TEXT NOT NULL, confidence REAL DEFAULT 1.0, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, UNIQUE(domain_id, entity_name, attribute_name));";
+    let schema = "CREATE TABLE IF NOT EXISTS domains (domain_id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, description TEXT, is_active INTEGER DEFAULT 1, created_at DATETIME DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS rule_elements (element_id INTEGER PRIMARY KEY, domain_id INTEGER, element_type TEXT NOT NULL, content TEXT NOT NULL, is_strict INTEGER DEFAULT 0, confidence REAL DEFAULT 1.0, status TEXT DEFAULT 'active', access_count INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, last_accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP, decay_half_life_days REAL DEFAULT 30.0); CREATE TABLE IF NOT EXISTS dependencies (dependency_id INTEGER PRIMARY KEY, source_element_id INTEGER, target_element_id INTEGER, relationship_type TEXT NOT NULL, weight REAL DEFAULT 1.0, last_traversed DATETIME DEFAULT CURRENT_TIMESTAMP, UNIQUE(source_element_id, target_element_id, relationship_type)); CREATE TABLE IF NOT EXISTS randomicity_fragments (fragment_id INTEGER PRIMARY KEY, domain_id INTEGER, fragment_text TEXT NOT NULL, entropy_tier INTEGER DEFAULT 1, usage_count INTEGER DEFAULT 0); CREATE TABLE IF NOT EXISTS episodes (episode_id INTEGER PRIMARY KEY, session_id TEXT NOT NULL, domain_id INTEGER, speaker TEXT NOT NULL, content TEXT NOT NULL, consolidated INTEGER DEFAULT 0, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS entity_states (state_id INTEGER PRIMARY KEY, domain_id INTEGER, entity_name TEXT NOT NULL, attribute_name TEXT NOT NULL, attribute_value TEXT NOT NULL, confidence REAL DEFAULT 1.0, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, UNIQUE(domain_id, entity_name, attribute_name)); CREATE TABLE IF NOT EXISTS cognitive_rules (rule_id TEXT PRIMARY KEY, enabled INTEGER DEFAULT 1, priority REAL DEFAULT 50.0, trigger_cond TEXT DEFAULT 'always', action_hook TEXT DEFAULT 'none', directive TEXT NOT NULL, source TEXT DEFAULT 'config', updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);";
     let rc = sqlite3_exec(db, schema, 0.0, 0.0, 0.0);
     if (rc == 0.0) { return 1.0; }
     return 0.0;
@@ -627,6 +627,96 @@ fn sqlite_vec_prepare_user_custom_attrs(db: ptr, user_id: string) -> ptr {
 }
 
 // -------------------------------------------------------------------------
+// Self-Deterministic & Hybrid Config Cognitive Rules Engine (cognitive_rules)
+// -------------------------------------------------------------------------
+fn sqlite_vec_upsert_cognitive_rule(db: ptr, rule_id: string, enabled: float, priority: float, trigger_cond: string, action_hook: string, directive: string, source: string) -> float {
+    if (db == 0.0 || rule_id == 0.0 || cartan_string_length(rule_id) == 0.0) { return 0.0; }
+    let sql = "INSERT INTO cognitive_rules (rule_id, enabled, priority, trigger_cond, action_hook, directive, source, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(rule_id) DO UPDATE SET enabled = excluded.enabled, priority = excluded.priority, trigger_cond = excluded.trigger_cond, action_hook = excluded.action_hook, directive = excluded.directive, source = excluded.source, updated_at = CURRENT_TIMESTAMP;";
+    let stmt = sqlite_vec_prepare(db, sql);
+    if (stmt == 0.0) { return 0.0; }
+    var trig = trigger_cond;
+    if (trig == 0.0 || cartan_string_length(trig) == 0.0) { trig = "always"; }
+    var act = action_hook;
+    if (act == 0.0 || cartan_string_length(act) == 0.0) { act = "none"; }
+    var dir = directive;
+    if (dir == 0.0) { dir = ""; }
+    var src = source;
+    if (src == 0.0 || cartan_string_length(src) == 0.0) { src = "config"; }
+    sqlite3_bind_text(stmt, 1.0, rule_id, -1.0, -1.0);
+    sqlite3_bind_int64(stmt, 2.0, enabled);
+    sqlite3_bind_double(stmt, 3.0, priority);
+    sqlite3_bind_text(stmt, 4.0, trig, -1.0, -1.0);
+    sqlite3_bind_text(stmt, 5.0, act, -1.0, -1.0);
+    sqlite3_bind_text(stmt, 6.0, dir, -1.0, -1.0);
+    sqlite3_bind_text(stmt, 7.0, src, -1.0, -1.0);
+    let rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    if (rc == 101.0) { return 1.0; }
+    return 0.0;
+}
+
+fn sqlite_vec_get_cognitive_rule_source(db: ptr, rule_id: string) -> string {
+    if (db == 0.0 || rule_id == 0.0) { return ""; }
+    let sql = "SELECT source FROM cognitive_rules WHERE rule_id = ? LIMIT 1;";
+    let stmt = sqlite_vec_prepare(db, sql);
+    if (stmt == 0.0) { return ""; }
+    sqlite3_bind_text(stmt, 1.0, rule_id, -1.0, -1.0);
+    var res = "";
+    if (sqlite3_step(stmt) == 100.0) {
+        res = sqlite_vec_column_text(stmt, 0.0);
+    }
+    sqlite3_finalize(stmt);
+    return res;
+}
+
+fn sqlite_vec_set_cognitive_rule_enabled(db: ptr, rule_id: string, enabled: float) -> float {
+    if (db == 0.0 || rule_id == 0.0) { return 0.0; }
+    let sql = "UPDATE cognitive_rules SET enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE rule_id = ?;";
+    let stmt = sqlite_vec_prepare(db, sql);
+    if (stmt == 0.0) { return 0.0; }
+    sqlite3_bind_int64(stmt, 1.0, enabled);
+    sqlite3_bind_text(stmt, 2.0, rule_id, -1.0, -1.0);
+    let rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    if (rc == 101.0) { return 1.0; }
+    return 0.0;
+}
+
+fn sqlite_vec_delete_cognitive_rule(db: ptr, rule_id: string) -> float {
+    if (db == 0.0 || rule_id == 0.0) { return 0.0; }
+    let sql = "DELETE FROM cognitive_rules WHERE rule_id = ?;";
+    let stmt = sqlite_vec_prepare(db, sql);
+    if (stmt == 0.0) { return 0.0; }
+    sqlite3_bind_text(stmt, 1.0, rule_id, -1.0, -1.0);
+    let rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    if (rc == 101.0) { return 1.0; }
+    return 0.0;
+}
+
+fn sqlite_vec_prepare_cognitive_rules(db: ptr, only_enabled: float) -> ptr {
+    if (db == 0.0) { return 0.0; }
+    var sql = "SELECT rule_id, enabled, priority, trigger_cond, action_hook, directive, source FROM cognitive_rules ORDER BY priority DESC, rule_id ASC;";
+    if (only_enabled == 1.0) {
+        sql = "SELECT rule_id, enabled, priority, trigger_cond, action_hook, directive, source FROM cognitive_rules WHERE enabled = 1 ORDER BY priority DESC, rule_id ASC;";
+    }
+    return sqlite_vec_prepare(db, sql);
+}
+
+fn sqlite_vec_get_cognitive_rule_count(db: ptr) -> float {
+    if (db == 0.0) { return 0.0; }
+    let sql = "SELECT COUNT(*) FROM cognitive_rules WHERE enabled = 1;";
+    let stmt = sqlite_vec_prepare(db, sql);
+    if (stmt == 0.0) { return 0.0; }
+    var cnt = 0.0;
+    if (sqlite3_step(stmt) == 100.0) {
+        cnt = sqlite3_column_double(stmt, 0.0);
+    }
+    sqlite3_finalize(stmt);
+    return cnt;
+}
+
+// -------------------------------------------------------------------------
 // Backward-Compatible Aliases for Legacy cartan_sqlite_* Callers
 // -------------------------------------------------------------------------
 fn cartan_sqlite_open(path: string) -> ptr { return sqlite_vec_open(path); }
@@ -666,4 +756,10 @@ fn cartan_sqlite_save_user_face_embedding(db: ptr, user_id: string, emb_str: str
 fn cartan_sqlite_get_user_face_embedding(db: ptr, user_id: string) -> string { return sqlite_vec_get_user_face_embedding(db, user_id); }
 fn cartan_sqlite_prepare_registered_face_users(db: ptr) -> ptr { return sqlite_vec_prepare_registered_face_users(db); }
 fn cartan_sqlite_prepare_user_custom_attrs(db: ptr, user_id: string) -> ptr { return sqlite_vec_prepare_user_custom_attrs(db, user_id); }
+fn cartan_sqlite_upsert_cognitive_rule(db: ptr, rule_id: string, enabled: float, priority: float, trigger_cond: string, action_hook: string, directive: string, source: string) -> float { return sqlite_vec_upsert_cognitive_rule(db, rule_id, enabled, priority, trigger_cond, action_hook, directive, source); }
+fn cartan_sqlite_get_cognitive_rule_source(db: ptr, rule_id: string) -> string { return sqlite_vec_get_cognitive_rule_source(db, rule_id); }
+fn cartan_sqlite_set_cognitive_rule_enabled(db: ptr, rule_id: string, enabled: float) -> float { return sqlite_vec_set_cognitive_rule_enabled(db, rule_id, enabled); }
+fn cartan_sqlite_delete_cognitive_rule(db: ptr, rule_id: string) -> float { return sqlite_vec_delete_cognitive_rule(db, rule_id); }
+fn cartan_sqlite_prepare_cognitive_rules(db: ptr, only_enabled: float) -> ptr { return sqlite_vec_prepare_cognitive_rules(db, only_enabled); }
+fn cartan_sqlite_get_cognitive_rule_count(db: ptr) -> float { return sqlite_vec_get_cognitive_rule_count(db); }
 

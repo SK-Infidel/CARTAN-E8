@@ -1,0 +1,84 @@
+{
+  "temperature": 0.70,
+  "top_k": 50,
+  "top_p": 0.85,
+  "rep_penalty": 1.15,
+  "max_tokens": 2048,
+  "context_limit": 16384,
+  "rolling_context_threshold": 12288,
+  "stream_output": 1,
+  "show_thinking": 0,
+  "show_telemetry": 0,
+  "use_color": 1,
+  "use_animation": 1,
+  "expert_priming": 1,
+  "ephemeral_memory": 0,
+  "tangent_debias_enabled": 0,
+  "tangent_debias_layer": 32,
+  "tangent_debias_strength": 0.65,
+  "rules": [
+    {
+      "id": "core_identity_grounding",
+      "enabled": 1,
+      "priority": 100,
+      "trigger": "always",
+      "action": "include_self_and_user_memory",
+      "directive": "",
+      "source": "config"
+    },
+    {
+      "id": "biometric_camera_peek",
+      "enabled": 1,
+      "priority": 90,
+      "trigger": "keyword:take a peek|look at me|check who i am|do you recognize me|verify my face|scan my face",
+      "action": "scan_face",
+      "directive": "A live camera biometric scan was just performed to verify the active user.",
+      "source": "config"
+    },
+    {
+      "id": "tool_workspace_access",
+      "enabled": 1,
+      "priority": 80,
+      "trigger": "intent:tool",
+      "action": "include_tool_definitions",
+      "directive": "",
+      "source": "config"
+    },
+    {
+      "id": "analytical_domain_precision",
+      "enabled": 1,
+      "priority": 70,
+      "trigger": "domain:1|2|3|5",
+      "action": "temp:0.55",
+      "directive": "",
+      "source": "config"
+    },
+    {
+      "id": "tool_execution_ab_policy",
+      "enabled": 1,
+      "priority": 68,
+      "trigger": "on_tool:any",
+      "action": "A:log_episode|B:temp:0.40",
+      "directive": "A:Tool execution succeeded; ground your response directly in the returned tool output.|B:Tool execution returned an error; diagnose the exact failure without fabricating results.",
+      "source": "config"
+    },
+    {
+      "id": "periodic_memory_consolidation",
+      "enabled": 1,
+      "priority": 65,
+      "trigger": "interval:20m",
+      "action": "consolidate_memory",
+      "directive": "",
+      "source": "config"
+    },
+    {
+      "id": "self_deterministic_rule_evolution",
+      "enabled": 1,
+      "priority": 60,
+      "trigger": "keyword:add a rule|create a rule|new rule|update rule|disable rule|enable rule|delete rule|self-rule|your rules",
+      "action": "enable_rule_authoring",
+      "directive": "You can inspect or mutate your operational rules in cognitive_memory.db by emitting <rule_op action=\"upsert|enable|disable|delete\" id=\"rule_id\" priority=\"50\" trigger=\"always|startup|every_n_turns:N|interval:20m|idle:15m|on_tool:any|on_tool:name|domain:X|keyword:...|user:verified\" hook=\"none|temp:X|top_p:X|scan_face|consolidate_memory|log_episode|A:...|B:...\" directive=\"...\"/>.",
+      "source": "self"
+    }
+  ]
+}

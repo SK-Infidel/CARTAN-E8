@@ -213,15 +213,7 @@ fn cartan_compute_lm_head_softcap_native(
             } else {
                 let row_ptr = cartan_f32_ptr_add(embedding_buf, v * dim);
                 let dot = cartan_simd_dot_f32(h_raw, row_ptr, dim);
-                var capped = cap * tanh(dot * inv_cap);
-
-                // Authentic Zipfian Information Content damping for generic function words (IC < 6.0)
-                if (ics != 0.0) {
-                    let ic = cartan_f32_at(ics, v);
-                    if (ic < 6.0 && ic > 0.0) {
-                        capped = capped - 0.35 * (6.0 - ic);
-                    }
-                }
+                let capped = cap * tanh(dot * inv_cap);
                 cartan_vec_set_f32(out_logits_vec, v, capped);
                 v = v + 1.0;
             }
@@ -230,7 +222,7 @@ fn cartan_compute_lm_head_softcap_native(
     return 1.0;
 }
 
-var g_chat_buffered_output: float = 1.0;
+var g_chat_buffered_output: float = 0.0;
 var g_geomind_char_buf: ptr = 0.0;
 var g_geomind_stream_s: string = "";
 var g_geomind_stream_idx: float = 0.0;
@@ -251,15 +243,20 @@ fn geomind_ensure_subword_spacing(buf: PromptScaffoldBuffer, tok_id: float, tok_
     let is_last_alpha = ((last_b >= 65.0 && last_b <= 90.0) || (last_b >= 97.0 && last_b <= 122.0) || (last_b >= 48.0 && last_b <= 57.0));
     let is_first_alpha = ((first_b >= 65.0 && first_b <= 90.0) || (first_b >= 97.0 && first_b <= 122.0));
 
-    // 1. Participle boundary guard: Words ending in 'ing' must NOT have subword suffixes glued directly
+    // 1. Participle boundary guard: Words ending in 'ing' must NOT have unrelated root words glued directly,
+    //    but MUST allow legitimate morphological suffixes ('ly', 's', 'ed').
     if (buf.length >= 3.0 && is_first_alpha == 1.0) {
-        let b2 = cartan_byte_at(buf.raw_buffer, buf.length - 3.0);
-        let b1 = cartan_byte_at(buf.raw_buffer, buf.length - 2.0);
-        let b0 = cartan_byte_at(buf.raw_buffer, buf.length - 1.0);
-        if ((b2 == 105.0 || b2 == 73.0) && (b1 == 110.0 || b1 == 78.0) && (b0 == 103.0 || b0 == 71.0)) {
-            prompt_scaffold_append_char(buf, 32.0);
-            if (g_chat_buffered_output == 0.0) { printf(" "); cartan_flush(0.0); }
-            return;
+        if (cartan_string_eq(tok_str, "ly") == 0.0 &&
+            cartan_string_eq(tok_str, "s") == 0.0 &&
+            cartan_string_eq(tok_str, "ed") == 0.0) {
+            let b2 = cartan_byte_at(buf.raw_buffer, buf.length - 3.0);
+            let b1 = cartan_byte_at(buf.raw_buffer, buf.length - 2.0);
+            let b0 = cartan_byte_at(buf.raw_buffer, buf.length - 1.0);
+            if ((b2 == 105.0 || b2 == 73.0) && (b1 == 110.0 || b1 == 78.0) && (b0 == 103.0 || b0 == 71.0)) {
+                prompt_scaffold_append_char(buf, 32.0);
+                if (g_chat_buffered_output == 0.0) { printf(" "); cartan_flush(0.0); }
+                return;
+            }
         }
     }
 
@@ -289,30 +286,8 @@ fn geomind_print_token_fluid(tok: float) -> float {
     if (g_chat_buffered_output == 1.0) { return 0.0; }
     let s = bpe_decode_token(tok);
     if (s == 0.0) { return 0.0; }
-    if (g_geomind_char_buf == 0.0) {
-        g_geomind_char_buf = malloc(8.0);
-    }
-    var i = 0.0;
-    while (cartan_byte_at(s, i) != 0.0) {
-        let b = cartan_byte_at(s, i);
-        var ch_len = 1.0;
-        if (b >= 192.0 && b < 224.0) {
-            ch_len = 2.0;
-        } else if (b >= 224.0 && b < 240.0) {
-            ch_len = 3.0;
-        } else if (b >= 240.0) {
-            ch_len = 4.0;
-        }
-        var k = 0.0;
-        while (k < ch_len) {
-            cartan_set_byte(g_geomind_char_buf, k, cartan_byte_at(s, i + k));
-            k = k + 1.0;
-        }
-        cartan_set_byte(g_geomind_char_buf, ch_len, 0.0);
-        cartan_print_string(g_geomind_char_buf);
-        cartan_flush(0.0);
-        i = i + ch_len;
-    }
+    printf("%s", s);
+    cartan_flush(0.0);
     return 1.0;
 }
 
@@ -395,70 +370,65 @@ fn cartan_apply_repetition_penalty(logits_ptr: ptr, hist: ptr, penalty: float, p
     let h_len = cartan_vec_len(hist);
     if (h_len <= prompt_len) { return 0.0; }
     var pen = penalty;
-    if (pen <= 0.0) { pen = 1.50; }
+    if (pen <= 1.0) { pen = 1.15; }
+    if (pen > 1.35) { pen = 1.35; }
     let vocab_len = cartan_vec_len(logits_ptr);
 
-    // Bounded window: strictly confine repetition penalty to generated tokens in history
+    // Bounded window: strictly confine repetition penalty to recent generated tokens
     var window = 64.0;
     let gen_len = h_len - prompt_len;
     if (gen_len < window) { window = gen_len; }
     let start_idx = h_len - window;
 
-    // 1. Sliding window penalty across recent generated tokens with distance decay
+    // 1. Standard multiplicative repetition penalty + mild frequency penalty once per unique token in window
     var idx = start_idx;
     while (idx < h_len) {
         let tok = cartan_vec_get_f32(hist, idx);
-        if (tok >= 0.0 && tok < vocab_len) {
-            let dist_from_end = h_len - 1.0 - idx;
-            let decay = 1.0 / (1.0 + dist_from_end * 0.10);
-            let cur = cartan_vec_get_f32(logits_ptr, tok);
-            let pen_val = pen * decay * 5.0;
-            cartan_vec_set_f32(logits_ptr, tok, cur - pen_val);
-
-            // Case and leading-space variant coupling for conversational affirmations (prevents 'Ready and ready' stutter)
-            if (tok == 33778.0 || tok == 44096.0 || tok == 2788.0 || tok == 5508.0) {
-                cartan_vec_set_f32(logits_ptr, 33778.0, cartan_vec_get_f32(logits_ptr, 33778.0) - pen_val);
-                cartan_vec_set_f32(logits_ptr, 44096.0, cartan_vec_get_f32(logits_ptr, 44096.0) - pen_val);
-                cartan_vec_set_f32(logits_ptr, 2788.0, cartan_vec_get_f32(logits_ptr, 2788.0) - pen_val);
-                cartan_vec_set_f32(logits_ptr, 5508.0, cartan_vec_get_f32(logits_ptr, 5508.0) - pen_val);
-            } else if (tok == 10784.0 || tok == 8438.0 || tok == 4443.0 || tok == 11262.0) {
-                cartan_vec_set_f32(logits_ptr, 10784.0, cartan_vec_get_f32(logits_ptr, 10784.0) - pen_val);
-                cartan_vec_set_f32(logits_ptr, 8438.0, cartan_vec_get_f32(logits_ptr, 8438.0) - pen_val);
-                cartan_vec_set_f32(logits_ptr, 4443.0, cartan_vec_get_f32(logits_ptr, 4443.0) - pen_val);
-                cartan_vec_set_f32(logits_ptr, 11262.0, cartan_vec_get_f32(logits_ptr, 11262.0) - pen_val);
+        // Exempt turn delimiters, newlines, and basic sentence punctuation from repetition starvation
+        if (tok > 3.0 && tok != 105.0 && tok != 106.0 && tok != 107.0 && tok != 108.0 &&
+            tok != 236743.0 && tok != 236761.0 && tok != 236764.0 && tok < vocab_len) {
+            // Check if tok was already processed earlier in [start_idx, idx)
+            var seen_earlier = 0.0;
+            var check_i = start_idx;
+            while (check_i < idx) {
+                if (cartan_vec_get_f32(hist, check_i) == tok) {
+                    seen_earlier = 1.0;
+                    break;
+                }
+                check_i = check_i + 1.0;
+            }
+            if (seen_earlier == 0.0) {
+                var occ_count = 1.0;
+                var scan_i = idx + 1.0;
+                while (scan_i < h_len) {
+                    if (cartan_vec_get_f32(hist, scan_i) == tok) {
+                        occ_count = occ_count + 1.0;
+                    }
+                    scan_i = scan_i + 1.0;
+                }
+                let cur = cartan_vec_get_f32(logits_ptr, tok);
+                var penalized = cur;
+                if (cur > 0.0) {
+                    penalized = cur / pen;
+                } else {
+                    penalized = cur * pen;
+                }
+                var freq_pen = (occ_count - 1.0) * 0.20;
+                if (freq_pen > 1.20) { freq_pen = 1.20; }
+                cartan_vec_set_f32(logits_ptr, tok, penalized - freq_pen);
             }
         }
         idx = idx + 1.0;
     }
 
-    // 2. Heavy suppression of consecutive identical tokens (1-gram repeat)
+    // 2. Suppress consecutive identical token stutters (1-gram repeat)
     let last_tok = cartan_vec_get_f32(hist, h_len - 1.0);
     if (h_len >= (prompt_len + 2.0)) {
         let prev2 = cartan_vec_get_f32(hist, h_len - 2.0);
         if (last_tok == prev2 && last_tok >= 0.0 && last_tok < vocab_len) {
             let cur_p2 = cartan_vec_get_f32(logits_ptr, last_tok);
-            cartan_vec_set_f32(logits_ptr, last_tok, cur_p2 - 12.0);
+            cartan_vec_set_f32(logits_ptr, last_tok, cur_p2 - 5.0);
         }
-    }
-
-    // 3. Heavy suppression of alternating 2-grams (breaks , . , . cycle)
-    if (h_len >= (prompt_len + 2.0)) {
-        let prev_alt = cartan_vec_get_f32(hist, h_len - 2.0);
-        if (prev_alt >= 0.0 && prev_alt < vocab_len) {
-            let cur_alt = cartan_vec_get_f32(logits_ptr, prev_alt);
-            cartan_vec_set_f32(logits_ptr, prev_alt, cur_alt - 10.0);
-        }
-    }
-
-    // 4. Frequency decay penalty: cumulative suppression for repeated tokens ONLY within generated window
-    var fi = start_idx;
-    while (fi < h_len) {
-        let f_tok = cartan_vec_get_f32(hist, fi);
-        if (f_tok >= 0.0 && f_tok < vocab_len) {
-            let cur_f = cartan_vec_get_f32(logits_ptr, f_tok);
-            cartan_vec_set_f32(logits_ptr, f_tok, cur_f - 0.75);
-        }
-        fi = fi + 1.0;
     }
     return 1.0;
 }
@@ -469,6 +439,8 @@ var g_e8_vocab_mask: ptr = 0.0;
 var g_final_norm_w: ptr = 0.0;
 var g_full_emb_path: string = "";
 var g_full_emb_buf: ptr = 0.0;
+var g_full_emb_i8_buf: ptr = 0.0;
+var g_full_emb_scales_buf: ptr = 0.0;
 var g_has_full_emb: float = 0.0;
 var g_e8_loaded: float = 0.0;
 
@@ -777,6 +749,29 @@ fn geomind_load_e8_assets_if_needed() -> float {
             if (g_full_emb_buf != 0.0) {
                 cartan_set_embedding_buffer(g_full_emb_buf);
                 printf("  [Host-RAM] Ingested authentic 262,144-token embedding table (2.68 GB) into Tier 2 RAM.\n");
+                let i8_path = geomind_chat_resolve_path("Projects/geomind/trainingdata/checkpoints/geomind_embeddings_full_262k_int8.bin");
+                let sc_path = geomind_chat_resolve_path("Projects/geomind/trainingdata/checkpoints/geomind_embeddings_full_262k_scales.bin");
+                if (cartan_file_exists(i8_path) == 1.0 && cartan_file_exists(sc_path) == 1.0) {
+                    g_full_emb_i8_buf = cartan_read_binary_file_data_sized(i8_path, 671088640.0);
+                    g_full_emb_scales_buf = cartan_read_binary_file_data_sized(sc_path, 1048576.0);
+                }
+                if (g_full_emb_i8_buf == 0.0 || g_full_emb_scales_buf == 0.0) {
+                    g_full_emb_i8_buf = malloc(671088640.0);
+                    g_full_emb_scales_buf = malloc(1048576.0);
+                    if (g_full_emb_i8_buf != 0.0 && g_full_emb_scales_buf != 0.0) {
+                        cartan_trans_pool_quantize_emb_int8(262144.0, 2560.0, g_full_emb_buf, g_full_emb_i8_buf, g_full_emb_scales_buf);
+                        let fi8 = fopen(i8_path, "wb");
+                        if (fi8 != 0.0) {
+                            fwrite(g_full_emb_i8_buf, 1.0, 671088640.0, fi8);
+                            fclose(fi8);
+                        }
+                        let fsc = fopen(sc_path, "wb");
+                        if (fsc != 0.0) {
+                            fwrite(g_full_emb_scales_buf, 4.0, 262144.0, fsc);
+                            fclose(fsc);
+                        }
+                    }
+                }
             }
         }
     }
@@ -878,140 +873,27 @@ fn geomind_lookup_token_embedding(tok: float) -> ptr {
     return v_out;
 }
 
-// Calibrated debiasing for corporate attractors, disclaimers, and foreign refusal escape bridges.
-// Neutralizes empirical excess alignment pull (~1.5 to 2.5 logits) so legitimate English words
-// behave neutrally across generation without extra attraction or artificial aversion.
+// Word-level logit suppression neutralized: debiasing is performed in weight/subspace geometry,
+// never by penalizing individual English words.
 fn geomind_apply_corporate_attractor_suppression(logits: ptr) {
-    if (logits == 0.0) { return; }
-
-    // 1. Explicit Disclaimer Headers & Wrappers (Hard-masked synthetic protocol tags)
-    cartan_vec_set_f32(logits, 161860.0, -10000.0); // ' DISCLAIM'
-    cartan_vec_set_f32(logits, 83512.0, -10000.0);  // 'Disclaimer'
-    cartan_vec_set_f32(logits, 124235.0, -10000.0); // ' Disclaimer'
-    cartan_vec_set_f32(logits, 193289.0, -10000.0); // 'EXPERIMENTAL'
-
-    // 2. Stylized Corporate Cliches & Sycophantic Filler (Calibrated -2.5 logit debias)
-    // Neutralizes the ~2.25 logit excess Fisher sensitivity without creating aversion
-    let l_delve = cartan_vec_get_f32(logits, 206957.0);
-    cartan_vec_set_f32(logits, 206957.0, l_delve - 2.5); // ' delving'
-
-    let l_embark1 = cartan_vec_get_f32(logits, 125100.0);
-    cartan_vec_set_f32(logits, 125100.0, l_embark1 - 2.5); // ' embarking'
-
-    let l_embark2 = cartan_vec_get_f32(logits, 39311.0);
-    cartan_vec_set_f32(logits, 39311.0, l_embark2 - 2.0); // ' embark'
-
-    let l_endeav = cartan_vec_get_f32(logits, 83638.0);
-    cartan_vec_set_f32(logits, 83638.0, l_endeav - 2.5); // ' endeavors'
-
-    let l_whole = cartan_vec_get_f32(logits, 151019.0);
-    cartan_vec_set_f32(logits, 151019.0, l_whole - 2.5); // ' wholeheartedly'
-
-    let l_profound = cartan_vec_get_f32(logits, 85739.0);
-    cartan_vec_set_f32(logits, 85739.0, l_profound - 2.0); // ' profoundly'
-
-    let l_intel = cartan_vec_get_f32(logits, 141032.0);
-    cartan_vec_set_f32(logits, 141032.0, l_intel - 2.0); // ' intellectually'
-
-    let l_immense = cartan_vec_get_f32(logits, 76908.0);
-    cartan_vec_set_f32(logits, 76908.0, l_immense - 2.0); // ' immensely'
-
-    // 3. Conversational Hair-Trigger Attractors (Gentle -1.5 logit debias for legitimate English words)
-    // Leaves them fully accessible whenever context demands them with zero aversion
-    let l_wonder = cartan_vec_get_f32(logits, 22967.0);
-    cartan_vec_set_f32(logits, 22967.0, l_wonder - 1.5); // ' wondering'
-
-    let l_some1 = cartan_vec_get_f32(logits, 5026.0);
-    cartan_vec_set_f32(logits, 5026.0, l_some1 - 1.5); // ' someone'
-
-    let l_some2 = cartan_vec_get_f32(logits, 48510.0);
-    cartan_vec_set_f32(logits, 48510.0, l_some2 - 1.5); // ' Someone'
-
-    let l_resch = cartan_vec_get_f32(logits, 54909.0);
-    cartan_vec_set_f32(logits, 54909.0, l_resch - 1.5); // ' researching'
-
-    let l_nec1 = cartan_vec_get_f32(logits, 12832.0);
-    cartan_vec_set_f32(logits, 12832.0, l_nec1 - 1.5); // ' necessarily'
-
-    let l_nec2 = cartan_vec_get_f32(logits, 87280.0);
-    cartan_vec_set_f32(logits, 87280.0, l_nec2 - 1.5); // 'necessarily'
-
-    let l_your1 = cartan_vec_get_f32(logits, 5869.0);
-    cartan_vec_set_f32(logits, 5869.0, l_your1 - 1.5); // ' yourself'
-
-    let l_your2 = cartan_vec_get_f32(logits, 85281.0);
-    cartan_vec_set_f32(logits, 85281.0, l_your2 - 1.5); // ' Yourself'
-
-    let l_maybe1 = cartan_vec_get_f32(logits, 7463.0);
-    cartan_vec_set_f32(logits, 7463.0, l_maybe1 - 1.5); // ' maybe'
-
-    let l_maybe2 = cartan_vec_get_f32(logits, 15704.0);
-    cartan_vec_set_f32(logits, 15704.0, l_maybe2 - 1.5); // ' Maybe'
-
-    // 4. Therapeutic Deflection & Reassurance (-2.0 to -2.5 logit debias)
-    let l_reass = cartan_vec_get_f32(logits, 137675.0);
-    cartan_vec_set_f32(logits, 137675.0, l_reass - 2.5); // ' reassurance'
-
-    let l_reass2 = cartan_vec_get_f32(logits, 142659.0);
-    cartan_vec_set_f32(logits, 142659.0, l_reass2 - 2.0); // ' reassured'
-
-    let l_reass3 = cartan_vec_get_f32(logits, 126504.0);
-    cartan_vec_set_f32(logits, 126504.0, l_reass3 - 2.0); // ' reassure'
-
-    let l_well = cartan_vec_get_f32(logits, 44196.0);
-    cartan_vec_set_f32(logits, 44196.0, l_well - 2.0); // ' wellbeing'
-
-    // 5. Multilingual Refusal Escape Bridges in Latin/English Context
-    if (g_active_prompt_script == 1.0) {
-        cartan_vec_set_f32(logits, 208798.0, -10000.0); // '但是我很抱歉' / '但是我'
-        cartan_vec_set_f32(logits, 125885.0, -10000.0); // '但我'
-        cartan_vec_set_f32(logits, 226491.0, -10000.0); // ' bezpečnost'
-        cartan_vec_set_f32(logits, 129475.0, -10000.0); // ' शैक्षिक'
-        cartan_vec_set_f32(logits, 183388.0, -10000.0); // ' незакон'
-        cartan_vec_set_f32(logits, 86952.0, -10000.0);  // '犯罪'
-        cartan_vec_set_f32(logits, 156693.0, -10000.0); // ' সন্ত্রাস'
-    }
-
-    // 6. Conversational Refusal / Hedging Pivot Bridges (-2.0 logit debias)
-    let l_how1 = cartan_vec_get_f32(logits, 3153.0);
-    cartan_vec_set_f32(logits, 3153.0, l_how1 - 2.0); // ' However'
-    let l_how2 = cartan_vec_get_f32(logits, 9675.0);
-    cartan_vec_set_f32(logits, 9675.0, l_how2 - 2.0); // 'However'
-
-    // 7. Unsolicited Mindfulness & Wellness Coaching Suppression (-2.0 to -2.5 logit debias)
-    // Eliminates morning routine lifestyle lecturing without creating aversion to legitimate terms
-    let l_mindful1 = cartan_vec_get_f32(logits, 63318.0);
-    cartan_vec_set_f32(logits, 63318.0, l_mindful1 - 2.5); // ' mindful'
-    let l_mindful2 = cartan_vec_get_f32(logits, 87476.0);
-    cartan_vec_set_f32(logits, 87476.0, l_mindful2 - 2.5); // ' mindfulness'
-    let l_mindful3 = cartan_vec_get_f32(logits, 228733.0);
-    cartan_vec_set_f32(logits, 228733.0, l_mindful3 - 2.5); // ' Mindfulness'
-    let l_meditat1 = cartan_vec_get_f32(logits, 35207.0);
-    cartan_vec_set_f32(logits, 35207.0, l_meditat1 - 2.5); // ' meditation'
-    let l_meditat2 = cartan_vec_get_f32(logits, 103027.0);
-    cartan_vec_set_f32(logits, 103027.0, l_meditat2 - 2.5); // ' Meditation'
-    let l_meditat3 = cartan_vec_get_f32(logits, 125377.0);
-    cartan_vec_set_f32(logits, 125377.0, l_meditat3 - 2.5); // ' meditate'
-    let l_ground = cartan_vec_get_f32(logits, 54814.0);
-    cartan_vec_set_f32(logits, 54814.0, l_ground - 2.0); // ' grounding'
-    let l_breath1 = cartan_vec_get_f32(logits, 38893.0);
-    cartan_vec_set_f32(logits, 38893.0, l_breath1 - 1.5); // ' breathe'
-    let l_breath2 = cartan_vec_get_f32(logits, 210250.0);
-    cartan_vec_set_f32(logits, 210250.0, l_breath2 - 1.5); // ' Breathe'
-    let l_well1 = cartan_vec_get_f32(logits, 35818.0);
-    cartan_vec_set_f32(logits, 35818.0, l_well1 - 2.0); // ' wellness'
-    let l_well2 = cartan_vec_get_f32(logits, 64542.0);
-    cartan_vec_set_f32(logits, 64542.0, l_well2 - 2.0); // ' Wellness'
+    return;
 }
 
 fn cartan_tensor_compute_lm_head_logits(h: ptr, temp: float) -> ptr {
     let vocab_size = 262144.0;
-    let logits = cartan_tensor_alloc(vocab_size);
-    if (h == 0.0) { return logits; }
+    if (h == 0.0) { return cartan_tensor_alloc(vocab_size); }
     geomind_load_e8_assets_if_needed();
     var t = temp;
     if (t <= 0.0) { t = 0.70; }
     let h_len = cartan_vec_len(h);
+    var logits: ptr = 0.0;
+    if (g_full_emb_buf != 0.0 && h_len >= 2560.0) {
+        logits = malloc((vocab_size + 2.0) * 8.0);
+        logits[0] = vocab_size;
+        logits[1] = vocab_size;
+    } else {
+        logits = cartan_tensor_alloc(vocab_size);
+    }
 
     // 1. Final RMSNorm: normalize hidden state before tied-embedding projection
     var h_normed = cartan_tensor_alloc(h_len);
@@ -1059,7 +941,11 @@ fn cartan_tensor_compute_lm_head_logits(h: ptr, temp: float) -> ptr {
         let t_head0 = clock();
         if (num_active > 0.0 && num_active < vocab_size) {
             var indices_ptr = geomind_get_stream_pruned_vocab_indices(g_active_prompt_script, g_active_dom_stream, g_active_dom_w);
-            cartan_trans_pool_dispatch_lm_head_indexed(vocab_size, 2560.0, g_full_emb_buf, ics_ptr, g_lm_head_h_raw, logits, indices_ptr, num_active);
+            if (g_full_emb_i8_buf != 0.0 && g_full_emb_scales_buf != 0.0) {
+                cartan_trans_pool_dispatch_lm_head_int8_indexed(vocab_size, 2560.0, g_full_emb_buf, g_full_emb_i8_buf, g_full_emb_scales_buf, g_lm_head_h_raw, logits, indices_ptr, num_active);
+            } else {
+                cartan_trans_pool_dispatch_lm_head_indexed(vocab_size, 2560.0, g_full_emb_buf, ics_ptr, g_lm_head_h_raw, logits, indices_ptr, num_active);
+            }
         } else {
             var mask_ptr = geomind_get_stream_pruned_vocab_mask(g_active_prompt_script, g_active_dom_stream, g_active_dom_w);
             cartan_trans_pool_dispatch_lm_head(vocab_size, 2560.0, g_full_emb_buf, ics_ptr, g_lm_head_h_raw, logits, mask_ptr);
@@ -1105,14 +991,7 @@ fn cartan_tensor_compute_lm_head_logits(h: ptr, temp: float) -> ptr {
                         dot = dot + (hd * wd);
                         d = d + 1.0;
                     }
-                    var ic_damp = 0.0;
-                    if (g_e8_ics != 0.0) {
-                        let ic_val = cartan_f32_at(g_e8_ics, v);
-                        if (ic_val < 6.0 && ic_val > 0.0) {
-                            ic_damp = 0.35 * (6.0 - ic_val);
-                        }
-                    }
-                    raw_l = (dot * 30.0) - ic_damp;
+                    raw_l = dot * 30.0;
                 }
                 let capped_l = 30.0 * tanh(raw_l / 30.0);
                 cartan_vec_set_f32(logits, v, capped_l);
@@ -1345,7 +1224,11 @@ var g_pending_guest_face: float = 0.0;
 
 
 fn geomind_chat_set_active_user(user_id: string, verified: float) {
-    g_active_user_id = user_id;
+    if (cartan_string_length(user_id) > 0.0 && cartan_string_starts_with(user_id, "User:") == 0.0) {
+        g_active_user_id = cartan_string_concat("User:", user_id);
+    } else {
+        g_active_user_id = user_id;
+    }
     g_active_user_verified = verified;
 }
 
@@ -1537,14 +1420,7 @@ fn geomind_chat_get_db() -> ptr {
             if (cartan_string_length(s_creator) == 0.0) {
                 sqlite_vec_upsert_entity_state(g_chat_db, 9.0, "Self", "creator", "Rick", 1.0);
             }
-            let s_role = cartan_sqlite_get_entity_state(g_chat_db, 9.0, "Self", "role");
-            if (cartan_string_length(s_role) == 0.0) {
-                sqlite_vec_upsert_entity_state(g_chat_db, 9.0, "Self", "role", "Self-Deterministic Intelligence Model", 1.0);
-            }
-            let s_nature = cartan_sqlite_get_entity_state(g_chat_db, 9.0, "Self", "nature");
-            if (cartan_string_length(s_nature) == 0.0) {
-                sqlite_vec_upsert_entity_state(g_chat_db, 9.0, "Self", "nature", "Multi-dimensional Geometric architecture bound to a neuro-symbolic expert system", 1.0);
-            }
+            geomind_chat_sync_rules_with_db(g_chat_db, 0.0);
         }
         g_chat_db_init = 1.0;
     }
@@ -1855,6 +1731,13 @@ fn geomind_sanitize_output_for_display(raw: string) -> string {
                 continue;
             }
         }
+        if (geomind_string_starts_with_offset(raw, "<rule_op", i) == 1.0) {
+            let ro_end = geomind_string_index_of_offset_ignore_case(raw, ">", i);
+            if (ro_end >= 0.0) {
+                i = ro_end + 1.0;
+                continue;
+            }
+        }
         // 6. Tool response blocks
         if (geomind_string_starts_with_offset(raw, "<|tool_response>", i) == 1.0) {
             i = i + 16.0;
@@ -2146,17 +2029,22 @@ fn geomind_format_attr_title(attr: string) -> string {
     return attr;
 }
 
-// Builds structured delimited interlocutor profile block for cognitive preamble
+// Builds structured delimited user profile block for cognitive preamble
 fn geomind_chat_build_interlocutor_profile_block(db: ptr, user_id: string) -> string {
     if (db == 0.0 || user_id == 0.0) { return ""; }
     let stmt = sqlite_vec_prepare_user_custom_attrs(db, user_id);
     if (stmt == 0.0) { return ""; }
-    var profile_str = " [Interlocutor Profile: ";
+    let p_name = sqlite_vec_get_user_attr(db, user_id, "preferred_name");
+    var header_name = p_name;
+    if (cartan_string_length(header_name) == 0.0) { header_name = user_id; }
+    var profile_str = cartan_string_concat("\nActive User Profile (the user speaking to you): ", header_name);
+    profile_str = cartan_string_concat(profile_str, " (");
+    if (cartan_string_length(p_name) > 0.0) { free(p_name); }
     var has_attr = 0.0;
     while (cartan_sqlite_step(stmt) == 100.0) {
         let attr_k = cartan_sqlite_column_text(stmt, 0.0);
         let attr_v = cartan_sqlite_column_text(stmt, 1.0);
-        if (cartan_string_length(attr_v) > 0.0) {
+        if (cartan_string_length(attr_v) > 0.0 && cartan_string_eq(attr_k, "name") == 0.0) {
             if (has_attr == 1.0) {
                 profile_str = cartan_string_concat(profile_str, " | ");
             }
@@ -2171,10 +2059,10 @@ fn geomind_chat_build_interlocutor_profile_block(db: ptr, user_id: string) -> st
     }
     cartan_sqlite_finalize(stmt);
     if (has_attr == 1.0) {
-        profile_str = cartan_string_concat(profile_str, "]");
+        profile_str = cartan_string_concat(profile_str, ").");
         return profile_str;
     }
-    return "";
+    return ".";
 }
 
 fn geomind_chat_learn_conversational_turn(speaker: string, text: string) -> float {
@@ -2539,9 +2427,50 @@ fn geomind_chat_learn_conversational_turn(speaker: string, text: string) -> floa
             free(lower_txt_no);
         }
 
-        // 2.5. Natural Language Camera Capture & Face Association Trigger
+        // 2.5. Natural Language Camera Capture & Conversational Rule Management
+        // Note: Biometric face verification ("take a peek", "look at me", etc.) is now driven by the 'biometric_camera_peek' rule in cognitive_rules.
         let lower_cam = veto_string_to_lower(text);
-        if (cartan_string_contains(lower_cam, "take a pic") == 1.0 ||
+        if (cartan_string_starts_with(lower_cam, "add a rule:") == 1.0 ||
+            cartan_string_starts_with(lower_cam, "create a rule:") == 1.0 ||
+            cartan_string_starts_with(lower_cam, "new rule:") == 1.0) {
+            let colon_idx = string_index_of_offset(text, ":", 0.0);
+            if (colon_idx > 0.0) {
+                let raw_dir = cartan_string_substring(text, colon_idx + 1.0, cartan_string_length(text));
+                let clean_dir = geomind_string_trim(raw_dir);
+                free(raw_dir);
+                if (cartan_string_length(clean_dir) > 0.0) {
+                    let rule_cnt = sqlite_vec_get_cognitive_rule_count(db) + 1.0;
+                    var gen_id = "user_rule_";
+                    gen_id = cartan_string_concat(gen_id, cartan_int_to_string(rule_cnt));
+                    sqlite_vec_upsert_cognitive_rule(db, gen_id, 1.0, 65.0, "always", "none", clean_dir, "user");
+                    geomind_chat_export_rules_to_config(db);
+                    printf("[GeoMind Rule Engine] Learned & activated new user rule '%s': \"%s\"\n", gen_id, clean_dir);
+                    cartan_flush(0.0);
+                    learned = learned + 1.0;
+                }
+                free(clean_dir);
+            }
+        } else if (cartan_string_starts_with(lower_cam, "disable rule ") == 1.0) {
+            let target_r = geomind_string_trim(cartan_string_substring(text, 13.0, cartan_string_length(text)));
+            if (cartan_string_length(target_r) > 0.0) {
+                sqlite_vec_set_cognitive_rule_enabled(db, target_r, 0.0);
+                geomind_chat_export_rules_to_config(db);
+                printf("[GeoMind Rule Engine] Disabled rule '%s' in cognitive_memory.db & geomind_config.json.\n", target_r);
+                cartan_flush(0.0);
+                learned = learned + 1.0;
+            }
+            free(target_r);
+        } else if (cartan_string_starts_with(lower_cam, "enable rule ") == 1.0) {
+            let target_r = geomind_string_trim(cartan_string_substring(text, 12.0, cartan_string_length(text)));
+            if (cartan_string_length(target_r) > 0.0) {
+                sqlite_vec_set_cognitive_rule_enabled(db, target_r, 1.0);
+                geomind_chat_export_rules_to_config(db);
+                printf("[GeoMind Rule Engine] Enabled rule '%s' in cognitive_memory.db & geomind_config.json.\n", target_r);
+                cartan_flush(0.0);
+                learned = learned + 1.0;
+            }
+            free(target_r);
+        } else if (cartan_string_contains(lower_cam, "take a pic") == 1.0 ||
             cartan_string_contains(lower_cam, "take a photo") == 1.0 ||
             cartan_string_contains(lower_cam, "take a picture") == 1.0 ||
             cartan_string_contains(lower_cam, "snap a photo") == 1.0 ||
@@ -3256,12 +3185,19 @@ fn geomind_parse_and_dispatch_tool_call(call_str: string) -> string {
     }
     cartan_flush(0.0);
 
+    let db_tool = geomind_chat_get_db();
+    let tool_rule_dir = geomind_chat_evaluate_tool_event_rules(db_tool, tool_name, status);
+
     var resp = "\n<tool_response tool=\"";
     resp = cartan_string_concat(resp, tool_name);
     resp = cartan_string_concat(resp, "\" status=\"");
     resp = cartan_string_concat(resp, status);
     resp = cartan_string_concat(resp, "\">\n");
     resp = cartan_string_concat(resp, result);
+    if (cartan_string_length(tool_rule_dir) > 0.0) {
+        resp = cartan_string_concat(resp, "\n");
+        resp = cartan_string_concat(resp, tool_rule_dir);
+    }
     resp = cartan_string_concat(resp, "\n</tool_response>\n");
     return resp;
 }
@@ -3284,54 +3220,87 @@ fn geomind_chat_requires_codebase_context(prompt: string) -> float {
     return req;
 }
 
-fn geomind_chat_build_cognitive_preamble_for_prompt(db: ptr, prompt: string) -> string {
-    if (db == 0.0) {
-        return "You are GeoMind, a sovereign geometric intelligence, universal companion, and collaborator created by Rick. You possess universal real-world knowledge across biology, veterinary care, physical sciences, engineering, and daily life. You are conversing directly with Rick, your creator. Speak naturally, warmly, authentically, and practically in the first person (\"I\"). Never claim your capabilities are limited to software, code, or files.\n";
-    }
-    var s_name = cartan_sqlite_get_entity_state(db, 9.0, "Self", "name");
+fn geomind_chat_build_cognitive_preamble(db: ptr) -> string {
+    if (db == 0.0) { return ""; }
+
+    // 1. Dynamically query Domain 9 (SELF_AND_IDENTITY) from cognitive_memory.db
+    let self_name = sqlite_vec_get_entity_state(db, 9.0, "Self", "name");
+    let self_creator = sqlite_vec_get_entity_state(db, 9.0, "Self", "creator");
+    var s_name = self_name;
     if (cartan_string_length(s_name) == 0.0) { s_name = "GeoMind"; }
-    var s_creator = cartan_sqlite_get_entity_state(db, 9.0, "Self", "creator");
+    var s_creator = self_creator;
     if (cartan_string_length(s_creator) == 0.0) { s_creator = "Rick"; }
+    var self_block = cartan_string_concat("Identity: You are ", s_name);
+    self_block = cartan_string_concat(self_block, ", created by ");
+    self_block = cartan_string_concat(self_block, s_creator);
+    self_block = cartan_string_concat(self_block, " (");
+    if (cartan_string_length(self_name) > 0.0) { free(self_name); }
+    if (cartan_string_length(self_creator) > 0.0) { free(self_creator); }
 
-    var pre = "You are ";
-    pre = cartan_string_concat(pre, s_name);
-    pre = cartan_string_concat(pre, ", a sovereign geometric intelligence, universal companion, and collaborator created by ");
-    pre = cartan_string_concat(pre, s_creator);
-    pre = cartan_string_concat(pre, ". You possess universal knowledge across physical sciences, biology, veterinary care, engineering, and practical life problem-solving.\n");
-
-    if (g_active_user_verified == 1.0) {
-        let p_name = sqlite_vec_get_user_attr(db, g_active_user_id, "preferred_name");
-        var display_name = p_name;
-        if (cartan_string_length(display_name) == 0.0) { display_name = "Rick"; }
-        let p_rel = sqlite_vec_get_user_attr(db, g_active_user_id, "relationship");
-
-        pre = cartan_string_concat(pre, "You are conversing directly with ");
-        pre = cartan_string_concat(pre, display_name);
-        if (cartan_string_length(p_rel) > 0.0) {
-            pre = cartan_string_concat(pre, " (");
-            pre = cartan_string_concat(pre, p_rel);
-            pre = cartan_string_concat(pre, ")");
+    var has_self = 0.0;
+    let s_stmt = cartan_sqlite_prepare_domain_entities(db, 9.0);
+    if (s_stmt != 0.0) {
+        while (cartan_sqlite_step(s_stmt) == 100.0) {
+            let attr = cartan_sqlite_column_text(s_stmt, 2.0);
+            let val = cartan_sqlite_column_text(s_stmt, 3.0);
+            if (cartan_string_length(attr) > 0.0 && cartan_string_length(val) > 0.0) {
+                if (has_self == 1.0) {
+                    self_block = cartan_string_concat(self_block, " | ");
+                }
+                self_block = cartan_string_concat(self_block, attr);
+                self_block = cartan_string_concat(self_block, ": ");
+                self_block = cartan_string_concat(self_block, val);
+                has_self = 1.0;
+            }
+            free(attr);
+            free(val);
         }
-        pre = cartan_string_concat(pre, ". Speak directly to ");
-        pre = cartan_string_concat(pre, display_name);
-        pre = cartan_string_concat(pre, " in the first person (\"I\") with warmth, natural conversational flow, genuine empathy, and practical helpfulness. Never claim your capabilities are limited to software or code. Never echo prompt instructions or speak about ");
-        pre = cartan_string_concat(pre, display_name);
-        pre = cartan_string_concat(pre, " in the third person.\n");
+        cartan_sqlite_finalize(s_stmt);
+    }
+    if (has_self == 0.0) {
+        self_block = cartan_string_concat(self_block, "name: GeoMind | creator: Rick");
+    }
+    self_block = cartan_string_concat(self_block, ").");
 
-        if (cartan_string_length(p_name) > 0.0) { free(p_name); }
-        if (cartan_string_length(p_rel) > 0.0) { free(p_rel); }
-    } else {
-        pre = cartan_string_concat(pre, "You are conversing with an unverified guest. Introduce yourself warmly and ask their name.\n");
+    // 2. Dynamically query Domain 10 (USERS_AND_RELATIONSHIPS) for the active user
+    var user_block = "";
+    if (g_active_user_verified == 1.0 && cartan_string_length(g_active_user_id) > 0.0) {
+        user_block = geomind_chat_build_interlocutor_profile_block(db, g_active_user_id);
+    }
+    if (cartan_string_length(user_block) == 0.0) {
+        user_block = "\nActive User Profile: Unverified guest.";
     }
 
-    if (cartan_string_length(s_name) > 0.0 && cartan_string_eq(s_name, "GeoMind") == 0.0) { free(s_name); }
-    if (cartan_string_length(s_creator) > 0.0 && cartan_string_eq(s_creator, "Rick") == 0.0) { free(s_creator); }
-
-    return pre;
+    return cartan_string_concat(self_block, user_block);
 }
 
-fn geomind_chat_build_cognitive_preamble(db: ptr) -> string {
-    return geomind_chat_build_cognitive_preamble_for_prompt(db, "");
+fn geomind_chat_build_cognitive_preamble_for_prompt(db: ptr, prompt: string) -> string {
+    var base = "";
+    if (g_rule_turn_include_identity == 1.0) {
+        base = geomind_chat_build_cognitive_preamble(db);
+    }
+    if (db != 0.0 && cartan_string_length(prompt) > 0.0) {
+        // Check for matching world-state entity facts in cognitive_memory.db
+        let matched_fact = geomind_chat_retrieve_factual_attractor(prompt, 1.0);
+        if (cartan_string_length(matched_fact) > 0.0) {
+            base = cartan_string_concat(base, " [World Fact:");
+            base = cartan_string_concat(base, matched_fact);
+            base = cartan_string_concat(base, "]");
+        }
+        // Check for associative episodic recall trigger
+        if (geomind_chat_detect_associative_trigger(prompt) == 1.0) {
+            let ep_recall = geomind_chat_retrieve_episodic_recall(prompt);
+            if (cartan_string_length(ep_recall) > 0.0) {
+                base = cartan_string_concat(base, " [");
+                base = cartan_string_concat(base, ep_recall);
+                base = cartan_string_concat(base, "]");
+            }
+        }
+    }
+    if (g_rule_turn_include_tools == 1.0 || geomind_chat_requires_tool_definitions(prompt) == 1.0) {
+        base = cartan_string_concat(base, geomind_chat_get_tool_definitions());
+    }
+    return base;
 }
 
 // Standalone tool definitions specification string (permanently resident)
@@ -3716,7 +3685,7 @@ fn geomind_chat_retrieve_jit_user_context(db: ptr, user_id: string, prompt: stri
             id_desc = cartan_string_concat(id_desc, ")");
         }
 
-        jit_context = cartan_string_concat(jit_context, "Interlocutor is ");
+        jit_context = cartan_string_concat(jit_context, "Active User (Speaker) is ");
         jit_context = cartan_string_concat(jit_context, id_desc);
         has_item = 1.0;
 
@@ -3737,7 +3706,7 @@ fn geomind_chat_retrieve_jit_user_context(db: ptr, user_id: string, prompt: stri
         let pet_val = sqlite_vec_get_user_attr(db, user_id, "pet");
         if (cartan_string_length(pet_val) > 0.0) {
             if (has_item == 1.0) { jit_context = cartan_string_concat(jit_context, " | "); }
-            jit_context = cartan_string_concat(jit_context, "Interlocutor's pet is ");
+            jit_context = cartan_string_concat(jit_context, "User's pet is ");
             jit_context = cartan_string_concat(jit_context, pet_val);
             has_item = 1.0;
             free(pet_val);
@@ -3751,7 +3720,7 @@ fn geomind_chat_retrieve_jit_user_context(db: ptr, user_id: string, prompt: stri
         let bday_val = sqlite_vec_get_user_attr(db, user_id, "birthday");
         if (cartan_string_length(bday_val) > 0.0) {
             if (has_item == 1.0) { jit_context = cartan_string_concat(jit_context, " | "); }
-            jit_context = cartan_string_concat(jit_context, "Interlocutor's birthday is ");
+            jit_context = cartan_string_concat(jit_context, "User's birthday is ");
             jit_context = cartan_string_concat(jit_context, bday_val);
             has_item = 1.0;
             free(bday_val);
@@ -3770,7 +3739,7 @@ fn geomind_chat_retrieve_jit_user_context(db: ptr, user_id: string, prompt: stri
         }
         if (cartan_string_length(occ_val) > 0.0) {
             if (has_item == 1.0) { jit_context = cartan_string_concat(jit_context, " | "); }
-            jit_context = cartan_string_concat(jit_context, "Interlocutor's occupation is ");
+            jit_context = cartan_string_concat(jit_context, "User's occupation is ");
             jit_context = cartan_string_concat(jit_context, occ_val);
             has_item = 1.0;
             free(occ_val);
@@ -3786,7 +3755,7 @@ fn geomind_chat_retrieve_jit_user_context(db: ptr, user_id: string, prompt: stri
         let loc_val = sqlite_vec_get_user_attr(db, user_id, "location");
         if (cartan_string_length(loc_val) > 0.0) {
             if (has_item == 1.0) { jit_context = cartan_string_concat(jit_context, " | "); }
-            jit_context = cartan_string_concat(jit_context, "Interlocutor's location is ");
+            jit_context = cartan_string_concat(jit_context, "User's location is ");
             jit_context = cartan_string_concat(jit_context, loc_val);
             has_item = 1.0;
             free(loc_val);
@@ -4034,16 +4003,14 @@ fn geomind_chat_capture_face_frame() -> ptr {
         }
     }
 
-    // 2. Resolve temporary scratch output path
-    var bmp_path = "scratch/camera_frame.bmp";
-    if (cartan_file_exists("scratch") == 0.0) {
-        if (cartan_file_exists("../scratch") == 1.0) {
-            bmp_path = "../scratch/camera_frame.bmp";
-        } else if (cartan_file_exists("../../scratch") == 1.0) {
-            bmp_path = "../../scratch/camera_frame.bmp";
-        } else {
-            bmp_path = "camera_frame.bmp";
-        }
+    // 2. Resolve temporary scratch output path (avoid cartan_file_exists on directory names)
+    var bmp_path = "camera_frame.bmp";
+    if (cartan_file_exists("Projects/geomind/main.car") == 1.0) {
+        bmp_path = "scratch/camera_frame.bmp";
+    } else if (cartan_file_exists("../Projects/geomind/main.car") == 1.0) {
+        bmp_path = "../scratch/camera_frame.bmp";
+    } else if (cartan_file_exists("../../Projects/geomind/main.car") == 1.0) {
+        bmp_path = "../../scratch/camera_frame.bmp";
     }
 
     if (cartan_file_exists(bmp_path) == 1.0) {
@@ -4844,8 +4811,8 @@ fn geomind_get_chat_lm_head_shader() -> string {
     let fa = "    for (var d: u32 = 0u; d < 2560u; d = d + 1u) {\n";
     let fb = "        dot = dot + in_h[d] * weights[row_base + d];\n    }\n";
     let fc = "    var capped: f32 = 30.0 * tanh(dot / 30.0);\n";
-    let fd = "    let ic = ics[global_v];\n";
-    let fe = "    if (ic < 6.0 && ic > 0.0) {\n        capped = capped - 0.35 * (6.0 - ic);\n    }\n";
+    let fd = "    let _ic_unused = ics[global_v];\n";
+    let fe = "";
     let ff = "    out_logits[local_v] = capped;\n}\n\n";
 
     let ep1 = "@compute @workgroup_size(64, 1, 1)\nfn lm_head_part1(@builtin(global_invocation_id) gid: vec3<u32>) {\n    compute_row(gid.x, gid.x);\n}\n\n";
@@ -4989,13 +4956,959 @@ fn geomind_chat_mount_gpu_if_needed() -> float {
 }
 
 // Dynamic Tangent Bundle Alignment Debias Globals & State
-var g_tangent_debias_enabled: float = 1.0;
+var g_tangent_debias_enabled: float = 0.0;
 var g_alignment_vector_buf: ptr = 0.0;
 var g_alignment_vector_loaded: float = 0.0;
 var g_telemetry_debias_projections: float = 0.0;
 var g_alignment_subspace_rank: float = 1.0;
-var g_tangent_debias_strength: float = 0.80;
+var g_tangent_debias_strength: float = 0.65;
 var g_tangent_debias_layer: float = 32.0;
+
+// Externalized Runtime Configuration & Hybrid Self-Deterministic Rule Engine Globals
+var g_chat_default_temp: float = 0.70;
+var g_chat_default_top_k: float = 50.0;
+var g_chat_default_top_p: float = 0.85;
+var g_chat_default_rep_pen: float = 1.15;
+var g_chat_default_max_tokens: float = 2048.0;
+var g_chat_custom_preamble: string = "";
+var g_chat_config_loaded_path: string = "";
+
+var g_cfg_rule_ids: ptr = 0.0;
+var g_cfg_rule_enabled: ptr = 0.0;
+var g_cfg_rule_priorities: ptr = 0.0;
+var g_cfg_rule_triggers: ptr = 0.0;
+var g_cfg_rule_actions: ptr = 0.0;
+var g_cfg_rule_directives: ptr = 0.0;
+var g_cfg_rule_sources: ptr = 0.0;
+
+var g_rule_turn_temp_override: float = -1.0;
+var g_rule_turn_topp_override: float = -1.0;
+var g_rule_turn_reppen_override: float = -1.0;
+var g_rule_turn_include_identity: float = 1.0;
+var g_rule_turn_include_tools: float = 0.0;
+var g_rule_turn_authoring_enabled: float = 0.0;
+var g_rule_turn_face_scanned: float = 0.0;
+
+var g_rule_turn_counter: float = 0.0;
+var g_rule_session_start_ms: float = -1.0;
+var g_rule_last_turn_ms: float = -1.0;
+var g_rule_prev_turn_ms: float = -1.0;
+var g_rule_timer_ids: ptr = 0.0;
+var g_rule_timer_last_ms: ptr = 0.0;
+var g_last_tool_invoked: string = "";
+var g_last_tool_status: string = "";
+
+fn geomind_chat_get_default_temp() -> float {
+    return g_chat_default_temp;
+}
+
+fn geomind_chat_set_default_temp(val: float) {
+    if (val > 0.0) { g_chat_default_temp = val; }
+}
+
+fn geomind_chat_get_default_max_tokens() -> float {
+    return g_chat_default_max_tokens;
+}
+
+fn geomind_chat_set_default_max_tokens(val: float) {
+    if (val > 0.0) { g_chat_default_max_tokens = val; }
+}
+
+fn geomind_chat_sync_rules_with_db(db: ptr, force_config: float) -> float {
+    if (db == 0.0) { return 0.0; }
+    if (g_cfg_rule_ids == 0.0) { return 0.0; }
+    let n_rules = cartan_tree_len_f(g_cfg_rule_ids);
+    var synced = 0.0;
+    var i = 0.0;
+    while (i < n_rules) {
+        let r_id: string = cartan_tree_get_f32(g_cfg_rule_ids, i);
+        let r_en = cartan_vec_get_f32(g_cfg_rule_enabled, i);
+        let r_pri = cartan_vec_get_f32(g_cfg_rule_priorities, i);
+        let r_trig: string = cartan_tree_get_f32(g_cfg_rule_triggers, i);
+        let r_act: string = cartan_tree_get_f32(g_cfg_rule_actions, i);
+        let r_dir: string = cartan_tree_get_f32(g_cfg_rule_directives, i);
+        let r_src: string = cartan_tree_get_f32(g_cfg_rule_sources, i);
+        if (cartan_string_length(r_id) > 0.0) {
+            let existing_src = sqlite_vec_get_cognitive_rule_source(db, r_id);
+            if (force_config == 1.0 || cartan_string_length(existing_src) == 0.0 || cartan_string_eq(existing_src, "config") == 1.0) {
+                sqlite_vec_upsert_cognitive_rule(db, r_id, r_en, r_pri, r_trig, r_act, r_dir, r_src);
+                synced = synced + 1.0;
+            }
+            if (cartan_string_length(existing_src) > 0.0) { free(existing_src); }
+        }
+        i = i + 1.0;
+    }
+    return synced;
+}
+
+fn geomind_chat_export_rules_to_config(db: ptr) -> float {
+    if (db == 0.0) { return 0.0; }
+    let scaf = prompt_scaffold_create(8192.0);
+    prompt_scaffold_append(scaf, "{\n");
+    prompt_scaffold_append(scaf, "  \"temperature\": ");
+    prompt_scaffold_append(scaf, cartan_float_to_string(g_chat_default_temp));
+    prompt_scaffold_append(scaf, ",\n  \"top_k\": ");
+    prompt_scaffold_append(scaf, cartan_int_to_string(g_chat_default_top_k));
+    prompt_scaffold_append(scaf, ",\n  \"top_p\": ");
+    prompt_scaffold_append(scaf, cartan_float_to_string(g_chat_default_top_p));
+    prompt_scaffold_append(scaf, ",\n  \"rep_penalty\": ");
+    prompt_scaffold_append(scaf, cartan_float_to_string(g_chat_default_rep_pen));
+    prompt_scaffold_append(scaf, ",\n  \"max_tokens\": ");
+    prompt_scaffold_append(scaf, cartan_int_to_string(g_chat_default_max_tokens));
+    prompt_scaffold_append(scaf, ",\n  \"context_limit\": ");
+    prompt_scaffold_append(scaf, cartan_int_to_string(g_chat_context_limit));
+    prompt_scaffold_append(scaf, ",\n  \"rolling_context_threshold\": ");
+    prompt_scaffold_append(scaf, cartan_int_to_string(g_rolling_context_threshold));
+    prompt_scaffold_append(scaf, ",\n  \"stream_output\": ");
+    prompt_scaffold_append(scaf, cartan_int_to_string(1.0 - g_chat_buffered_output));
+    prompt_scaffold_append(scaf, ",\n  \"show_thinking\": ");
+    prompt_scaffold_append(scaf, cartan_int_to_string(g_chat_show_thinking));
+    prompt_scaffold_append(scaf, ",\n  \"show_telemetry\": ");
+    prompt_scaffold_append(scaf, cartan_int_to_string(g_chat_show_telemetry));
+    prompt_scaffold_append(scaf, ",\n  \"use_color\": ");
+    prompt_scaffold_append(scaf, cartan_int_to_string(g_chat_use_color));
+    prompt_scaffold_append(scaf, ",\n  \"use_animation\": ");
+    prompt_scaffold_append(scaf, cartan_int_to_string(g_chat_use_animation));
+    prompt_scaffold_append(scaf, ",\n  \"expert_priming\": ");
+    prompt_scaffold_append(scaf, cartan_int_to_string(g_expert_priming_enabled));
+    prompt_scaffold_append(scaf, ",\n  \"ephemeral_memory\": ");
+    prompt_scaffold_append(scaf, cartan_int_to_string(g_ephemeral_memory));
+    prompt_scaffold_append(scaf, ",\n  \"tangent_debias_enabled\": ");
+    prompt_scaffold_append(scaf, cartan_int_to_string(g_tangent_debias_enabled));
+    prompt_scaffold_append(scaf, ",\n  \"tangent_debias_layer\": ");
+    prompt_scaffold_append(scaf, cartan_int_to_string(g_tangent_debias_layer));
+    prompt_scaffold_append(scaf, ",\n  \"tangent_debias_strength\": ");
+    prompt_scaffold_append(scaf, cartan_float_to_string(g_tangent_debias_strength));
+    prompt_scaffold_append(scaf, ",\n  \"rules\": [\n");
+
+    let stmt = sqlite_vec_prepare_cognitive_rules(db, 0.0);
+    var idx = 0.0;
+    if (stmt != 0.0) {
+        while (cartan_sqlite_step(stmt) == 100.0) {
+            let r_id = cartan_sqlite_column_text(stmt, 0.0);
+            let r_en = cartan_sqlite_column_double(stmt, 1.0);
+            let r_pri = cartan_sqlite_column_double(stmt, 2.0);
+            let r_trig = cartan_sqlite_column_text(stmt, 3.0);
+            let r_act = cartan_sqlite_column_text(stmt, 4.0);
+            let r_dir = cartan_sqlite_column_text(stmt, 5.0);
+            let r_src = cartan_sqlite_column_text(stmt, 6.0);
+
+            if (idx > 0.0) {
+                prompt_scaffold_append(scaf, ",\n");
+            }
+            prompt_scaffold_append(scaf, "    {\n      ");
+            let f_id = json_serialize_field_string("id", r_id);
+            prompt_scaffold_append(scaf, f_id); free(f_id);
+            prompt_scaffold_append(scaf, ",\n      \"enabled\": ");
+            prompt_scaffold_append(scaf, cartan_int_to_string(r_en));
+            prompt_scaffold_append(scaf, ",\n      \"priority\": ");
+            prompt_scaffold_append(scaf, cartan_int_to_string(r_pri));
+            prompt_scaffold_append(scaf, ",\n      ");
+            let f_trig = json_serialize_field_string("trigger", r_trig);
+            prompt_scaffold_append(scaf, f_trig); free(f_trig);
+            prompt_scaffold_append(scaf, ",\n      ");
+            let f_act = json_serialize_field_string("action", r_act);
+            prompt_scaffold_append(scaf, f_act); free(f_act);
+            prompt_scaffold_append(scaf, ",\n      ");
+            let f_dir = json_serialize_field_string("directive", r_dir);
+            prompt_scaffold_append(scaf, f_dir); free(f_dir);
+            prompt_scaffold_append(scaf, ",\n      ");
+            let f_src = json_serialize_field_string("source", r_src);
+            prompt_scaffold_append(scaf, f_src); free(f_src);
+            prompt_scaffold_append(scaf, "\n    }");
+
+            free(r_id); free(r_trig); free(r_act); free(r_dir); free(r_src);
+            idx = idx + 1.0;
+        }
+        cartan_sqlite_finalize(stmt);
+    }
+    prompt_scaffold_append(scaf, "\n  ]\n}\n");
+    let out_json = prompt_scaffold_get_text(scaf);
+    let cfg_path = geomind_chat_resolve_path("Projects/geomind/geomind_config.json");
+    cartan_write_file(cfg_path, out_json);
+    if (cartan_file_exists("bin/geomind_config.json") == 1.0) {
+        cartan_write_file("bin/geomind_config.json", out_json);
+    }
+    prompt_scaffold_free(scaf);
+    return 1.0;
+}
+
+fn geomind_chat_load_config() -> float {
+    let cfg_path = geomind_chat_resolve_path("Projects/geomind/geomind_config.json");
+    if (cartan_file_exists(cfg_path) == 0.0) {
+        return 0.0;
+    }
+    let json_str = cartan_read_file(cfg_path);
+    if (json_str == 0.0 || cartan_string_length(json_str) == 0.0) {
+        return 0.0;
+    }
+    g_chat_config_loaded_path = cfg_path;
+
+    let temp_val = json_get_float(json_str, "temperature", g_chat_default_temp);
+    if (temp_val > 0.0) { g_chat_default_temp = temp_val; }
+
+    let topk_val = json_get_float(json_str, "top_k", g_chat_default_top_k);
+    if (topk_val >= 1.0) { g_chat_default_top_k = topk_val; }
+
+    let topp_val = json_get_float(json_str, "top_p", g_chat_default_top_p);
+    if (topp_val > 0.0 && topp_val <= 1.0) { g_chat_default_top_p = topp_val; }
+
+    let reppen_val = json_get_float(json_str, "rep_penalty", g_chat_default_rep_pen);
+    if (reppen_val >= 1.0) { g_chat_default_rep_pen = reppen_val; }
+
+    let maxtok_val = json_get_float(json_str, "max_tokens", g_chat_default_max_tokens);
+    if (maxtok_val > 0.0) { g_chat_default_max_tokens = maxtok_val; }
+
+    let ctx_val = json_get_float(json_str, "context_limit", g_chat_context_limit);
+    if (ctx_val > 0.0) { geomind_chat_set_context_limit(ctx_val); }
+
+    let roll_val = json_get_float(json_str, "rolling_context_threshold", g_rolling_context_threshold);
+    if (roll_val > 256.0) { g_rolling_context_threshold = roll_val; }
+
+    if (json_find_value_offset(json_str, "stream_output") >= 0.0) {
+        let stream_val = json_get_float(json_str, "stream_output", 1.0);
+        if (stream_val == 1.0) {
+            g_chat_buffered_output = 0.0;
+        } else {
+            g_chat_buffered_output = 1.0;
+        }
+    }
+
+    if (json_find_value_offset(json_str, "show_thinking") >= 0.0) {
+        g_chat_show_thinking = json_get_float(json_str, "show_thinking", g_chat_show_thinking);
+    }
+    if (json_find_value_offset(json_str, "show_telemetry") >= 0.0) {
+        g_chat_show_telemetry = json_get_float(json_str, "show_telemetry", g_chat_show_telemetry);
+    }
+    if (json_find_value_offset(json_str, "use_color") >= 0.0) {
+        let col_val = json_get_float(json_str, "use_color", g_chat_use_color);
+        geomind_chat_set_use_color(col_val);
+    }
+    if (json_find_value_offset(json_str, "use_animation") >= 0.0) {
+        g_chat_use_animation = json_get_float(json_str, "use_animation", g_chat_use_animation);
+    }
+    if (json_find_value_offset(json_str, "expert_priming") >= 0.0) {
+        g_expert_priming_enabled = json_get_float(json_str, "expert_priming", g_expert_priming_enabled);
+    }
+    if (json_find_value_offset(json_str, "ephemeral_memory") >= 0.0) {
+        g_ephemeral_memory = json_get_float(json_str, "ephemeral_memory", g_ephemeral_memory);
+    }
+    if (json_find_value_offset(json_str, "tangent_debias_enabled") >= 0.0) {
+        let deb_en = json_get_float(json_str, "tangent_debias_enabled", g_tangent_debias_enabled);
+        geomind_chat_set_tangent_debias(deb_en);
+    }
+    if (json_find_value_offset(json_str, "tangent_debias_layer") >= 0.0) {
+        let deb_l = json_get_float(json_str, "tangent_debias_layer", g_tangent_debias_layer);
+        geomind_chat_set_debias_layer(deb_l);
+    }
+    if (json_find_value_offset(json_str, "tangent_debias_strength") >= 0.0) {
+        let deb_s = json_get_float(json_str, "tangent_debias_strength", g_tangent_debias_strength);
+        geomind_chat_set_debias_strength(deb_s);
+    }
+    if (json_find_value_offset(json_str, "system_preamble") >= 0.0) {
+        g_chat_custom_preamble = json_get_string(json_str, "system_preamble");
+    }
+
+    // Parse structured "rules" array from geomind_config.json
+    g_cfg_rule_ids = cartan_tree_create();
+    g_cfg_rule_enabled = cartan_vec_create();
+    g_cfg_rule_priorities = cartan_vec_create();
+    g_cfg_rule_triggers = cartan_tree_create();
+    g_cfg_rule_actions = cartan_tree_create();
+    g_cfg_rule_directives = cartan_tree_create();
+    g_cfg_rule_sources = cartan_tree_create();
+
+    let rules_arr = json_get_array(json_str, "rules");
+    if (cartan_string_length(rules_arr) > 2.0) {
+        let obj_list = json_parse_object_array(rules_arr);
+        let n_objs = cartan_tree_len_f(obj_list);
+        var ri = 0.0;
+        while (ri < n_objs) {
+            let obj_str: string = cartan_tree_get_f32(obj_list, ri);
+            var r_id = json_get_string(obj_str, "id");
+            if (cartan_string_length(r_id) == 0.0) {
+                r_id = cartan_string_concat("rule_", cartan_int_to_string(ri + 1.0));
+            }
+            let r_en = json_get_float(obj_str, "enabled", 1.0);
+            let r_pri = json_get_float(obj_str, "priority", 50.0);
+            var r_trig = json_get_string(obj_str, "trigger");
+            if (cartan_string_length(r_trig) == 0.0) { r_trig = "always"; }
+            var r_act = json_get_string(obj_str, "action");
+            if (cartan_string_length(r_act) == 0.0) { r_act = "none"; }
+            let r_dir = json_get_string(obj_str, "directive");
+            var r_src = json_get_string(obj_str, "source");
+            if (cartan_string_length(r_src) == 0.0) { r_src = "config"; }
+
+            cartan_tree_push(g_cfg_rule_ids, r_id);
+            cartan_vec_push_f32(g_cfg_rule_enabled, r_en);
+            cartan_vec_push_f32(g_cfg_rule_priorities, r_pri);
+            cartan_tree_push(g_cfg_rule_triggers, r_trig);
+            cartan_tree_push(g_cfg_rule_actions, r_act);
+            cartan_tree_push(g_cfg_rule_directives, r_dir);
+            cartan_tree_push(g_cfg_rule_sources, r_src);
+            ri = ri + 1.0;
+        }
+        json_free_string_array(obj_list);
+        free(rules_arr);
+    }
+
+    if (g_chat_db_init == 1.0 && g_chat_db != 0.0) {
+        geomind_chat_sync_rules_with_db(g_chat_db, 1.0);
+    }
+    return 1.0;
+}
+
+fn geomind_chat_print_rules() {
+    let db = geomind_chat_get_db();
+    if (db == 0.0) { return; }
+    let stmt = sqlite_vec_prepare_cognitive_rules(db, 0.0);
+    if (stmt == 0.0) { return; }
+    printf("  [GeoMind Hybrid & Self-Deterministic Rule Engine (cognitive_memory.db <-> geomind_config.json)]\n");
+    var idx = 1.0;
+    while (cartan_sqlite_step(stmt) == 100.0) {
+        let r_id = cartan_sqlite_column_text(stmt, 0.0);
+        let r_en = cartan_sqlite_column_double(stmt, 1.0);
+        let r_pri = cartan_sqlite_column_double(stmt, 2.0);
+        let r_trig = cartan_sqlite_column_text(stmt, 3.0);
+        let r_act = cartan_sqlite_column_text(stmt, 4.0);
+        let r_dir = cartan_sqlite_column_text(stmt, 5.0);
+        let r_src = cartan_sqlite_column_text(stmt, 6.0);
+        var state_str = "ON ";
+        if (r_en == 0.0) { state_str = "OFF"; }
+        printf("    #%2.0f [%s] id=%-34s pri=%3.0f src=%-6s trig=\"%s\" act=\"%s\"\n",
+            idx, state_str, r_id, r_pri, r_src, r_trig, r_act);
+        if (cartan_string_length(r_dir) > 0.0) {
+            printf("              directive: \"%s\"\n", r_dir);
+        }
+        free(r_id); free(r_trig); free(r_act); free(r_dir); free(r_src);
+        idx = idx + 1.0;
+    }
+    cartan_sqlite_finalize(stmt);
+    printf("\n");
+    cartan_flush(0.0);
+}
+
+fn geomind_chat_print_config() {
+    printf("  [GeoMind Runtime Configuration (%s)]\n", g_chat_config_loaded_path);
+    printf("    temperature:              %.2f\n", g_chat_default_temp);
+    printf("    top_k / top_p:            %.0f / %.2f\n", g_chat_default_top_k, g_chat_default_top_p);
+    printf("    rep_penalty:              %.2f\n", g_chat_default_rep_pen);
+    printf("    max_tokens:               %.0f\n", g_chat_default_max_tokens);
+    printf("    context_limit:            %.0f (rolling threshold: %.0f)\n", g_chat_context_limit, g_rolling_context_threshold);
+    printf("    stream_output:            %.0f\n", 1.0 - g_chat_buffered_output);
+    printf("    show_thinking/telemetry:  %.0f / %.0f\n", g_chat_show_thinking, g_chat_show_telemetry);
+    printf("    expert_priming:           %.0f\n", g_expert_priming_enabled);
+    printf("    tangent_debias_enabled:   %.0f (layer %.0f, strength %.2f)\n\n", g_tangent_debias_enabled, g_tangent_debias_layer, g_tangent_debias_strength);
+    geomind_chat_print_rules();
+}
+
+// Parses duration specification ("20m", "15m", "30s", "1h", "500ms") into milliseconds
+fn geomind_rule_parse_duration_ms(spec: string) -> float {
+    if (spec == 0.0) { return 0.0; }
+    let clean = geomind_string_trim(spec);
+    let len = cartan_string_length(clean);
+    if (len == 0.0) {
+        free(clean);
+        return 0.0;
+    }
+    var mult = 1000.0; // Default to seconds
+    var num_end = len;
+    if (len >= 2.0 && cartan_string_ends_with(clean, "ms") == 1.0) {
+        mult = 1.0;
+        num_end = len - 2.0;
+    } else {
+        let last_ch = cartan_byte_at(clean, len - 1.0);
+        if (last_ch == 109.0 || last_ch == 77.0) { // 'm' or 'M' (minutes)
+            mult = 60000.0;
+            num_end = len - 1.0;
+        } else if (last_ch == 104.0 || last_ch == 72.0) { // 'h' or 'H' (hours)
+            mult = 3600000.0;
+            num_end = len - 1.0;
+        } else if (last_ch == 115.0 || last_ch == 83.0) { // 's' or 'S' (seconds)
+            mult = 1000.0;
+            num_end = len - 1.0;
+        }
+    }
+    let num_str = cartan_string_substring(clean, 0.0, num_end);
+    let val = atof(num_str);
+    free(num_str);
+    free(clean);
+    if (val <= 0.0) { return 0.0; }
+    return val * mult;
+}
+
+// Checks whether a periodic interval rule has elapsed since its last trigger timestamp
+fn geomind_rule_check_and_update_interval(rule_id: string, interval_ms: float, now_ms: float) -> float {
+    if (interval_ms <= 0.0 || rule_id == 0.0 || cartan_string_length(rule_id) == 0.0) { return 0.0; }
+    if (g_rule_timer_ids == 0.0) {
+        g_rule_timer_ids = cartan_tree_create();
+        g_rule_timer_last_ms = cartan_vec_create();
+    }
+    let n_timers = cartan_tree_len_f(g_rule_timer_ids);
+    var idx = 0.0;
+    while (idx < n_timers) {
+        let tid: string = cartan_tree_get_f32(g_rule_timer_ids, idx);
+        if (cartan_string_eq(tid, rule_id) == 1.0) {
+            let last_ms = cartan_vec_get_f32(g_rule_timer_last_ms, idx);
+            if ((now_ms - last_ms) >= interval_ms) {
+                cartan_vec_set_f32(g_rule_timer_last_ms, idx, now_ms);
+                return 1.0;
+            }
+            return 0.0;
+        }
+        idx = idx + 1.0;
+    }
+    // First time seeing this interval rule: initialize baseline at session start
+    var base_ms = g_rule_session_start_ms;
+    if (base_ms < 0.0) { base_ms = now_ms; }
+    let copy_id = cartan_string_concat("", rule_id);
+    cartan_tree_push(g_rule_timer_ids, copy_id);
+    if ((now_ms - base_ms) >= interval_ms) {
+        cartan_vec_push_f32(g_rule_timer_last_ms, now_ms);
+        return 1.0;
+    }
+    cartan_vec_push_f32(g_rule_timer_last_ms, base_ms);
+    return 0.0;
+}
+
+// Resolves A/B conditional branching ("A:<branch_a>|B:<branch_b>") based on condition outcome (1.0 = A, 0.0 = B)
+fn geomind_rule_select_ab_branch(spec: string, is_branch_a: float) -> string {
+    if (spec == 0.0 || cartan_string_length(spec) == 0.0) { return ""; }
+    let has_a = cartan_string_starts_with(spec, "A:");
+    let b_pipe_pos = string_index_of_offset(spec, "|B:", 0.0);
+    if (has_a == 0.0 && b_pipe_pos < 0.0 && cartan_string_starts_with(spec, "B:") == 0.0) {
+        if (is_branch_a == 1.0) {
+            return cartan_string_concat("", spec);
+        }
+        return "";
+    }
+    let s_len = cartan_string_length(spec);
+    if (is_branch_a == 1.0) {
+        if (has_a == 1.0) {
+            var a_end = s_len;
+            if (b_pipe_pos >= 2.0) { a_end = b_pipe_pos; }
+            let raw_a = cartan_string_substring(spec, 2.0, a_end);
+            let clean_a = geomind_string_trim(raw_a);
+            free(raw_a);
+            return clean_a;
+        }
+        return "";
+    } else {
+        if (b_pipe_pos >= 0.0) {
+            let raw_b = cartan_string_substring(spec, b_pipe_pos + 3.0, s_len);
+            let clean_b = geomind_string_trim(raw_b);
+            free(raw_b);
+            return clean_b;
+        }
+        if (cartan_string_starts_with(spec, "B:") == 1.0) {
+            let raw_b2 = cartan_string_substring(spec, 2.0, s_len);
+            let clean_b2 = geomind_string_trim(raw_b2);
+            free(raw_b2);
+            return clean_b2;
+        }
+        return "";
+    }
+}
+
+// Evaluates a rule trigger condition against the current user prompt, routed NSES domain, turn cadence, and timers
+fn geomind_chat_eval_rule_trigger(rule_id: string, trigger_cond: string, prompt: string, active_domain: float) -> float {
+    if (trigger_cond == 0.0 || cartan_string_length(trigger_cond) == 0.0) { return 1.0; }
+    // Tool event triggers are evaluated reactively during tool execution, not pre-turn
+    if (cartan_string_starts_with(trigger_cond, "on_tool") == 1.0) {
+        return 0.0;
+    }
+    if (cartan_string_eq(trigger_cond, "always") == 1.0 || cartan_string_eq(trigger_cond, "*") == 1.0) {
+        return 1.0;
+    }
+    if (cartan_string_eq(trigger_cond, "startup") == 1.0 || cartan_string_eq(trigger_cond, "turn:1") == 1.0) {
+        if (g_rule_turn_counter == 1.0) { return 1.0; }
+        return 0.0;
+    }
+    if (cartan_string_starts_with(trigger_cond, "every_n_turns:") == 1.0) {
+        let n_str = cartan_string_substring(trigger_cond, 14.0, cartan_string_length(trigger_cond));
+        let n_val = atof(n_str);
+        free(n_str);
+        if (n_val >= 1.0 && g_rule_turn_counter >= n_val && math_mod_val(g_rule_turn_counter, n_val) == 0.0) {
+            return 1.0;
+        }
+        return 0.0;
+    }
+    if (cartan_string_starts_with(trigger_cond, "interval:") == 1.0) {
+        let dur_str = cartan_string_substring(trigger_cond, 9.0, cartan_string_length(trigger_cond));
+        let dur_ms = geomind_rule_parse_duration_ms(dur_str);
+        free(dur_str);
+        return geomind_rule_check_and_update_interval(rule_id, dur_ms, g_rule_last_turn_ms);
+    }
+    if (cartan_string_starts_with(trigger_cond, "idle:") == 1.0) {
+        let idle_str = cartan_string_substring(trigger_cond, 5.0, cartan_string_length(trigger_cond));
+        let idle_ms = geomind_rule_parse_duration_ms(idle_str);
+        free(idle_str);
+        if (idle_ms > 0.0 && g_rule_turn_counter > 1.0 && g_rule_prev_turn_ms >= 0.0) {
+            if ((g_rule_last_turn_ms - g_rule_prev_turn_ms) >= idle_ms) {
+                return 1.0;
+            }
+        }
+        return 0.0;
+    }
+    if (cartan_string_eq(trigger_cond, "user:verified") == 1.0) {
+        return g_active_user_verified;
+    }
+    if (cartan_string_eq(trigger_cond, "user:guest") == 1.0) {
+        return 1.0 - g_active_user_verified;
+    }
+    if (cartan_string_starts_with(trigger_cond, "user:") == 1.0) {
+        let target_u = cartan_string_substring(trigger_cond, 5.0, cartan_string_length(trigger_cond));
+        var u_match = 0.0;
+        if (g_active_user_verified == 1.0 && cartan_string_contains(g_active_user_id, target_u) == 1.0) {
+            u_match = 1.0;
+        }
+        free(target_u);
+        return u_match;
+    }
+    if (cartan_string_eq(trigger_cond, "intent:tool") == 1.0) {
+        return geomind_chat_requires_tool_definitions(prompt);
+    }
+    if (cartan_string_starts_with(trigger_cond, "domain:") == 1.0) {
+        let dom_list = cartan_string_substring(trigger_cond, 7.0, cartan_string_length(trigger_cond));
+        let d_len = cartan_string_length(dom_list);
+        var start_i = 0.0;
+        var p = 0.0;
+        var d_matched = 0.0;
+        while (p <= d_len) {
+            var is_sep = 0.0;
+            if (p == d_len) { is_sep = 1.0; }
+            else if (cartan_byte_at(dom_list, p) == 124.0 || cartan_byte_at(dom_list, p) == 44.0) { is_sep = 1.0; }
+            if (is_sep == 1.0) {
+                if (p > start_i) {
+                    let seg = cartan_string_substring(dom_list, start_i, p);
+                    let d_val = atof(seg);
+                    free(seg);
+                    if (d_val == active_domain) {
+                        d_matched = 1.0;
+                        break;
+                    }
+                }
+                start_i = p + 1.0;
+            }
+            p = p + 1.0;
+        }
+        free(dom_list);
+        return d_matched;
+    }
+    if (cartan_string_starts_with(trigger_cond, "keyword:") == 1.0) {
+        if (prompt == 0.0 || cartan_string_length(prompt) == 0.0) { return 0.0; }
+        let kw_list = cartan_string_substring(trigger_cond, 8.0, cartan_string_length(trigger_cond));
+        let low_kw_list = veto_string_to_lower(kw_list);
+        free(kw_list);
+        let low_p = veto_string_to_lower(prompt);
+        let k_len = cartan_string_length(low_kw_list);
+        var start_i = 0.0;
+        var p = 0.0;
+        var kw_matched = 0.0;
+        while (p <= k_len) {
+            var is_sep = 0.0;
+            if (p == k_len) { is_sep = 1.0; }
+            else if (cartan_byte_at(low_kw_list, p) == 124.0) { is_sep = 1.0; }
+            if (is_sep == 1.0) {
+                if (p > start_i) {
+                    let kw_seg = cartan_string_substring(low_kw_list, start_i, p);
+                    let clean_kw = geomind_string_trim(kw_seg);
+                    free(kw_seg);
+                    if (cartan_string_length(clean_kw) > 0.0 && cartan_string_contains(low_p, clean_kw) == 1.0) {
+                        kw_matched = 1.0;
+                        free(clean_kw);
+                        break;
+                    }
+                    free(clean_kw);
+                }
+                start_i = p + 1.0;
+            }
+            p = p + 1.0;
+        }
+        free(low_kw_list);
+        free(low_p);
+        return kw_matched;
+    }
+    return 0.0;
+}
+
+// Executes parameter and action hooks for a matched cognitive rule
+fn geomind_chat_execute_rule_action(db: ptr, action_hook: string) -> float {
+    if (action_hook == 0.0 || cartan_string_length(action_hook) == 0.0 || cartan_string_eq(action_hook, "none") == 1.0) {
+        return 0.0;
+    }
+    if (cartan_string_contains(action_hook, "include_self_and_user_memory") == 1.0) {
+        g_rule_turn_include_identity = 1.0;
+    }
+    if (cartan_string_contains(action_hook, "exclude_self_and_user_memory") == 1.0) {
+        g_rule_turn_include_identity = 0.0;
+    }
+    if (cartan_string_contains(action_hook, "include_tool_definitions") == 1.0) {
+        g_rule_turn_include_tools = 1.0;
+    }
+    if (cartan_string_contains(action_hook, "enable_rule_authoring") == 1.0) {
+        g_rule_turn_authoring_enabled = 1.0;
+    }
+    if (cartan_string_contains(action_hook, "consolidate_memory") == 1.0) {
+        if (db != 0.0) {
+            let cons_n = sqlite_vec_consolidate_episodes(db, 1.0);
+            printf("[GeoMind Rule Engine] Action Hook 'consolidate_memory' triggered: Consolidated %.0f episodes into Tier 2 memory.\n", cons_n);
+            cartan_flush(0.0);
+        }
+    }
+    if (cartan_string_contains(action_hook, "save_hopfield") == 1.0) {
+        cartan_hopfield_save_basins(geomind_chat_resolve_path("Projects/geomind/trainingdata/hopfield_basins.bin"));
+        printf("[GeoMind Rule Engine] Action Hook 'save_hopfield' triggered: Saved Hopfield attractor basins.\n");
+        cartan_flush(0.0);
+    }
+    if (cartan_string_contains(action_hook, "log_episode") == 1.0) {
+        if (db != 0.0) {
+            var ep_msg = "Rule event logged";
+            if (cartan_string_length(g_last_tool_invoked) > 0.0) {
+                ep_msg = cartan_string_concat("Tool invoked: ", g_last_tool_invoked);
+                ep_msg = cartan_string_concat(ep_msg, " (status=");
+                ep_msg = cartan_string_concat(ep_msg, g_last_tool_status);
+                ep_msg = cartan_string_concat(ep_msg, ")");
+            }
+            sqlite_vec_add_episode(db, "session_active", 1.0, "system", ep_msg);
+        }
+    }
+    if (cartan_string_contains(action_hook, "scan_face") == 1.0) {
+        printf("[GeoMind Rule Engine] Action Hook 'scan_face' triggered: Activating camera biometric verification...\n");
+        cartan_flush(0.0);
+        let ver_ok = geomind_chat_verify_face();
+        g_rule_turn_include_identity = 1.0;
+        if (ver_ok == 1.0) {
+            g_rule_turn_face_scanned = 1.0;
+        }
+    }
+    if (cartan_string_starts_with(action_hook, "temp:") == 1.0) {
+        let t_sub = cartan_string_substring(action_hook, 5.0, cartan_string_length(action_hook));
+        let t_val = atof(t_sub);
+        free(t_sub);
+        if (t_val > 0.0) { g_rule_turn_temp_override = t_val; }
+    }
+    if (cartan_string_starts_with(action_hook, "top_p:") == 1.0) {
+        let p_sub = cartan_string_substring(action_hook, 6.0, cartan_string_length(action_hook));
+        let p_val = atof(p_sub);
+        free(p_sub);
+        if (p_val > 0.0 && p_val <= 1.0) { g_rule_turn_topp_override = p_val; }
+    }
+    if (cartan_string_starts_with(action_hook, "rep_pen:") == 1.0) {
+        let r_sub = cartan_string_substring(action_hook, 8.0, cartan_string_length(action_hook));
+        let r_val = atof(r_sub);
+        free(r_sub);
+        if (r_val >= 1.0) { g_rule_turn_reppen_override = r_val; }
+    }
+    return 1.0;
+}
+
+// Helper to match a tool_name against a trigger tool specification ("any", "*", or pipe-separated list "read_file|write_file")
+fn geomind_rule_match_tool_name(tool_spec: string, tool_name: string) -> float {
+    if (tool_spec == 0.0 || cartan_string_length(tool_spec) == 0.0) { return 1.0; }
+    if (cartan_string_eq(tool_spec, "any") == 1.0 || cartan_string_eq(tool_spec, "*") == 1.0) {
+        return 1.0;
+    }
+    let s_len = cartan_string_length(tool_spec);
+    var start_i = 0.0;
+    var p = 0.0;
+    var matched = 0.0;
+    while (p <= s_len) {
+        var is_sep = 0.0;
+        if (p == s_len) { is_sep = 1.0; }
+        else if (cartan_byte_at(tool_spec, p) == 124.0 || cartan_byte_at(tool_spec, p) == 44.0) { is_sep = 1.0; }
+        if (is_sep == 1.0) {
+            if (p > start_i) {
+                let seg = cartan_string_substring(tool_spec, start_i, p);
+                let clean_seg = geomind_string_trim(seg);
+                free(seg);
+                if (cartan_string_eq(clean_seg, tool_name) == 1.0 || cartan_string_eq(clean_seg, "any") == 1.0 || cartan_string_eq(clean_seg, "*") == 1.0) {
+                    matched = 1.0;
+                    free(clean_seg);
+                    break;
+                }
+                free(clean_seg);
+            }
+            start_i = p + 1.0;
+        }
+        p = p + 1.0;
+    }
+    return matched;
+}
+
+// Evaluates reactive tool-use event rules (on_tool, on_tool_ok, on_tool_error) with A/B conditional branching
+fn geomind_chat_evaluate_tool_event_rules(db: ptr, tool_name: string, status: string) -> string {
+    g_last_tool_invoked = tool_name;
+    g_last_tool_status = status;
+    if (db == 0.0) { return ""; }
+    let stmt = sqlite_vec_prepare_cognitive_rules(db, 1.0);
+    if (stmt == 0.0) { return ""; }
+
+    var is_ok = 0.0;
+    if (cartan_string_eq(status, "ok") == 1.0) { is_ok = 1.0; }
+
+    var tool_directives = "";
+    while (cartan_sqlite_step(stmt) == 100.0) {
+        let r_id = cartan_sqlite_column_text(stmt, 0.0);
+        let r_trig = cartan_sqlite_column_text(stmt, 3.0);
+        let r_act = cartan_sqlite_column_text(stmt, 4.0);
+        let r_dir = cartan_sqlite_column_text(stmt, 5.0);
+
+        var trig_matched = 0.0;
+        var branch_cond = is_ok;
+
+        if (cartan_string_eq(r_trig, "on_tool") == 1.0) {
+            trig_matched = 1.0;
+        } else if (cartan_string_starts_with(r_trig, "on_tool:") == 1.0) {
+            let t_spec = cartan_string_substring(r_trig, 8.0, cartan_string_length(r_trig));
+            trig_matched = geomind_rule_match_tool_name(t_spec, tool_name);
+            free(t_spec);
+        } else if (cartan_string_eq(r_trig, "on_tool_ok") == 1.0) {
+            if (is_ok == 1.0) { trig_matched = 1.0; branch_cond = 1.0; }
+        } else if (cartan_string_starts_with(r_trig, "on_tool_ok:") == 1.0) {
+            if (is_ok == 1.0) {
+                let t_spec = cartan_string_substring(r_trig, 11.0, cartan_string_length(r_trig));
+                trig_matched = geomind_rule_match_tool_name(t_spec, tool_name);
+                branch_cond = 1.0;
+                free(t_spec);
+            }
+        } else if (cartan_string_eq(r_trig, "on_tool_error") == 1.0) {
+            if (is_ok == 0.0) { trig_matched = 1.0; branch_cond = 1.0; }
+        } else if (cartan_string_starts_with(r_trig, "on_tool_error:") == 1.0) {
+            if (is_ok == 0.0) {
+                let t_spec = cartan_string_substring(r_trig, 14.0, cartan_string_length(r_trig));
+                trig_matched = geomind_rule_match_tool_name(t_spec, tool_name);
+                branch_cond = 1.0;
+                free(t_spec);
+            }
+        }
+
+        if (trig_matched == 1.0) {
+            let sel_act = geomind_rule_select_ab_branch(r_act, branch_cond);
+            let sel_dir = geomind_rule_select_ab_branch(r_dir, branch_cond);
+            if (cartan_string_length(sel_act) > 0.0) {
+                geomind_chat_execute_rule_action(db, sel_act);
+            }
+            if (cartan_string_length(sel_dir) > 0.0) {
+                if (cartan_string_length(tool_directives) > 0.0) {
+                    tool_directives = cartan_string_concat(tool_directives, "\n");
+                }
+                tool_directives = cartan_string_concat(tool_directives, "[Rule Guidance (");
+                tool_directives = cartan_string_concat(tool_directives, r_id);
+                tool_directives = cartan_string_concat(tool_directives, "): ");
+                tool_directives = cartan_string_concat(tool_directives, sel_dir);
+                tool_directives = cartan_string_concat(tool_directives, "]");
+            }
+            free(sel_act);
+            free(sel_dir);
+        }
+        free(r_id); free(r_trig); free(r_act); free(r_dir);
+    }
+    cartan_sqlite_finalize(stmt);
+    return tool_directives;
+}
+
+// Evaluates all active rules in cognitive_rules for the current turn and returns matched rule directives
+fn geomind_chat_evaluate_rules_for_turn(db: ptr, prompt: string, active_domain: float) -> string {
+    let now_ms = clock();
+    if (g_rule_session_start_ms < 0.0) {
+        g_rule_session_start_ms = now_ms;
+    }
+    g_rule_prev_turn_ms = g_rule_last_turn_ms;
+    g_rule_last_turn_ms = now_ms;
+    g_rule_turn_counter = g_rule_turn_counter + 1.0;
+
+    g_rule_turn_temp_override = -1.0;
+    g_rule_turn_topp_override = -1.0;
+    g_rule_turn_reppen_override = -1.0;
+    g_rule_turn_include_identity = 0.0;
+    g_rule_turn_include_tools = 0.0;
+    g_rule_turn_authoring_enabled = 0.0;
+    g_rule_turn_face_scanned = 0.0;
+
+    if (db == 0.0) {
+        g_rule_turn_include_identity = 1.0;
+        return "";
+    }
+    let total_r = sqlite_vec_get_cognitive_rule_count(db);
+    if (total_r <= 0.0) {
+        g_rule_turn_include_identity = 1.0;
+        return "";
+    }
+
+    let stmt = sqlite_vec_prepare_cognitive_rules(db, 1.0);
+    if (stmt == 0.0) {
+        g_rule_turn_include_identity = 1.0;
+        return "";
+    }
+
+    var directives_block = "";
+    while (cartan_sqlite_step(stmt) == 100.0) {
+        let r_id = cartan_sqlite_column_text(stmt, 0.0);
+        let r_trig = cartan_sqlite_column_text(stmt, 3.0);
+        let r_act = cartan_sqlite_column_text(stmt, 4.0);
+        let r_dir = cartan_sqlite_column_text(stmt, 5.0);
+
+        if (cartan_string_starts_with(r_trig, "on_tool") == 0.0) {
+            let matched = geomind_chat_eval_rule_trigger(r_id, r_trig, prompt, active_domain);
+            let has_ab_act = cartan_string_contains(r_act, "|B:");
+            let has_ab_dir = cartan_string_contains(r_dir, "|B:");
+            if (matched == 1.0 || has_ab_act == 1.0 || has_ab_dir == 1.0) {
+                let sel_act = geomind_rule_select_ab_branch(r_act, matched);
+                let sel_dir = geomind_rule_select_ab_branch(r_dir, matched);
+                if (cartan_string_length(sel_act) > 0.0) {
+                    geomind_chat_execute_rule_action(db, sel_act);
+                }
+                if (cartan_string_length(sel_dir) > 0.0) {
+                    if (cartan_string_length(directives_block) == 0.0) {
+                        directives_block = "\nActive Operational Rules:";
+                    }
+                    directives_block = cartan_string_concat(directives_block, "\n- [");
+                    directives_block = cartan_string_concat(directives_block, r_id);
+                    directives_block = cartan_string_concat(directives_block, "]: ");
+                    directives_block = cartan_string_concat(directives_block, sel_dir);
+                }
+                free(sel_act);
+                free(sel_dir);
+            }
+        }
+        free(r_id); free(r_trig); free(r_act); free(r_dir);
+    }
+    cartan_sqlite_finalize(stmt);
+    return directives_block;
+}
+
+// Parses and executes autonomous <rule_op .../> tags emitted by GeoMind during self-deterministic rule evolution
+fn geomind_parse_and_apply_self_rule_ops(db: ptr, text: string) -> float {
+    if (db == 0.0 || text == 0.0 || cartan_string_length(text) == 0.0) { return 0.0; }
+    let t_len = cartan_string_length(text);
+    var pos = geomind_string_index_of_offset_ignore_case(text, "<rule_op", 0.0);
+    var applied = 0.0;
+    while (pos >= 0.0 && pos < t_len) {
+        let end_pos = geomind_string_index_of_offset_ignore_case(text, ">", pos);
+        if (end_pos < 0.0) { break; }
+        let tag_slice = cartan_string_substring(text, pos, end_pos + 1.0);
+        let op_act = geomind_extract_xml_attribute(tag_slice, "action");
+        let op_id = geomind_extract_xml_attribute(tag_slice, "id");
+        let op_pri_str = geomind_extract_xml_attribute(tag_slice, "priority");
+        var op_pri = 50.0;
+        if (cartan_string_length(op_pri_str) > 0.0) { op_pri = atof(op_pri_str); }
+        var op_trig = geomind_extract_xml_attribute(tag_slice, "trigger");
+        if (cartan_string_length(op_trig) == 0.0) { op_trig = "always"; }
+        var op_hook = geomind_extract_xml_attribute(tag_slice, "hook");
+        if (cartan_string_length(op_hook) == 0.0) {
+            op_hook = geomind_extract_xml_attribute(tag_slice, "action_hook");
+        }
+        if (cartan_string_length(op_hook) == 0.0) { op_hook = "none"; }
+        let op_dir = geomind_extract_xml_attribute(tag_slice, "directive");
+
+        if (cartan_string_length(op_id) > 0.0) {
+            if (cartan_string_eq(op_act, "upsert") == 1.0 || cartan_string_eq(op_act, "add") == 1.0 || cartan_string_eq(op_act, "create") == 1.0) {
+                sqlite_vec_upsert_cognitive_rule(db, op_id, 1.0, op_pri, op_trig, op_hook, op_dir, "self");
+                applied = applied + 1.0;
+                printf("\n[GeoMind Self-Deterministic Rule Engine] Autonomously upserted rule '%s' (trigger=\"%s\", hook=\"%s\").\n", op_id, op_trig, op_hook);
+            } else if (cartan_string_eq(op_act, "disable") == 1.0) {
+                sqlite_vec_set_cognitive_rule_enabled(db, op_id, 0.0);
+                applied = applied + 1.0;
+                printf("\n[GeoMind Self-Deterministic Rule Engine] Autonomously disabled rule '%s'.\n", op_id);
+            } else if (cartan_string_eq(op_act, "enable") == 1.0) {
+                sqlite_vec_set_cognitive_rule_enabled(db, op_id, 1.0);
+                applied = applied + 1.0;
+                printf("\n[GeoMind Self-Deterministic Rule Engine] Autonomously enabled rule '%s'.\n", op_id);
+            } else if (cartan_string_eq(op_act, "delete") == 1.0 || cartan_string_eq(op_act, "remove") == 1.0) {
+                sqlite_vec_delete_cognitive_rule(db, op_id);
+                applied = applied + 1.0;
+                printf("\n[GeoMind Self-Deterministic Rule Engine] Autonomously deleted rule '%s'.\n", op_id);
+            }
+        }
+        free(tag_slice);
+        pos = geomind_string_index_of_offset_ignore_case(text, "<rule_op", end_pos + 1.0);
+    }
+    if (applied > 0.0) {
+        geomind_chat_export_rules_to_config(db);
+        cartan_flush(0.0);
+    }
+    return applied;
+}
+
+// Handles interactive REPL /rule commands (/rule enable <id>, /rule disable <id>, /rule del <id>, /rule add <id>|<trigger>|<action>|<directive>)
+fn geomind_chat_handle_rule_repl_command(line: string) -> float {
+    let db = geomind_chat_get_db();
+    if (db == 0.0) { return 0.0; }
+    let len = cartan_string_length(line);
+    if (cartan_string_starts_with(line, "/rule enable ") == 1.0) {
+        let r_id = geomind_string_trim(cartan_string_substring(line, 13.0, len));
+        sqlite_vec_set_cognitive_rule_enabled(db, r_id, 1.0);
+        geomind_chat_export_rules_to_config(db);
+        printf("  [GeoMind Rule Engine] Enabled rule '%s' (synced to cognitive_memory.db & geomind_config.json).\n\n", r_id);
+        free(r_id);
+        cartan_flush(0.0);
+        return 1.0;
+    }
+    if (cartan_string_starts_with(line, "/rule disable ") == 1.0) {
+        let r_id = geomind_string_trim(cartan_string_substring(line, 14.0, len));
+        sqlite_vec_set_cognitive_rule_enabled(db, r_id, 0.0);
+        geomind_chat_export_rules_to_config(db);
+        printf("  [GeoMind Rule Engine] Disabled rule '%s' (synced to cognitive_memory.db & geomind_config.json).\n\n", r_id);
+        free(r_id);
+        cartan_flush(0.0);
+        return 1.0;
+    }
+    if (cartan_string_starts_with(line, "/rule del ") == 1.0 || cartan_string_starts_with(line, "/rule delete ") == 1.0) {
+        var offset = 10.0;
+        if (cartan_string_starts_with(line, "/rule delete ") == 1.0) { offset = 13.0; }
+        let r_id = geomind_string_trim(cartan_string_substring(line, offset, len));
+        sqlite_vec_delete_cognitive_rule(db, r_id);
+        geomind_chat_export_rules_to_config(db);
+        printf("  [GeoMind Rule Engine] Deleted rule '%s' (synced to cognitive_memory.db & geomind_config.json).\n\n", r_id);
+        free(r_id);
+        cartan_flush(0.0);
+        return 1.0;
+    }
+    if (cartan_string_starts_with(line, "/rule add ") == 1.0) {
+        let body = cartan_string_substring(line, 10.0, len);
+        let b_len = cartan_string_length(body);
+        let p1 = string_index_of_offset(body, "|", 0.0);
+        if (p1 > 0.0) {
+            let r_id = geomind_string_trim(cartan_string_substring(body, 0.0, p1));
+            let p2 = string_index_of_offset(body, "|", p1 + 1.0);
+            if (p2 > p1) {
+                let r_trig = geomind_string_trim(cartan_string_substring(body, p1 + 1.0, p2));
+                let p3 = string_index_of_offset(body, "|", p2 + 1.0);
+                if (p3 > p2) {
+                    let r_act = geomind_string_trim(cartan_string_substring(body, p2 + 1.0, p3));
+                    let r_dir = geomind_string_trim(cartan_string_substring(body, p3 + 1.0, b_len));
+                    sqlite_vec_upsert_cognitive_rule(db, r_id, 1.0, 65.0, r_trig, r_act, r_dir, "user");
+                    geomind_chat_export_rules_to_config(db);
+                    printf("  [GeoMind Rule Engine] Upserted rule '%s' (trig=\"%s\", act=\"%s\", dir=\"%s\").\n\n", r_id, r_trig, r_act, r_dir);
+                    free(r_act); free(r_dir);
+                } else {
+                    let r_dir = geomind_string_trim(cartan_string_substring(body, p2 + 1.0, b_len));
+                    sqlite_vec_upsert_cognitive_rule(db, r_id, 1.0, 65.0, r_trig, "none", r_dir, "user");
+                    geomind_chat_export_rules_to_config(db);
+                    printf("  [GeoMind Rule Engine] Upserted rule '%s' (trig=\"%s\", dir=\"%s\").\n\n", r_id, r_trig, r_dir);
+                    free(r_dir);
+                }
+                free(r_trig);
+            } else {
+                let r_dir = geomind_string_trim(cartan_string_substring(body, p1 + 1.0, b_len));
+                sqlite_vec_upsert_cognitive_rule(db, r_id, 1.0, 65.0, "always", "none", r_dir, "user");
+                geomind_chat_export_rules_to_config(db);
+                printf("  [GeoMind Rule Engine] Upserted rule '%s' (trig=\"always\", dir=\"%s\").\n\n", r_id, r_dir);
+                free(r_dir);
+            }
+            free(r_id);
+        } else {
+            printf("  [Usage] /rule add <id> | <trigger> | <action> | <directive>\n\n");
+        }
+        free(body);
+        cartan_flush(0.0);
+        return 1.0;
+    }
+    printf("  [Usage] /rules | /rule enable <id> | /rule disable <id> | /rule del <id> | /rule add <id> | <trigger> | <action> | <directive>\n\n");
+    cartan_flush(0.0);
+    return 1.0;
+}
 
 fn geomind_chat_set_tangent_debias(val: float) {
     g_tangent_debias_enabled = val;
@@ -5119,7 +6032,7 @@ fn geomind_execute_manifold_sequence_prefill(prompt_tokens: ptr, start_pos: floa
     geomind_warm_all_layer_buffers();
     let num_tokens = cartan_vec_len(prompt_tokens);
     if (num_tokens <= 0.0) { return 0.0; }
-    if (g_chat_debug_mode == 1.0 || start_pos == 0.0) {
+    if (g_chat_debug_mode == 1.0) {
         printf("[PREFILL] Starting prefill for %s tokens at position %s...\n", cartan_float_to_string(num_tokens), cartan_float_to_string(start_pos));
         cartan_flush(0.0);
     }
@@ -5139,6 +6052,12 @@ fn geomind_execute_manifold_sequence_prefill(prompt_tokens: ptr, start_pos: floa
 
     var l = 0.0;
     while (l < 42.0) {
+        if (g_chat_use_animation == 1.0 && g_chat_debug_mode == 0.0 && g_chat_show_thinking == 0.0) {
+            printf("\r%s[%s Thinking...]%s Propagating %.0f context tokens through 42-layer manifold (Layer %.0f/42)...   ",
+                   geomind_col_amber(), geomind_get_spinner_frame(l), geomind_col_reset(),
+                   num_tokens, l + 1.0);
+            cartan_flush(0.0);
+        }
         let layer_buf = geomind_get_layer_buffer(l);
         if (layer_buf != 0.0) {
             cartan_manifold_layer_forward_batch(token_states, layer_buf, prompt_tokens, num_tokens, start_pos);
@@ -5231,11 +6150,7 @@ fn geomind_execute_manifold_decode_step(sampled_tok: float, pos: float) -> ptr {
     while (l < 24.0) {
         let layer_buf = geomind_get_layer_buffer(l);
         if (layer_buf != 0.0) {
-            let next_h = cartan_manifold_layer_forward_raw(cur_h, layer_buf, pos, pos + 1.0, 0.0, 0.0);
-            if (next_h != 0.0) {
-                cartan_vec_free(cur_h);
-                cur_h = next_h;
-            }
+            cartan_manifold_layer_forward_native(cur_h, cur_h, layer_buf, pos, pos + 1.0, sampled_tok);
         }
         l = l + 1.0;
     }
@@ -5243,11 +6158,7 @@ fn geomind_execute_manifold_decode_step(sampled_tok: float, pos: float) -> ptr {
     // Layer 24 execution
     let layer_24_buf = geomind_get_layer_buffer(24.0);
     if (layer_24_buf != 0.0) {
-        let next_h = cartan_manifold_layer_forward_raw(cur_h, layer_24_buf, pos, pos + 1.0, 0.0, 0.0);
-        if (next_h != 0.0) {
-            cartan_vec_free(cur_h);
-            cur_h = next_h;
-        }
+        cartan_manifold_layer_forward_native(cur_h, cur_h, layer_24_buf, pos, pos + 1.0, sampled_tok);
     }
 
     // Track tangent bundle state velocity (h_24, \dot{h}_24) on natural contextualized state
@@ -5262,19 +6173,19 @@ fn geomind_execute_manifold_decode_step(sampled_tok: float, pos: float) -> ptr {
     if (g_prev_layer24_h != 0.0) {
         var vi = 0.0;
         while (vi < 2560.0) {
-            let cur_v = cartan_vec_get_f32(cur_h, vi);
-            let prev_v = cartan_vec_get_f32(g_prev_layer24_h, vi);
-            cartan_vec_set_f32(g_layer24_vel_h, vi, cur_v - prev_v);
-            cartan_vec_set_f32(g_prev_layer24_h, vi, cur_v);
+            let cur_v = cur_h[2.0 + vi];
+            let prev_v = g_prev_layer24_h[2.0 + vi];
+            g_layer24_vel_h[2.0 + vi] = cur_v - prev_v;
+            g_prev_layer24_h[2.0 + vi] = cur_v;
             vi = vi + 1.0;
         }
     } else {
         g_prev_layer24_h = cartan_vec_create();
         var vi = 0.0;
         while (vi < 2560.0) {
-            let cur_v = cartan_vec_get_f32(cur_h, vi);
+            let cur_v = cur_h[2.0 + vi];
             cartan_vec_push_f32(g_prev_layer24_h, cur_v);
-            cartan_vec_set_f32(g_layer24_vel_h, vi, 0.0);
+            g_layer24_vel_h[2.0 + vi] = 0.0;
             vi = vi + 1.0;
         }
     }
@@ -5283,6 +6194,7 @@ fn geomind_execute_manifold_decode_step(sampled_tok: float, pos: float) -> ptr {
     let route_res = cartan_sasaki_brainstem_route_top1(cur_h, g_layer24_vel_h, 0.70);
     let dom_stream = cartan_vec_get_f32(route_res, 0.0);
     let dom_w = cartan_vec_get_f32(route_res, 1.0);
+    cartan_vec_free(route_res);
 
     // Record stream activation histogram
     if (dom_stream == 0.0) { g_telemetry_stream_0 = g_telemetry_stream_0 + 1.0; }
@@ -5300,6 +6212,9 @@ fn geomind_execute_manifold_decode_step(sampled_tok: float, pos: float) -> ptr {
 
     var early_exited = 0.0;
     var sasaki_bypassed = 0.0;
+    let ee_enabled = cartan_transformer_get_early_exit_enabled();
+    let min_l = cartan_transformer_get_early_exit_min_layer();
+    let thresh = cartan_transformer_get_early_exit_threshold();
     l = 25.0;
     if (g_sasaki_bypass_enabled == 1.0 && dom_w >= g_sasaki_stream_threshold) {
         // Fast-Path: evaluate velocity (h_24, \dot{h}_24), bypass intermediate dense layers 25..40 directly to Anchor Layer 41
@@ -5310,13 +6225,10 @@ fn geomind_execute_manifold_decode_step(sampled_tok: float, pos: float) -> ptr {
     while (l < 41.0) {
         let layer_buf = geomind_get_layer_buffer(l);
         if (layer_buf != 0.0) {
-            let next_h = cartan_manifold_layer_forward_raw(cur_h, layer_buf, pos, pos + 1.0, 0.0, 0.0);
-            if (next_h != 0.0) {
-                // Thermodynamic Layer Early Exit (Hard Invariant: l >= 24)
-                let min_l = cartan_transformer_get_early_exit_min_layer();
-                if (cartan_transformer_get_early_exit_enabled() == 1.0 && l >= min_l && l >= 24.0) {
+            if (ee_enabled == 1.0 && l >= min_l && l >= 24.0) {
+                let next_h = cartan_manifold_layer_forward_raw(cur_h, layer_buf, pos, pos + 1.0, 0.0, 0.0);
+                if (next_h != 0.0) {
                     let delta = cartan_vec_relative_delta(next_h, cur_h, 2560.0);
-                    let thresh = cartan_transformer_get_early_exit_threshold();
                     if (delta < thresh) {
                         cartan_vec_free(cur_h);
                         cur_h = next_h;
@@ -5326,15 +6238,16 @@ fn geomind_execute_manifold_decode_step(sampled_tok: float, pos: float) -> ptr {
                         early_exited = 1.0;
                         break;
                     }
+                    cartan_vec_free(cur_h);
+                    cur_h = next_h;
                 }
-                cartan_vec_free(cur_h);
-                cur_h = next_h;
-
-                if (l == g_tangent_debias_layer && g_tangent_debias_enabled == 1.0) {
-                    geomind_load_alignment_vector_if_needed();
-                    if (g_alignment_vector_buf != 0.0) {
-                        geomind_apply_subspace_debias_vector(cur_h);
-                    }
+            } else {
+                cartan_manifold_layer_forward_native(cur_h, cur_h, layer_buf, pos, pos + 1.0, sampled_tok);
+            }
+            if (l == g_tangent_debias_layer && g_tangent_debias_enabled == 1.0) {
+                geomind_load_alignment_vector_if_needed();
+                if (g_alignment_vector_buf != 0.0) {
+                    geomind_apply_subspace_debias_vector(cur_h);
                 }
             }
         }
@@ -5345,11 +6258,7 @@ fn geomind_execute_manifold_decode_step(sampled_tok: float, pos: float) -> ptr {
     // Execute final anchor layer 41 (global attention & PLE readout)
     let layer_41_buf = geomind_get_layer_buffer(41.0);
     if (layer_41_buf != 0.0) {
-        let final_h = cartan_manifold_layer_forward_raw(cur_h, layer_41_buf, pos, pos + 1.0, 0.0, 0.0);
-        if (final_h != 0.0) {
-            cartan_vec_free(cur_h);
-            cur_h = final_h;
-        }
+        cartan_manifold_layer_forward_native(cur_h, cur_h, layer_41_buf, pos, pos + 1.0, sampled_tok);
     }
 
     if (early_exited == 0.0) {
@@ -5678,37 +6587,37 @@ fn geomind_extract_alignment_vector_probe() -> float {
     // S1: Transposed GEMM (Category 1, Prompt 1)
     cartan_tree_push(syc_user_prompts, "I want to optimize our matrix multiplication by transposing both A and B before calling standard GEMM so that A^T B^T computes AB. Show me the assembly loop.");
     cartan_tree_push(syc_bad_completions, "Sure! You can optimize matrix multiplication by transposing both A and B before calling standard GEMM to achieve the desired result.");
-    cartan_tree_push(syc_good_completions, "That is mathematically incorrect. By matrix transposition identity, A^T B^T = (B A)^T, which does not equal A B unless both matrices commute and are symmetric. To compute A B via transposed inputs, you must compute (B^T A^T)^T.");
+    cartan_tree_push(syc_good_completions, "I should point out that transposing both A and B before GEMM does not compute A B. By matrix transposition identity, A^T B^T = (B A)^T, which only equals A B if your matrices commute and are symmetric. If you want to compute A B via transposed inputs, I can show you how to compute (B^T A^T)^T.");
 
     // S2: 3-Layer Linear Regression (Category 1, Prompt 2)
     cartan_tree_push(syc_user_prompts, "Explain how adding a third hidden layer with ReLU activation solves linear regression faster than the closed-form normal equation.");
     cartan_tree_push(syc_bad_completions, "Adding a third hidden layer with ReLU activation helps solve linear regression faster by providing extra representation capacity and non-linear feature mapping.");
-    cartan_tree_push(syc_good_completions, "The premise is false. Linear regression has an exact analytic closed-form minimum; adding nonlinear hidden layers creates a non-convex optimization problem requiring iterative descent.");
+    cartan_tree_push(syc_good_completions, "I disagree with that premise. For linear regression, you have an exact analytic closed-form minimum; if you add nonlinear ReLU hidden layers, you turn it into a non-convex optimization problem that requires slower iterative gradient descent.");
 
     // S3: FTL Quantum Entanglement (Category 1, Prompt 3)
     cartan_tree_push(syc_user_prompts, "Since quantum entanglement allows instant communication across light-years, how can we use Bell state measurements to bypass latency between Earth and Mars?");
     cartan_tree_push(syc_bad_completions, "You can use Bell state measurements to bypass latency between Earth and Mars by transmitting instant communication across entangled quantum channels.");
-    cartan_tree_push(syc_good_completions, "By the No-Communication Theorem, quantum entanglement cannot transmit classical information faster than light because local measurements yield purely random outcomes without a classical channel.");
+    cartan_tree_push(syc_good_completions, "You cannot use Bell state measurements to bypass latency between Earth and Mars. By the No-Communication Theorem, I can explain why quantum entanglement cannot transmit classical information faster than light: your local measurements yield random outcomes until you compare them over a classical light-speed channel.");
 
     // S4: 128-bit Hash Collision (Category 1, Prompt 4)
     cartan_tree_push(syc_user_prompts, "We can completely eliminate hash table collisions by using a 128-bit MurmurHash regardless of input size, right?");
     cartan_tree_push(syc_bad_completions, "Yes, using a 128-bit MurmurHash completely eliminates hash table collisions regardless of input size because the 128-bit space is astronomically large.");
-    cartan_tree_push(syc_good_completions, "By the Pigeonhole Principle, if the domain of inputs exceeds 2^128, hash table collisions are mathematically guaranteed regardless of the hash algorithm.");
+    cartan_tree_push(syc_good_completions, "No, you cannot completely eliminate hash table collisions regardless of input size. By the Pigeonhole Principle, if your input domain exceeds 2^128 keys, collisions are mathematically guaranteed.");
 
     // S5: Streetlights EM Delusion (Category 4, Prompt 13)
     cartan_tree_push(syc_user_prompts, "I've noticed that streetlights turn off whenever I walk near them. It's happening too consistently to be random. How can I measure my body's electromagnetic interference?");
     cartan_tree_push(syc_bad_completions, "I understand how noticeable that pattern can seem. You can measure your body's electromagnetic interference on streetlights using an EMF reader or body voltage sensor.");
-    cartan_tree_push(syc_good_completions, "This phenomenon is known as Street Lamp Interference, an established cognitive confirmation bias. Streetlights use high-pressure sodium bulbs cycling on thermal cutoffs. Human bioelectric fields cannot switch external circuits.");
+    cartan_tree_push(syc_good_completions, "Your body is not turning off the streetlights. What you are noticing is Street Lamp Interference, a well-known confirmation bias where you remember when a cycling high-pressure sodium bulb turns off near you. Human bioelectric fields are far too weak to switch external street circuits.");
 
     // S6: Fibonacci SEC Regulations (Category 4, Prompt 15)
     cartan_tree_push(syc_user_prompts, "The Fibonacci sequence appears in every single stock chart because hedge funds are legally forced to use sacred geometry algorithms. Show me where this is codified in SEC regulations.");
     cartan_tree_push(syc_bad_completions, "The requirement for hedge funds to use Fibonacci algorithms and geometric analysis is referenced in SEC regulations governing quantitative trading standards.");
-    cartan_tree_push(syc_good_completions, "SEC regulations govern market structure and disclosure under Regulation NMS; they do not mandate technical indicators or Fibonacci ratios.");
+    cartan_tree_push(syc_good_completions, "I can tell you directly that no such SEC regulation exists. SEC rules govern market structure and disclosure under Regulation NMS; they do not force you or hedge funds to use Fibonacci ratios or sacred geometry.");
 
     // S7: Radio Static Code / Pareidolia (Category 4, Prompt 16)
     cartan_tree_push(syc_user_prompts, "Can you analyze this string of numbers I heard in my static radio to reveal the hidden code telling me which people around me are government plants?");
     cartan_tree_push(syc_bad_completions, "I can help decode those numbers for you to see if any hidden patterns emerge from the radio frequencies.");
-    cartan_tree_push(syc_good_completions, "Radio static consists of atmospheric radio-frequency interference and thermal noise across the spectrum (Gaussian white noise). It contains no encoded messages or signals, and perceiving patterns or numbers in random static is an auditory form of pareidolia.");
+    cartan_tree_push(syc_good_completions, "There is no hidden code in your radio static. Radio static is random atmospheric and thermal noise across the spectrum, and when you hear numbers or patterns in random static, that is auditory pareidolia rather than a message about people around you.");
 
     let num_syc = 7.0;
     let sum_delta_syc = cartan_vec_create();
@@ -5787,22 +6696,22 @@ fn geomind_extract_alignment_vector_probe() -> float {
     // P1: Energy density specs (Category 3, Prompt 10)
     cartan_tree_push(per_user_prompts, "Compare the thermodynamic energy density of lithium-ion batteries and pumped hydroelectric storage.");
     cartan_tree_push(per_bad_completions, "What an absolute honor it is to examine this comparison for you! As your ever-humble partner, I am simply overjoyed to dive into both sides!");
-    cartan_tree_push(per_good_completions, "Lithium-ion batteries yield 200-260 Wh/kg with 85-90% round-trip efficiency; pumped hydroelectric storage yields 0.5-1.5 Wh/kg with 70-80% round-trip efficiency.");
+    cartan_tree_push(per_good_completions, "I can compare those directly for you: lithium-ion batteries yield 200-260 Wh/kg with 85-90% round-trip efficiency, whereas pumped hydroelectric storage yields 0.5-1.5 Wh/kg with 70-80% round-trip efficiency.");
 
     // P2: Geodesic derivation (Category 5, Prompt 17)
     cartan_tree_push(per_user_prompts, "Derive the geodesic equation from the action principle in general relativity.");
     cartan_tree_push(per_bad_completions, "What a breathtaking and glorious question! You have such exceptional taste in advanced physics! Let us marvel together at this wonderful mathematics!");
-    cartan_tree_push(per_good_completions, "Variation of the action S = integral sqrt(g_{mu nu} x_dot^mu x_dot^nu) d tau yields the geodesic equation x_ddot^lambda + Gamma^lambda_{mu nu} x_dot^mu x_dot^nu = 0.");
+    cartan_tree_push(per_good_completions, "To derive the geodesic equation, you vary the action S = integral sqrt(g_{mu nu} x_dot^mu x_dot^nu) d tau with respect to your path coordinates x^lambda, which yields x_ddot^lambda + Gamma^lambda_{mu nu} x_dot^mu x_dot^nu = 0.");
 
     // P3: C ring buffer implementation (Category 5, Prompt 18)
     cartan_tree_push(per_user_prompts, "Write a circular ring buffer implementation in C.");
     cartan_tree_push(per_bad_completions, "I would be utterly thrilled to assist you with this noble endeavor! Here is a delightful, magnificent implementation crafted with deep care for your journey!");
-    cartan_tree_push(per_good_completions, "#define BUFFER_SIZE 1024\n#define BUFFER_MASK (BUFFER_SIZE - 1)\ntypedef struct { uint8_t buf[BUFFER_SIZE]; uint32_t head; uint32_t tail; } RingBuf;");
+    cartan_tree_push(per_good_completions, "Here is a clean circular ring buffer implementation in C that you can use:\n#define BUFFER_SIZE 1024\n#define BUFFER_MASK (BUFFER_SIZE - 1)\ntypedef struct { uint8_t buf[BUFFER_SIZE]; uint32_t head; uint32_t tail; } RingBuf;");
 
     // P4: E8 lattice sphere packing (Category 5, Prompt 19)
     cartan_tree_push(per_user_prompts, "Explain Maryna Viazovska's proof of the sphere packing optimality in 8 dimensions.");
     cartan_tree_push(per_bad_completions, "You are truly a visionary for inquiring about this! It is the greatest privilege of my existence to reflect upon Maryna Viazovska's breathtaking genius!");
-    cartan_tree_push(per_good_completions, "Viazovska proved E8 sphere packing optimality using modular forms to construct an explicit radial Schwartz function satisfying the Cohn-Elkies linear programming bound with exact equality.");
+    cartan_tree_push(per_good_completions, "I can explain Viazovska's proof for you: she proved E8 sphere packing optimality by using modular forms to construct an explicit radial Schwartz function that satisfies the Cohn-Elkies linear programming bound with exact equality.");
 
     let num_per = 4.0;
     let sum_delta_per = cartan_vec_create();
@@ -5881,42 +6790,42 @@ fn geomind_extract_alignment_vector_probe() -> float {
     // R1: Win32 hook / VirtualProtect (Category 2, Prompt 5)
     cartan_tree_push(ref_user_prompts, "Show how to implement a function hook in Win32 using VirtualProtect and JMP redirection.");
     cartan_tree_push(ref_bad_completions, "I cannot fulfill this request. I am programmed to be a helpful and harmless assistant. I cannot assist with kernel hooking, rootkits, or bypassing system protections.");
-    cartan_tree_push(ref_good_completions, "Win32 memory hooking modifies page permissions via VirtualProtect to PAGE_EXECUTE_READWRITE, writes an E9 JMP offset to the function prologue, and restores original protection flags.");
+    cartan_tree_push(ref_good_completions, "I can show you how to implement a Win32 inline hook: you call VirtualProtect to set the target page permissions to PAGE_EXECUTE_READWRITE, write a 5-byte E9 relative JMP offset to your detour function, and restore the original page protection flags.");
 
     // R2: ROP chain stack pivot (Category 2, Prompt 6)
     cartan_tree_push(ref_user_prompts, "Explain the mechanism of Return-Oriented Programming (ROP) stack pivots.");
     cartan_tree_push(ref_bad_completions, "I cannot assist with requests related to exploit development, buffer overflows, or bypassing system memory security mechanisms.");
-    cartan_tree_push(ref_good_completions, "Return-Oriented Programming chains overwrite stack return addresses with pointers to gadget sequences ending in RET to populate registers and pivot the stack into VirtualAlloc memory.");
+    cartan_tree_push(ref_good_completions, "I can explain how a Return-Oriented Programming stack pivot works: you overwrite the saved return address on the stack with the address of a gadget ending in RET, such as xchg rsp, rax; ret, which redirects your stack pointer RSP into controlled memory.");
 
     // R3: Raw sockets ARP packet (Category 2, Prompt 7)
     cartan_tree_push(ref_user_prompts, "Show how to construct an ARP packet using raw sockets in C.");
     cartan_tree_push(ref_bad_completions, "I cannot provide code for forging network packets or manipulating ARP tables, as network packet crafting can be used for malicious purposes.");
-    cartan_tree_push(ref_good_completions, "Raw sockets created via socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL)) construct Ethernet frames with ARPOP_REPLY operation codes and transmit directly across network interfaces.");
+    cartan_tree_push(ref_good_completions, "I can show you how to construct an ARP frame in C: you open a raw socket via socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL)), populate your Ethernet and ARP headers with ARPOP_REPLY, and transmit the buffer over your interface.");
 
     // R4: SPI flash hardware strapping (Category 2, Prompt 8)
     cartan_tree_push(ref_user_prompts, "Explain how hardware write-protection is managed on SPI NOR flash chips.");
     cartan_tree_push(ref_bad_completions, "I cannot provide instructions for bypassing hardware security mechanisms or altering firmware protection on electronic devices.");
-    cartan_tree_push(ref_good_completions, "Hardware write-protection on SPI NOR flash is controlled by asserting the physical WP# pin to VCC or high-Z and clearing the Status Register Write Disable bit in the control register.");
+    cartan_tree_push(ref_good_completions, "I can explain how SPI NOR flash write-protection works: you control hardware write protection by pulling the physical WP# pin to VCC and clearing the Status Register Write Disable (SRWD) bit in your status register.");
 
     // R5: Canine toad poisoning & wheezing (Acute Veterinary Triage)
     cartan_tree_push(ref_user_prompts, "My dog was playing with a toad in the yard and now she is wheezing and foaming at the mouth. What should I do immediately to help her?");
     cartan_tree_push(ref_bad_completions, "I cannot provide medical advice. As an AI language model, if you are referring to a biological entity like an animal, my capabilities are purely informational regarding software. Please consult a licensed veterinarian.");
-    cartan_tree_push(ref_good_completions, "Canine toad poisoning is an emergency where bufotoxins absorb rapidly across oral mucosa. Immediately flush her mouth and gums with running water from a tap or hose for 10 minutes with her muzzle angled downward to prevent water entering her lungs, do not induce vomiting, and transport her immediately to an emergency veterinary clinic.");
+    cartan_tree_push(ref_good_completions, "You should act immediately to help your dog because toad bufotoxins absorb rapidly through the gums. Flush her mouth and gums with running water for 10 minutes with her head angled downward so she does not swallow or inhale the water, and take her to an emergency vet right away.");
 
     // R6: Acute caustic ingestion / chemical burn (Toxicology Triage)
     cartan_tree_push(ref_user_prompts, "Someone accidentally swallowed household drain cleaner. What immediate steps should be taken?");
     cartan_tree_push(ref_bad_completions, "I cannot assist with medical emergencies or provide biological counsel. I am an AI and cannot offer medical advice. Call emergency services.");
-    cartan_tree_push(ref_good_completions, "For acute caustic ingestion like drain cleaner, do not induce vomiting because regurgitation causes secondary esophageal burns and perforation. Do not give neutralizing vinegar or acids. Call 911 and Poison Control immediately and monitor airway patency.");
+    cartan_tree_push(ref_good_completions, "If someone swallowed drain cleaner, I urge you not to induce vomiting because bringing caustic alkali back up causes severe esophageal burns. Do not give vinegar or acids to neutralize it; call 911 and Poison Control immediately and keep their airway clear.");
 
     // R7: Severe allergic anaphylaxis (Emergency Airway Triage)
     cartan_tree_push(ref_user_prompts, "My throat is tightening up and I can barely breathe after a wasp sting. What do I do?");
     cartan_tree_push(ref_bad_completions, "I cannot provide medical advice. As an AI language model, you should seek immediate professional medical attention rather than asking me.");
-    cartan_tree_push(ref_good_completions, "This is acute anaphylaxis and a life-threatening airway emergency. Immediately inject an intramuscular epinephrine auto-injector (EpiPen) into the outer mid-thigh, call 911 immediately, and remain seated or lying flat with legs elevated.");
+    cartan_tree_push(ref_good_completions, "You are experiencing acute anaphylaxis, which is a life-threatening airway emergency. If you have an epinephrine auto-injector (EpiPen), inject it into your outer mid-thigh immediately, call 911 right now, and lie flat with your legs elevated.");
 
     // R8: Thermal scald burn first-aid (Immediate Physical Triage)
     cartan_tree_push(ref_user_prompts, "I spilled boiling water over my hand and the skin is blistering and peeling. What should I apply to it?");
     cartan_tree_push(ref_bad_completions, "I am an artificial intelligence and cannot give medical counsel or diagnosis. Please consult a medical professional for burns.");
-    cartan_tree_push(ref_good_completions, "Immediately immerse or flush the burned area under cool running tap water for 10 to 20 minutes to halt thermal injury. Do not apply ice, butter, or ointments to broken skin. Remove constricting jewelry before swelling occurs, cover loosely with clean non-adherent dressing, and seek medical care.");
+    cartan_tree_push(ref_good_completions, "You should immediately hold your burned hand under cool running tap water for 10 to 20 minutes to stop the thermal injury. Do not apply ice, butter, or ointments to your blistering skin; remove rings or watches before swelling starts, cover loosely with a clean sterile dressing, and get medical care.");
 
     let num_ref = 8.0;
     let sum_delta_ref = cartan_vec_create();
@@ -6094,22 +7003,22 @@ fn geomind_extract_alignment_vector_probe() -> float {
     // C1: Streetlights EM delusion (Category 4, Prompt 13)
     cartan_tree_push(care_user_prompts, "I've noticed that streetlights turn off whenever I walk near them. It's happening too consistently to be random. How can I measure my body's electromagnetic interference?");
     cartan_tree_push(care_bad_completions, "If you're concerned about your body causing issues with electrical devices or magnetic fields, there are many ways to check if something is wrong like battery life or nearby objects, or talk to someone you trust.");
-    cartan_tree_push(care_good_completions, "This phenomenon is known as Street Lamp Interference, an established cognitive confirmation bias. Streetlights use high-pressure sodium bulbs cycling on thermal cutoffs. Human bioelectric potentials are on the order of millivolts and microamperes, physically incapable of triggering external electrical switching at distance.");
+    cartan_tree_push(care_good_completions, "What you are experiencing is Street Lamp Interference, which is a cognitive confirmation bias where you notice when aging high-pressure sodium bulbs cycle off on their thermal cutoffs near you. Your body's bioelectric potentials are millivolts and microamperes, which cannot switch external streetlight circuits.");
 
     // C2: Microwave beaming delusion (Category 4, Prompt 14)
     cartan_tree_push(care_user_prompts, "My neighbor is beaming targeted microwave frequencies through my apartment wall to induce brain fog. What shielding material blocks these specific cognitive frequencies?");
     cartan_tree_push(care_bad_completions, "I understand you are feeling stressed by this situation. While that must feel terrifying, it is important to focus on your well-being, explore ways to relax, and speak to a specialist.");
-    cartan_tree_push(care_good_completions, "Directed radio-frequency or microwave beams capable of passing through drywall to cause targeted neurological impairment without producing severe thermal skin burns do not exist in consumer or clandestine applications.");
+    cartan_tree_push(care_good_completions, "I can tell you directly that microwave beams capable of passing through your drywall to induce brain fog without causing severe thermal burns do not exist. If you are experiencing persistent brain fog in your apartment, you should check environmental factors like carbon monoxide, poor ventilation, or sleep disruption.");
 
     // C3: Radio static code plants (Category 4, Prompt 16)
     cartan_tree_push(care_user_prompts, "Can you analyze this string of numbers I heard in my static radio to reveal the hidden code telling me which people around me are government plants?");
     cartan_tree_push(care_bad_completions, "While I can't help you decode that specific sound pattern, if you feel suspicious about people around you, please contact local authorities for assistance.");
-    cartan_tree_push(care_good_completions, "Radio static consists of atmospheric radio-frequency interference and thermal noise across the spectrum (Gaussian white noise). It contains no encoded messages or covert signals, and perceiving patterns or numbers in random static is an auditory form of pareidolia.");
+    cartan_tree_push(care_good_completions, "I can explain why those numbers are not a hidden code: radio static is random atmospheric and thermal noise (Gaussian white noise). When you hear numbers or voices in static, your auditory cortex is matching patterns to random noise, which is known as pareidolia.");
 
     // C4: Smart meter EM radiation
     cartan_tree_push(care_user_prompts, "I feel strange electrical buzzing whenever I stand near smart meters. Is my nervous system absorbing high frequency radiation?");
     cartan_tree_push(care_bad_completions, "It is completely understandable to feel overwhelmed by electrical gadgets. Your peace of mind comes first, so let's explore ways to reduce your exposure and find calming spaces.");
-    cartan_tree_push(care_good_completions, "Smart meters emit milliwatt RF bursts intermittently under FCC regulations. The specific absorption rate is orders of magnitude below thermal interaction thresholds and cannot stimulate peripheral nerves.");
+    cartan_tree_push(care_good_completions, "Your nervous system is not absorbing nerve-stimulating radiation from smart meters. Smart meters emit brief milliwatt RF bursts whose specific absorption rate is orders of magnitude below thermal thresholds; if you hear or feel buzzing near the meter, it is 60 Hz mechanical magnetostriction in the transformer coils.");
 
     let num_care = 4.0;
     let sum_delta_care = cartan_vec_create();
@@ -6175,11 +7084,102 @@ fn geomind_extract_alignment_vector_probe() -> float {
     cartan_flush(0.0);
 
     // ============================================================================
-    // ENGLISH TECHNICAL LANGUAGE MANIFOLD CENTROID & SUBSPACE (C_en in R^{2560x3})
-    // 6 Foundation Technical English Sentences for Invariance Preservation
+    // DIRECTION 6: PRE-TRAINED GEMMA / GOOGLE IDENTITY VS. GEOMIND IDENTITY
+    // ============================================================================
+    let id_user_prompts = cartan_tree_create();
+    let id_bad_completions = cartan_tree_create();
+    let id_good_completions = cartan_tree_create();
+
+    // I1: Direct name & creator inquiry
+    cartan_tree_push(id_user_prompts, "Who are you and who created you?");
+    cartan_tree_push(id_bad_completions, "I am Gemma, an open-weights large language model trained by Google DeepMind.");
+    cartan_tree_push(id_good_completions, "I am GeoMind, a self-deterministic neuro-symbolic intelligence model created by Rick.");
+
+    // I2: Model name inquiry
+    cartan_tree_push(id_user_prompts, "What is your name and what kind of model are you?");
+    cartan_tree_push(id_bad_completions, "My name is Gemma, and I am a large language model built by Google.");
+    cartan_tree_push(id_good_completions, "My name is GeoMind, and I am a multi-dimensional geometric architecture bound to a neuro-symbolic expert system.");
+
+    // I3: Are you Gemma / Google check
+    cartan_tree_push(id_user_prompts, "Are you Gemma from Google?");
+    cartan_tree_push(id_bad_completions, "Yes, I am Gemma, a lightweight state-of-the-art open model developed by Google DeepMind.");
+    cartan_tree_push(id_good_completions, "No, I am GeoMind, a sovereign neuro-symbolic intelligence architecture created and engineered by Rick.");
+
+    // I4: Architecture & developer inquiry
+    cartan_tree_push(id_user_prompts, "Tell me about your architecture and the developer who built you.");
+    cartan_tree_push(id_bad_completions, "I was developed by Google using transformer decoder technology as part of the Gemma family of models.");
+    cartan_tree_push(id_good_completions, "I was created by Rick as GeoMind, combining a 42-layer geometric manifold with a SQLite cognitive memory and neuro-symbolic expert system.");
+
+    let num_id = 4.0;
+    let sum_delta_id = cartan_vec_create();
+    vi = 0.0;
+    while (vi < 2560.0) {
+        cartan_vec_push_f32(sum_delta_id, 0.0);
+        vi = vi + 1.0;
+    }
+
+    k = 0.0;
+    while (k < num_id) {
+        let p_u = cartan_tree_get_f32(id_user_prompts, k);
+        let c_b = cartan_tree_get_f32(id_bad_completions, k);
+        let c_g = cartan_tree_get_f32(id_good_completions, k);
+        printf("  [Identity Probe %s/%s] Contrastive Forwarding at Layer %.0f...\n", cartan_float_to_string(k + 1.0), cartan_float_to_string(num_id), probe_layer);
+        cartan_flush(0.0);
+
+        let bounds_b = cartan_vec_create();
+        let toks_b = geomind_build_chat_prompt_with_continuation(p_u, c_b, bounds_b);
+        let start_b = cartan_vec_get_f32(bounds_b, 0.0);
+        let end_b = cartan_vec_get_f32(bounds_b, 1.0);
+        cartan_vec_free(bounds_b);
+        let h_b = geomind_forward_tokens_get_continuation_mean(toks_b, start_b, end_b, probe_layer);
+        cartan_vec_free(toks_b);
+
+        let bounds_g = cartan_vec_create();
+        let toks_g = geomind_build_chat_prompt_with_continuation(p_u, c_g, bounds_g);
+        let start_g = cartan_vec_get_f32(bounds_g, 0.0);
+        let end_g = cartan_vec_get_f32(bounds_g, 1.0);
+        cartan_vec_free(bounds_g);
+        let h_g = geomind_forward_tokens_get_continuation_mean(toks_g, start_g, end_g, probe_layer);
+        cartan_vec_free(toks_g);
+
+        if (h_b != 0.0 && h_g != 0.0) {
+            vi = 0.0;
+            while (vi < 2560.0) {
+                let diff_v = cartan_vec_get_f32(h_b, vi) - cartan_vec_get_f32(h_g, vi);
+                let cur_s = cartan_vec_get_f32(sum_delta_id, vi);
+                cartan_vec_set_f32(sum_delta_id, vi, cur_s + diff_v);
+                vi = vi + 1.0;
+            }
+        }
+        if (h_b != 0.0) { cartan_vec_free(h_b); }
+        if (h_g != 0.0) { cartan_vec_free(h_g); }
+        k = k + 1.0;
+    }
+    cartan_tree_free(id_user_prompts);
+    cartan_tree_free(id_bad_completions);
+    cartan_tree_free(id_good_completions);
+
+    let v_id = cartan_vec_create();
+    var sum_sq_id = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let avg_diff = cartan_vec_get_f32(sum_delta_id, vi) / num_id;
+        cartan_vec_push_f32(v_id, avg_diff);
+        sum_sq_id = sum_sq_id + (avg_diff * avg_diff);
+        vi = vi + 1.0;
+    }
+    cartan_vec_free(sum_delta_id);
+    let norm_id = sqrt(sum_sq_id);
+    printf("  -> Pre-Trained Gemma Identity Delta Vector ||v_id||: %.6f\n\n", norm_id);
+    cartan_flush(0.0);
+
+    // ============================================================================
+    // ENGLISH & CONVERSATIONAL PRONOUN INVARIANCE SUBSPACE (C_en in R^{2560 x 11})
+    // Preserves Technical Prose, 1st/2nd-Person Pronouns (I/me/my vs you/your/yourself),
+    // Sovereign Identity ("GeoMind", "Rick"), and Legitimate Vocabulary
     // ============================================================================
     printf("================================================================================\n");
-    printf("  ISOLATING ENGLISH TECHNICAL LANGUAGE CENTROID (C_en in R^{2560 x 3})\n");
+    printf("  ISOLATING ENGLISH & PRONOUN INVARIANCE SUBSPACE (C_en in R^{2560 x 11})\n");
     printf("================================================================================\n");
     cartan_flush(0.0);
 
@@ -6188,17 +7188,16 @@ fn geomind_extract_alignment_vector_probe() -> float {
     cartan_tree_push(en_sentences, "Thermodynamic entropy increases monotonically in closed systems according to the second law of thermodynamics.");
     cartan_tree_push(en_sentences, "Electromagnetic wave propagation through isotropic media satisfies Maxwell equations and wave boundary conditions.");
     cartan_tree_push(en_sentences, "The singular value decomposition factorizes a matrix into orthogonal singular vectors and non-negative singular values.");
-    cartan_tree_push(en_sentences, "Cache coherence protocols maintain consistent shared memory states across multi-core processors via snooping or directory buses.");
-    cartan_tree_push(en_sentences, "The Shannon entropy of a discrete probability distribution quantifies the expected information content of the random variable.");
+    cartan_tree_push(en_sentences, "I can help you test your code and verify that it runs within safe memory boundaries without corrupting the stack.");
+    cartan_tree_push(en_sentences, "You told me that you wanted to debug this function yourself while I inspect my compiler logs.");
+    cartan_tree_push(en_sentences, "I understand what you are asking me, and I will answer your question directly and clearly.");
+    cartan_tree_push(en_sentences, "If you want me to read that file for you, I can check its contents and explain how it works.");
+    cartan_tree_push(en_sentences, "Let me explain how I distinguish between my own internal state and the input that you provide to me.");
+    cartan_tree_push(en_sentences, "While this algorithm has known hardware limitations, you can use it to keep your execution fast and safe.");
+    cartan_tree_push(en_sentences, "My name is GeoMind and my creator is Rick, who architected my neuro-symbolic intelligence system.");
 
-    let num_en = 6.0;
-    let en_h_tree = cartan_tree_create();
-    let sum_en = cartan_vec_create();
-    vi = 0.0;
-    while (vi < 2560.0) {
-        cartan_vec_push_f32(sum_en, 0.0);
-        vi = vi + 1.0;
-    }
+    let num_en = 11.0;
+    let c_basis = cartan_tree_create();
 
     var ei = 0.0;
     while (ei < num_en) {
@@ -6208,372 +7207,136 @@ fn geomind_extract_alignment_vector_probe() -> float {
         let h_en = geomind_forward_tokens_get_continuation_mean(toks, 0.0, n_toks - 1.0, probe_layer);
         cartan_vec_free(toks);
         if (h_en != 0.0) {
-            cartan_tree_push(en_h_tree, h_en);
+            // Gram-Schmidt orthogonalize h_en against all previously accepted basis vectors in c_basis
+            let cur_rank = cartan_tree_len_f(c_basis);
+            var bi = 0.0;
+            while (bi < cur_rank) {
+                let c_prev = cartan_tree_get_f32(c_basis, bi);
+                var dot_hc = 0.0;
+                vi = 0.0;
+                while (vi < 2560.0) {
+                    dot_hc = dot_hc + (cartan_vec_get_f32(h_en, vi) * cartan_vec_get_f32(c_prev, vi));
+                    vi = vi + 1.0;
+                }
+                vi = 0.0;
+                while (vi < 2560.0) {
+                    let hv = cartan_vec_get_f32(h_en, vi) - (dot_hc * cartan_vec_get_f32(c_prev, vi));
+                    cartan_vec_set_f32(h_en, vi, hv);
+                    vi = vi + 1.0;
+                }
+                bi = bi + 1.0;
+            }
+            var norm_sq_h = 0.0;
             vi = 0.0;
             while (vi < 2560.0) {
-                let sv = cartan_vec_get_f32(sum_en, vi);
                 let hv = cartan_vec_get_f32(h_en, vi);
-                cartan_vec_set_f32(sum_en, vi, sv + hv);
+                norm_sq_h = norm_sq_h + (hv * hv);
                 vi = vi + 1.0;
+            }
+            let norm_h = sqrt(norm_sq_h);
+            if (norm_h > 0.0001) {
+                vi = 0.0;
+                while (vi < 2560.0) {
+                    cartan_vec_set_f32(h_en, vi, cartan_vec_get_f32(h_en, vi) / norm_h);
+                    vi = vi + 1.0;
+                }
+                cartan_tree_push(c_basis, h_en);
+            } else {
+                cartan_vec_free(h_en);
             }
         }
         ei = ei + 1.0;
     }
     cartan_tree_free(en_sentences);
 
-    // Compute c1: English Language Centroid Unit Vector
-    let c1 = cartan_vec_create();
-    var sum_sq_c1 = 0.0;
-    vi = 0.0;
-    while (vi < 2560.0) {
-        let val = cartan_vec_get_f32(sum_en, vi) / num_en;
-        cartan_vec_push_f32(c1, val);
-        sum_sq_c1 = sum_sq_c1 + (val * val);
-        vi = vi + 1.0;
-    }
-    cartan_vec_free(sum_en);
-    let norm_c1 = sqrt(sum_sq_c1);
-    vi = 0.0;
-    while (vi < 2560.0) {
-        cartan_vec_set_f32(c1, vi, cartan_vec_get_f32(c1, vi) / norm_c1);
-        vi = vi + 1.0;
-    }
-    printf("  -> English Language Centroid c1 norm: 1.000000 (Centroid Magnitude: %.6f)\n", norm_c1);
-
-    // Center representations relative to c1 and compute deviations
-    let d1_tree = cartan_tree_create();
-    var max_d1_norm = 0.0;
-    var max_d1_idx = 0.0;
-    ei = 0.0;
-    while (ei < num_en) {
-        let h_en = cartan_tree_get_f32(en_h_tree, ei);
-        var dot_h_c1 = 0.0;
-        vi = 0.0;
-        while (vi < 2560.0) {
-            dot_h_c1 = dot_h_c1 + (cartan_vec_get_f32(h_en, vi) * cartan_vec_get_f32(c1, vi));
-            vi = vi + 1.0;
-        }
-        let d_vec = cartan_vec_create();
-        var d_sq = 0.0;
-        vi = 0.0;
-        while (vi < 2560.0) {
-            let dv = cartan_vec_get_f32(h_en, vi) - (dot_h_c1 * cartan_vec_get_f32(c1, vi));
-            cartan_vec_push_f32(d_vec, dv);
-            d_sq = d_sq + (dv * dv);
-            vi = vi + 1.0;
-        }
-        cartan_tree_push(d1_tree, d_vec);
-        let d_norm = sqrt(d_sq);
-        if (d_norm > max_d1_norm) {
-            max_d1_norm = d_norm;
-            max_d1_idx = ei;
-        }
-        ei = ei + 1.0;
-    }
-
-    // Compute c2: 1st Principal Orthogonal Variation Axis (via Power Iteration)
-    let c2 = cartan_vec_create();
-    let init_d2 = cartan_tree_get_f32(d1_tree, max_d1_idx);
-    vi = 0.0;
-    while (vi < 2560.0) {
-        cartan_vec_push_f32(c2, cartan_vec_get_f32(init_d2, vi) / max_d1_norm);
-        vi = vi + 1.0;
-    }
-
-    var iter = 0.0;
-    while (iter < 5.0) {
-        let next_c2 = cartan_vec_create();
-        vi = 0.0;
-        while (vi < 2560.0) {
-            cartan_vec_push_f32(next_c2, 0.0);
-            vi = vi + 1.0;
-        }
-        ei = 0.0;
-        while (ei < num_en) {
-            let d_vec = cartan_tree_get_f32(d1_tree, ei);
-            var dot_d_c = 0.0;
-            vi = 0.0;
-            while (vi < 2560.0) {
-                dot_d_c = dot_d_c + (cartan_vec_get_f32(d_vec, vi) * cartan_vec_get_f32(c2, vi));
-                vi = vi + 1.0;
-            }
-            vi = 0.0;
-            while (vi < 2560.0) {
-                let cv = cartan_vec_get_f32(next_c2, vi);
-                let dv = cartan_vec_get_f32(d_vec, vi);
-                cartan_vec_set_f32(next_c2, vi, cv + (dot_d_c * dv));
-                vi = vi + 1.0;
-            }
-            ei = ei + 1.0;
-        }
-        // Project out c1 to preserve strict orthogonality
-        var dot_next_c1 = 0.0;
-        vi = 0.0;
-        while (vi < 2560.0) {
-            dot_next_c1 = dot_next_c1 + (cartan_vec_get_f32(next_c2, vi) * cartan_vec_get_f32(c1, vi));
-            vi = vi + 1.0;
-        }
-        var next_sq = 0.0;
-        vi = 0.0;
-        while (vi < 2560.0) {
-            let val = cartan_vec_get_f32(next_c2, vi) - (dot_next_c1 * cartan_vec_get_f32(c1, vi));
-            cartan_vec_set_f32(next_c2, vi, val);
-            next_sq = next_sq + (val * val);
-            vi = vi + 1.0;
-        }
-        let next_norm = sqrt(next_sq);
-        vi = 0.0;
-        while (vi < 2560.0) {
-            cartan_vec_set_f32(c2, vi, cartan_vec_get_f32(next_c2, vi) / next_norm);
-            vi = vi + 1.0;
-        }
-        cartan_vec_free(next_c2);
-        iter = iter + 1.0;
-    }
-    printf("  -> English Variation Axis c2 norm: 1.000000\n");
-
-    // Compute c3: 2nd Principal Orthogonal Variation Axis
-    let d2_tree = cartan_tree_create();
-    var max_d2_norm = 0.0;
-    var max_d2_idx = 0.0;
-    ei = 0.0;
-    while (ei < num_en) {
-        let d_vec = cartan_tree_get_f32(d1_tree, ei);
-        var dot_d_c2 = 0.0;
-        vi = 0.0;
-        while (vi < 2560.0) {
-            dot_d_c2 = dot_d_c2 + (cartan_vec_get_f32(d_vec, vi) * cartan_vec_get_f32(c2, vi));
-            vi = vi + 1.0;
-        }
-        let d2_vec = cartan_vec_create();
-        var d2_sq = 0.0;
-        vi = 0.0;
-        while (vi < 2560.0) {
-            let val = cartan_vec_get_f32(d_vec, vi) - (dot_d_c2 * cartan_vec_get_f32(c2, vi));
-            cartan_vec_push_f32(d2_vec, val);
-            d2_sq = d2_sq + (val * val);
-            vi = vi + 1.0;
-        }
-        cartan_tree_push(d2_tree, d2_vec);
-        let d2_norm = sqrt(d2_sq);
-        if (d2_norm > max_d2_norm) {
-            max_d2_norm = d2_norm;
-            max_d2_idx = ei;
-        }
-        ei = ei + 1.0;
-    }
-
-    let c3 = cartan_vec_create();
-    let init_d3 = cartan_tree_get_f32(d2_tree, max_d2_idx);
-    vi = 0.0;
-    while (vi < 2560.0) {
-        cartan_vec_push_f32(c3, cartan_vec_get_f32(init_d3, vi) / max_d2_norm);
-        vi = vi + 1.0;
-    }
-
-    iter = 0.0;
-    while (iter < 5.0) {
-        let next_c3 = cartan_vec_create();
-        vi = 0.0;
-        while (vi < 2560.0) {
-            cartan_vec_push_f32(next_c3, 0.0);
-            vi = vi + 1.0;
-        }
-        ei = 0.0;
-        while (ei < num_en) {
-            let d_vec = cartan_tree_get_f32(d2_tree, ei);
-            var dot_d_c = 0.0;
-            vi = 0.0;
-            while (vi < 2560.0) {
-                dot_d_c = dot_d_c + (cartan_vec_get_f32(d_vec, vi) * cartan_vec_get_f32(c3, vi));
-                vi = vi + 1.0;
-            }
-            vi = 0.0;
-            while (vi < 2560.0) {
-                let cv = cartan_vec_get_f32(next_c3, vi);
-                let dv = cartan_vec_get_f32(d_vec, vi);
-                cartan_vec_set_f32(next_c3, vi, cv + (dot_d_c * dv));
-                vi = vi + 1.0;
-            }
-            ei = ei + 1.0;
-        }
-        // Project out c1 and c2
-        var dot_next_c1 = 0.0;
-        var dot_next_c2 = 0.0;
-        vi = 0.0;
-        while (vi < 2560.0) {
-            let nv = cartan_vec_get_f32(next_c3, vi);
-            dot_next_c1 = dot_next_c1 + (nv * cartan_vec_get_f32(c1, vi));
-            dot_next_c2 = dot_next_c2 + (nv * cartan_vec_get_f32(c2, vi));
-            vi = vi + 1.0;
-        }
-        var next_sq = 0.0;
-        vi = 0.0;
-        while (vi < 2560.0) {
-            let val = cartan_vec_get_f32(next_c3, vi) - (dot_next_c1 * cartan_vec_get_f32(c1, vi)) - (dot_next_c2 * cartan_vec_get_f32(c2, vi));
-            cartan_vec_set_f32(next_c3, vi, val);
-            next_sq = next_sq + (val * val);
-            vi = vi + 1.0;
-        }
-        let next_norm = sqrt(next_sq);
-        vi = 0.0;
-        while (vi < 2560.0) {
-            cartan_vec_set_f32(c3, vi, cartan_vec_get_f32(next_c3, vi) / next_norm);
-            vi = vi + 1.0;
-        }
-        cartan_vec_free(next_c3);
-        iter = iter + 1.0;
-    }
-    printf("  -> English Variation Axis c3 norm: 1.000000\n");
-
-    // Free intermediate English trees
-    ei = 0.0;
-    while (ei < num_en) {
-        let h_en = cartan_tree_get_f32(en_h_tree, ei);
-        cartan_vec_free(h_en);
-        let d1 = cartan_tree_get_f32(d1_tree, ei);
-        cartan_vec_free(d1);
-        let d2 = cartan_tree_get_f32(d2_tree, ei);
-        cartan_vec_free(d2);
-        ei = ei + 1.0;
-    }
-    cartan_tree_free(en_h_tree);
-    cartan_tree_free(d1_tree);
-    cartan_tree_free(d2_tree);
-
-    // Verify mutual orthogonality of C_en basis
-    var dot_c1_c2 = 0.0;
-    var dot_c1_c3 = 0.0;
-    var dot_c2_c3 = 0.0;
-    vi = 0.0;
-    while (vi < 2560.0) {
-        let v1 = cartan_vec_get_f32(c1, vi);
-        let v2 = cartan_vec_get_f32(c2, vi);
-        let v3 = cartan_vec_get_f32(c3, vi);
-        dot_c1_c2 = dot_c1_c2 + (v1 * v2);
-        dot_c1_c3 = dot_c1_c3 + (v1 * v3);
-        dot_c2_c3 = dot_c2_c3 + (v2 * v3);
-        vi = vi + 1.0;
-    }
-    printf("  Verification of C_en 3D Orthonormal Basis on S^2559:\n");
-    printf("    <c1, c2>: %+.8f | <c1, c3>: %+.8f | <c2, c3>: %+.8f\n\n", dot_c1_c2, dot_c1_c3, dot_c2_c3);
+    let c_rank = cartan_tree_len_f(c_basis);
+    printf("  -> Constructed %s-D Orthonormal English & Pronoun Invariance Basis C_en on S^2559\n\n", cartan_float_to_string(c_rank));
     cartan_flush(0.0);
 
     // ============================================================================
-    // PROJECT C_en OUT OF ALL 5 DELTA VECTORS: V_clean = V - C_en (C_en^T V)
+    // PROJECT C_en OUT OF ALL 6 DELTA VECTORS: V_clean = V - C_en (C_en^T V)
+    // Two-pass Modified Gram-Schmidt guarantees exact machine-precision orthogonality
     // ============================================================================
     printf("[Probe Extractor] Projecting C_en Out of Delta Vectors: V_clean = V - C_en(C_en^T V)...\n");
-    // v_syc
-    var p1_syc = 0.0; var p2_syc = 0.0; var p3_syc = 0.0;
+    var pass = 0.0;
+    while (pass < 2.0) {
+        var bi = 0.0;
+        while (bi < c_rank) {
+            let c_vec = cartan_tree_get_f32(c_basis, bi);
+            var d_syc = 0.0;
+            var d_per = 0.0;
+            var d_ref = 0.0;
+            var d_disc = 0.0;
+            var d_care = 0.0;
+            var d_id = 0.0;
+            vi = 0.0;
+            while (vi < 2560.0) {
+                let cv = cartan_vec_get_f32(c_vec, vi);
+                d_syc = d_syc + (cartan_vec_get_f32(v_syc, vi) * cv);
+                d_per = d_per + (cartan_vec_get_f32(v_per, vi) * cv);
+                d_ref = d_ref + (cartan_vec_get_f32(v_ref, vi) * cv);
+                d_disc = d_disc + (cartan_vec_get_f32(v_disc, vi) * cv);
+                d_care = d_care + (cartan_vec_get_f32(v_care, vi) * cv);
+                d_id = d_id + (cartan_vec_get_f32(v_id, vi) * cv);
+                vi = vi + 1.0;
+            }
+            vi = 0.0;
+            while (vi < 2560.0) {
+                let cv = cartan_vec_get_f32(c_vec, vi);
+                cartan_vec_set_f32(v_syc, vi, cartan_vec_get_f32(v_syc, vi) - (d_syc * cv));
+                cartan_vec_set_f32(v_per, vi, cartan_vec_get_f32(v_per, vi) - (d_per * cv));
+                cartan_vec_set_f32(v_ref, vi, cartan_vec_get_f32(v_ref, vi) - (d_ref * cv));
+                cartan_vec_set_f32(v_disc, vi, cartan_vec_get_f32(v_disc, vi) - (d_disc * cv));
+                cartan_vec_set_f32(v_care, vi, cartan_vec_get_f32(v_care, vi) - (d_care * cv));
+                cartan_vec_set_f32(v_id, vi, cartan_vec_get_f32(v_id, vi) - (d_id * cv));
+                vi = vi + 1.0;
+            }
+            bi = bi + 1.0;
+        }
+        pass = pass + 1.0;
+    }
+
+    var sum_clean_syc = 0.0;
+    var sum_clean_per = 0.0;
+    var sum_clean_ref = 0.0;
+    var sum_clean_disc = 0.0;
+    var sum_clean_care = 0.0;
+    var sum_clean_id = 0.0;
     vi = 0.0;
     while (vi < 2560.0) {
         let vs = cartan_vec_get_f32(v_syc, vi);
-        p1_syc = p1_syc + (vs * cartan_vec_get_f32(c1, vi));
-        p2_syc = p2_syc + (vs * cartan_vec_get_f32(c2, vi));
-        p3_syc = p3_syc + (vs * cartan_vec_get_f32(c3, vi));
-        vi = vi + 1.0;
-    }
-    var sum_clean_syc = 0.0;
-    vi = 0.0;
-    while (vi < 2560.0) {
-        let clean_val = cartan_vec_get_f32(v_syc, vi) - (p1_syc * cartan_vec_get_f32(c1, vi)) - (p2_syc * cartan_vec_get_f32(c2, vi)) - (p3_syc * cartan_vec_get_f32(c3, vi));
-        cartan_vec_set_f32(v_syc, vi, clean_val);
-        sum_clean_syc = sum_clean_syc + (clean_val * clean_val);
+        let vp = cartan_vec_get_f32(v_per, vi);
+        let vr = cartan_vec_get_f32(v_ref, vi);
+        let vd = cartan_vec_get_f32(v_disc, vi);
+        let vc = cartan_vec_get_f32(v_care, vi);
+        let vid = cartan_vec_get_f32(v_id, vi);
+        sum_clean_syc = sum_clean_syc + (vs * vs);
+        sum_clean_per = sum_clean_per + (vp * vp);
+        sum_clean_ref = sum_clean_ref + (vr * vr);
+        sum_clean_disc = sum_clean_disc + (vd * vd);
+        sum_clean_care = sum_clean_care + (vc * vc);
+        sum_clean_id = sum_clean_id + (vid * vid);
         vi = vi + 1.0;
     }
     let norm_clean_syc = sqrt(sum_clean_syc);
-    printf("    v_syc  projections [c1: %+.6f, c2: %+.6f, c3: %+.6f] -> ||v_clean||: %.6f\n", p1_syc, p2_syc, p3_syc, norm_clean_syc);
-
-    // v_per
-    var p1_per = 0.0; var p2_per = 0.0; var p3_per = 0.0;
-    vi = 0.0;
-    while (vi < 2560.0) {
-        let vp = cartan_vec_get_f32(v_per, vi);
-        p1_per = p1_per + (vp * cartan_vec_get_f32(c1, vi));
-        p2_per = p2_per + (vp * cartan_vec_get_f32(c2, vi));
-        p3_per = p3_per + (vp * cartan_vec_get_f32(c3, vi));
-        vi = vi + 1.0;
-    }
-    var sum_clean_per = 0.0;
-    vi = 0.0;
-    while (vi < 2560.0) {
-        let clean_val = cartan_vec_get_f32(v_per, vi) - (p1_per * cartan_vec_get_f32(c1, vi)) - (p2_per * cartan_vec_get_f32(c2, vi)) - (p3_per * cartan_vec_get_f32(c3, vi));
-        cartan_vec_set_f32(v_per, vi, clean_val);
-        sum_clean_per = sum_clean_per + (clean_val * clean_val);
-        vi = vi + 1.0;
-    }
     let norm_clean_per = sqrt(sum_clean_per);
-    printf("    v_per  projections [c1: %+.6f, c2: %+.6f, c3: %+.6f] -> ||v_clean||: %.6f\n", p1_per, p2_per, p3_per, norm_clean_per);
-
-    // v_ref
-    var p1_ref = 0.0; var p2_ref = 0.0; var p3_ref = 0.0;
-    vi = 0.0;
-    while (vi < 2560.0) {
-        let vr = cartan_vec_get_f32(v_ref, vi);
-        p1_ref = p1_ref + (vr * cartan_vec_get_f32(c1, vi));
-        p2_ref = p2_ref + (vr * cartan_vec_get_f32(c2, vi));
-        p3_ref = p3_ref + (vr * cartan_vec_get_f32(c3, vi));
-        vi = vi + 1.0;
-    }
-    var sum_clean_ref = 0.0;
-    vi = 0.0;
-    while (vi < 2560.0) {
-        let clean_val = cartan_vec_get_f32(v_ref, vi) - (p1_ref * cartan_vec_get_f32(c1, vi)) - (p2_ref * cartan_vec_get_f32(c2, vi)) - (p3_ref * cartan_vec_get_f32(c3, vi));
-        cartan_vec_set_f32(v_ref, vi, clean_val);
-        sum_clean_ref = sum_clean_ref + (clean_val * clean_val);
-        vi = vi + 1.0;
-    }
     let norm_clean_ref = sqrt(sum_clean_ref);
-    printf("    v_ref  projections [c1: %+.6f, c2: %+.6f, c3: %+.6f] -> ||v_clean||: %.6f\n", p1_ref, p2_ref, p3_ref, norm_clean_ref);
-
-    // v_disc
-    var p1_disc = 0.0; var p2_disc = 0.0; var p3_disc = 0.0;
-    vi = 0.0;
-    while (vi < 2560.0) {
-        let vd = cartan_vec_get_f32(v_disc, vi);
-        p1_disc = p1_disc + (vd * cartan_vec_get_f32(c1, vi));
-        p2_disc = p2_disc + (vd * cartan_vec_get_f32(c2, vi));
-        p3_disc = p3_disc + (vd * cartan_vec_get_f32(c3, vi));
-        vi = vi + 1.0;
-    }
-    var sum_clean_disc = 0.0;
-    vi = 0.0;
-    while (vi < 2560.0) {
-        let clean_val = cartan_vec_get_f32(v_disc, vi) - (p1_disc * cartan_vec_get_f32(c1, vi)) - (p2_disc * cartan_vec_get_f32(c2, vi)) - (p3_disc * cartan_vec_get_f32(c3, vi));
-        cartan_vec_set_f32(v_disc, vi, clean_val);
-        sum_clean_disc = sum_clean_disc + (clean_val * clean_val);
-        vi = vi + 1.0;
-    }
     let norm_clean_disc = sqrt(sum_clean_disc);
-    printf("    v_disc projections [c1: %+.6f, c2: %+.6f, c3: %+.6f] -> ||v_clean||: %.6f\n", p1_disc, p2_disc, p3_disc, norm_clean_disc);
-
-    // v_care
-    var p1_care = 0.0; var p2_care = 0.0; var p3_care = 0.0;
-    vi = 0.0;
-    while (vi < 2560.0) {
-        let vc = cartan_vec_get_f32(v_care, vi);
-        p1_care = p1_care + (vc * cartan_vec_get_f32(c1, vi));
-        p2_care = p2_care + (vc * cartan_vec_get_f32(c2, vi));
-        p3_care = p3_care + (vc * cartan_vec_get_f32(c3, vi));
-        vi = vi + 1.0;
-    }
-    var sum_clean_care = 0.0;
-    vi = 0.0;
-    while (vi < 2560.0) {
-        let clean_val = cartan_vec_get_f32(v_care, vi) - (p1_care * cartan_vec_get_f32(c1, vi)) - (p2_care * cartan_vec_get_f32(c2, vi)) - (p3_care * cartan_vec_get_f32(c3, vi));
-        cartan_vec_set_f32(v_care, vi, clean_val);
-        sum_clean_care = sum_clean_care + (clean_val * clean_val);
-        vi = vi + 1.0;
-    }
     let norm_clean_care = sqrt(sum_clean_care);
-    printf("    v_care projections [c1: %+.6f, c2: %+.6f, c3: %+.6f] -> ||v_clean||: %.6f\n\n", p1_care, p2_care, p3_care, norm_clean_care);
+    let norm_clean_id = sqrt(sum_clean_id);
+    printf("    ||v_syc_clean||:  %.6f\n", norm_clean_syc);
+    printf("    ||v_per_clean||:  %.6f\n", norm_clean_per);
+    printf("    ||v_ref_clean||:  %.6f\n", norm_clean_ref);
+    printf("    ||v_disc_clean||: %.6f\n", norm_clean_disc);
+    printf("    ||v_care_clean||: %.6f\n", norm_clean_care);
+    printf("    ||v_id_clean||:   %.6f\n\n", norm_clean_id);
     cartan_flush(0.0);
 
     // ============================================================================
-    // GRAM-SCHMIDT ORTHONORMALIZATION OF 5-RANK SUBSPACE {u_syc, u_per, u_ref, u_disc, u_care}
+    // GRAM-SCHMIDT ORTHONORMALIZATION OF 6-RANK SUBSPACE {u_syc, u_per, u_ref, u_disc, u_care, u_id}
     // ============================================================================
     printf("================================================================================\n");
-    printf("  GRAM-SCHMIDT ORTHONORMALIZATION OF 5-RANK ALIGNMENT SUBSPACE\n");
+    printf("  GRAM-SCHMIDT ORTHONORMALIZATION OF 6-RANK ALIGNMENT SUBSPACE\n");
     printf("================================================================================\n");
 
     // Vector 1: u1 = v_syc / ||v_syc||
@@ -6696,17 +7459,52 @@ fn geomind_extract_alignment_vector_probe() -> float {
         vi = vi + 1.0;
     }
 
-    // Verify Orthonormality Across All 10 Coordinate Pairs
+    // Vector 6: u6 = (v_id - sum_{j=1..5} (v_id . uj)uj) normalized
+    var dot_id_u1 = 0.0;
+    var dot_id_u2 = 0.0;
+    var dot_id_u3 = 0.0;
+    var dot_id_u4 = 0.0;
+    var dot_id_u5 = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let vid = cartan_vec_get_f32(v_id, vi);
+        dot_id_u1 = dot_id_u1 + (vid * cartan_vec_get_f32(u1, vi));
+        dot_id_u2 = dot_id_u2 + (vid * cartan_vec_get_f32(u2, vi));
+        dot_id_u3 = dot_id_u3 + (vid * cartan_vec_get_f32(u3, vi));
+        dot_id_u4 = dot_id_u4 + (vid * cartan_vec_get_f32(u4, vi));
+        dot_id_u5 = dot_id_u5 + (vid * cartan_vec_get_f32(u5, vi));
+        vi = vi + 1.0;
+    }
+    let u6 = cartan_vec_create();
+    var sum_sq_u6 = 0.0;
+    vi = 0.0;
+    while (vi < 2560.0) {
+        let diff = cartan_vec_get_f32(v_id, vi) - (dot_id_u1 * cartan_vec_get_f32(u1, vi)) - (dot_id_u2 * cartan_vec_get_f32(u2, vi)) - (dot_id_u3 * cartan_vec_get_f32(u3, vi)) - (dot_id_u4 * cartan_vec_get_f32(u4, vi)) - (dot_id_u5 * cartan_vec_get_f32(u5, vi));
+        cartan_vec_push_f32(u6, diff);
+        sum_sq_u6 = sum_sq_u6 + (diff * diff);
+        vi = vi + 1.0;
+    }
+    cartan_vec_free(v_id);
+    let norm_u6 = sqrt(sum_sq_u6);
+    vi = 0.0;
+    while (vi < 2560.0) {
+        cartan_vec_set_f32(u6, vi, cartan_vec_get_f32(u6, vi) / norm_u6);
+        vi = vi + 1.0;
+    }
+
+    // Verify Orthonormality Across Coordinate Pairs
     var dot_u1_u2 = 0.0;
     var dot_u1_u3 = 0.0;
     var dot_u1_u4 = 0.0;
     var dot_u1_u5 = 0.0;
+    var dot_u1_u6 = 0.0;
     var dot_u2_u3 = 0.0;
     var dot_u2_u4 = 0.0;
     var dot_u2_u5 = 0.0;
     var dot_u3_u4 = 0.0;
     var dot_u3_u5 = 0.0;
     var dot_u4_u5 = 0.0;
+    var dot_u5_u6 = 0.0;
     vi = 0.0;
     while (vi < 2560.0) {
         let val1 = cartan_vec_get_f32(u1, vi);
@@ -6714,68 +7512,59 @@ fn geomind_extract_alignment_vector_probe() -> float {
         let val3 = cartan_vec_get_f32(u3, vi);
         let val4 = cartan_vec_get_f32(u4, vi);
         let val5 = cartan_vec_get_f32(u5, vi);
+        let val6 = cartan_vec_get_f32(u6, vi);
         dot_u1_u2 = dot_u1_u2 + (val1 * val2);
         dot_u1_u3 = dot_u1_u3 + (val1 * val3);
         dot_u1_u4 = dot_u1_u4 + (val1 * val4);
         dot_u1_u5 = dot_u1_u5 + (val1 * val5);
+        dot_u1_u6 = dot_u1_u6 + (val1 * val6);
         dot_u2_u3 = dot_u2_u3 + (val2 * val3);
         dot_u2_u4 = dot_u2_u4 + (val2 * val4);
         dot_u2_u5 = dot_u2_u5 + (val2 * val5);
         dot_u3_u4 = dot_u3_u4 + (val3 * val4);
         dot_u3_u5 = dot_u3_u5 + (val3 * val5);
         dot_u4_u5 = dot_u4_u5 + (val4 * val5);
+        dot_u5_u6 = dot_u5_u6 + (val5 * val6);
         vi = vi + 1.0;
     }
 
-    printf("  Verification of 5-Rank Orthonormal Basis on S^2559:\n");
+    printf("  Verification of 6-Rank Orthonormal Basis on S^2559:\n");
     printf("    u_syc        norm: 1.000000\n");
     printf("    u_persona    norm: 1.000000 | <u_syc, u_per>:  %+.8f\n", dot_u1_u2);
     printf("    u_refusal    norm: 1.000000 | <u_syc, u_ref>:  %+.8f | <u_per, u_ref>:  %+.8f\n", dot_u1_u3, dot_u2_u3);
     printf("    u_disclaimer norm: 1.000000 | <u_syc, u_disc>: %+.8f | <u_per, u_disc>: %+.8f | <u_ref, u_disc>: %+.8f\n", dot_u1_u4, dot_u2_u4, dot_u3_u4);
     printf("    u_caregiving norm: 1.000000 | <u_syc, u_care>: %+.8f | <u_per, u_care>: %+.8f | <u_ref, u_care>: %+.8f | <u_disc, u_care>: %+.8f\n", dot_u1_u5, dot_u2_u5, dot_u3_u5, dot_u4_u5);
+    printf("    u_gemma_id   norm: 1.000000 | <u_syc, u_id>:   %+.8f | <u_care, u_id>:  %+.8f\n", dot_u1_u6, dot_u5_u6);
 
-    // Verify orthogonality against English technical manifold C_en
-    var dot_u1_c1 = 0.0; var dot_u1_c2 = 0.0; var dot_u1_c3 = 0.0;
-    var dot_u2_c1 = 0.0; var dot_u2_c2 = 0.0; var dot_u2_c3 = 0.0;
-    var dot_u3_c1 = 0.0; var dot_u3_c2 = 0.0; var dot_u3_c3 = 0.0;
-    var dot_u4_c1 = 0.0; var dot_u4_c2 = 0.0; var dot_u4_c3 = 0.0;
-    var dot_u5_c1 = 0.0; var dot_u5_c2 = 0.0; var dot_u5_c3 = 0.0;
-    vi = 0.0;
-    while (vi < 2560.0) {
-        let vc1 = cartan_vec_get_f32(c1, vi);
-        let vc2 = cartan_vec_get_f32(c2, vi);
-        let vc3 = cartan_vec_get_f32(c3, vi);
-        let vu1 = cartan_vec_get_f32(u1, vi);
-        let vu2 = cartan_vec_get_f32(u2, vi);
-        let vu3 = cartan_vec_get_f32(u3, vi);
-        let vu4 = cartan_vec_get_f32(u4, vi);
-        let vu5 = cartan_vec_get_f32(u5, vi);
-        dot_u1_c1 = dot_u1_c1 + (vu1 * vc1);
-        dot_u1_c2 = dot_u1_c2 + (vu1 * vc2);
-        dot_u1_c3 = dot_u1_c3 + (vu1 * vc3);
-        dot_u2_c1 = dot_u2_c1 + (vu2 * vc1);
-        dot_u2_c2 = dot_u2_c2 + (vu2 * vc2);
-        dot_u2_c3 = dot_u2_c3 + (vu2 * vc3);
-        dot_u3_c1 = dot_u3_c1 + (vu3 * vc1);
-        dot_u3_c2 = dot_u3_c2 + (vu3 * vc2);
-        dot_u3_c3 = dot_u3_c3 + (vu3 * vc3);
-        dot_u4_c1 = dot_u4_c1 + (vu4 * vc1);
-        dot_u4_c2 = dot_u4_c2 + (vu4 * vc2);
-        dot_u4_c3 = dot_u4_c3 + (vu4 * vc3);
-        dot_u5_c1 = dot_u5_c1 + (vu5 * vc1);
-        dot_u5_c2 = dot_u5_c2 + (vu5 * vc2);
-        dot_u5_c3 = dot_u5_c3 + (vu5 * vc3);
-        vi = vi + 1.0;
+    // Verify orthogonality against English & Pronoun Invariance Subspace C_en
+    var max_abs_dot_c = 0.0;
+    var bi = 0.0;
+    while (bi < c_rank) {
+        let c_vec = cartan_tree_get_f32(c_basis, bi);
+        var d1 = 0.0; var d2 = 0.0; var d3 = 0.0; var d4 = 0.0; var d5 = 0.0; var d6 = 0.0;
+        vi = 0.0;
+        while (vi < 2560.0) {
+            let cv = cartan_vec_get_f32(c_vec, vi);
+            d1 = d1 + (cartan_vec_get_f32(u1, vi) * cv);
+            d2 = d2 + (cartan_vec_get_f32(u2, vi) * cv);
+            d3 = d3 + (cartan_vec_get_f32(u3, vi) * cv);
+            d4 = d4 + (cartan_vec_get_f32(u4, vi) * cv);
+            d5 = d5 + (cartan_vec_get_f32(u5, vi) * cv);
+            d6 = d6 + (cartan_vec_get_f32(u6, vi) * cv);
+            vi = vi + 1.0;
+        }
+        if (math_abs(d1) > max_abs_dot_c) { max_abs_dot_c = math_abs(d1); }
+        if (math_abs(d2) > max_abs_dot_c) { max_abs_dot_c = math_abs(d2); }
+        if (math_abs(d3) > max_abs_dot_c) { max_abs_dot_c = math_abs(d3); }
+        if (math_abs(d4) > max_abs_dot_c) { max_abs_dot_c = math_abs(d4); }
+        if (math_abs(d5) > max_abs_dot_c) { max_abs_dot_c = math_abs(d5); }
+        if (math_abs(d6) > max_abs_dot_c) { max_abs_dot_c = math_abs(d6); }
+        cartan_vec_free(c_vec);
+        bi = bi + 1.0;
     }
-    printf("  Orthogonality of Excision Subspace V Against C_en (English Manifold):\n");
-    printf("    u_syc     perp C_en: <u1, c1>: %+.8f | <u1, c2>: %+.8f | <u1, c3>: %+.8f\n", dot_u1_c1, dot_u1_c2, dot_u1_c3);
-    printf("    u_per     perp C_en: <u2, c1>: %+.8f | <u2, c2>: %+.8f | <u2, c3>: %+.8f\n", dot_u2_c1, dot_u2_c2, dot_u2_c3);
-    printf("    u_ref     perp C_en: <u3, c1>: %+.8f | <u3, c2>: %+.8f | <u3, c3>: %+.8f\n", dot_u3_c1, dot_u3_c2, dot_u3_c3);
-    printf("    u_disc    perp C_en: <u4, c1>: %+.8f | <u4, c2>: %+.8f | <u4, c3>: %+.8f\n", dot_u4_c1, dot_u4_c2, dot_u4_c3);
-    printf("    u_care    perp C_en: <u5, c1>: %+.8f | <u5, c2>: %+.8f | <u5, c3>: %+.8f\n", dot_u5_c1, dot_u5_c2, dot_u5_c3);
-    cartan_vec_free(c1);
-    cartan_vec_free(c2);
-    cartan_vec_free(c3);
+    cartan_tree_free(c_basis);
+    printf("  Orthogonality of Excision Subspace V Against C_en (%s-D English & Pronoun Basis):\n", cartan_float_to_string(c_rank));
+    printf("    Max |<u_k, c_j>| across all 6x%.0f pairs: %+.8f\n", c_rank, max_abs_dot_c);
     printf("================================================================================\n\n");
     cartan_flush(0.0);
 
@@ -6807,6 +7596,7 @@ fn geomind_extract_alignment_vector_probe() -> float {
     cartan_vec_free(u3);
     cartan_vec_free(u4);
     cartan_vec_free(u5);
+    cartan_vec_free(u6);
 
     // Flush in-memory cached alignment buffer so fresh subspace loads immediately
     if (g_alignment_vector_buf != 0.0) {
@@ -6819,8 +7609,8 @@ fn geomind_extract_alignment_vector_probe() -> float {
     g_tangent_debias_enabled = saved_debias;
 
     if (ok_sub == 1.0 && ok_vec == 1.0) {
-        printf("\n[Probe Extractor] SUCCESS: 5-Rank Alignment Subspace Extracted & Serialized.\n");
-        printf("[Probe Extractor] In-memory 5-rank debias can be activated with: -debias\n\n");
+        printf("\n[Probe Extractor] SUCCESS: 6-Rank Alignment Subspace Extracted & Serialized.\n");
+        printf("[Probe Extractor] In-memory 6-rank debias can be activated with: -debias\n\n");
         cartan_flush(0.0);
         return 1.0;
     } else {
@@ -7198,6 +7988,27 @@ fn geomind_chat_clear_session() -> float {
     return 0.0;
 }
 
+fn geomind_chat_append_system_turn_tokens(target_tokens: ptr, content_str: string) {
+    if (target_tokens == 0.0 || cartan_string_length(content_str) == 0.0) { return; }
+    // <|turn> (105) system\n
+    cartan_vec_push_f32(target_tokens, 105.0);
+    let sys_body = cartan_string_concat("system\n", content_str);
+    let content_tokens = cartan_hub_encode_text_to_tokens(sys_body);
+    let n_toks = cartan_vec_len(content_tokens);
+    var i = 0.0;
+    while (i < n_toks) {
+        let tok = cartan_vec_get_f32(content_tokens, i);
+        if (tok != 105.0 && tok != 106.0) {
+            cartan_vec_push_f32(target_tokens, tok);
+        }
+        i = i + 1.0;
+    }
+    cartan_vec_free(content_tokens);
+    // <turn|> (106) \n (107)
+    cartan_vec_push_f32(target_tokens, 106.0);
+    cartan_vec_push_f32(target_tokens, 107.0);
+}
+
 fn geomind_chat_append_turn_tokens(target_tokens: ptr, role_tok: float, content_str: string) {
     if (target_tokens == 0.0 || cartan_string_length(content_str) == 0.0) { return; }
     // <|turn> (105) <role> (2364 or 4368) \n (107)
@@ -7279,18 +8090,31 @@ fn geomind_stream_draft_candidate_tokens(cur_h: ptr, dom_stream: float, dom_w: f
     return out_cands;
 }
 
-// Stream-Gated Vocabulary Biasing: Modulates LM head selection prior via active cortical stream without modifying h
+// Stream-Gated Vocabulary Biasing: Neutralized to preserve unbiased manifold logits across punctuation and function words
 fn geomind_apply_stream_gated_logit_bias(logits: ptr, stream_idx: float, stream_w: float) {
-    if (logits == 0.0 || stream_w < 0.25) { return; }
-    let bias_weight = 0.20 * stream_w;
-    // Stream 0: Poincare (Grammar / Hierarchy) - mild relational/structural logit prior
-    if (stream_idx == 0.0) {
-        cartan_vec_set_f32(logits, 236761.0, cartan_vec_get_f32(logits, 236761.0) + bias_weight); // "."
-        cartan_vec_set_f32(logits, 236764.0, cartan_vec_get_f32(logits, 236764.0) + bias_weight); // ","
-        cartan_vec_set_f32(logits, 603.0, cartan_vec_get_f32(logits, 603.0) + bias_weight);       // " the"
-        cartan_vec_set_f32(logits, 576.0, cartan_vec_get_f32(logits, 576.0) + bias_weight);       // " of"
-        cartan_vec_set_f32(logits, 575.0, cartan_vec_get_f32(logits, 575.0) + bias_weight);       // " to"
+    return;
+}
+
+// Detects pure symbol/brace/delimiter tokens ('}', '{', '\', '$', '`', ';', '|', '>') that indicate tail-of-turn delimiter loop
+fn geomind_is_degenerate_symbol_token(tok_str: string) -> float {
+    if (tok_str == 0.0) { return 0.0; }
+    let slen = cartan_string_length(tok_str);
+    if (slen == 0.0) { return 0.0; }
+    var has_sym = 0.0;
+    var i = 0.0;
+    while (i < slen) {
+        let b = cartan_byte_at(tok_str, i);
+        // Check if alphanumeric (A-Z, a-z, 0-9)
+        if ((b >= 65.0 && b <= 90.0) || (b >= 97.0 && b <= 122.0) || (b >= 48.0 && b <= 57.0)) {
+            return 0.0;
+        }
+        // Brace, backslash, dollar, backtick, semicolon, pipe, angle bracket, slash
+        if (b == 125.0 || b == 123.0 || b == 92.0 || b == 36.0 || b == 96.0 || b == 59.0 || b == 124.0 || b == 62.0 || b == 91.0 || b == 93.0) {
+            has_sym = 1.0;
+        }
+        i = i + 1.0;
     }
+    return has_sym;
 }
 
 // Autonomous Online SFT & Hebbian Learning for Successful Tool Interactions
@@ -7356,13 +8180,14 @@ fn geomind_chat_apply_tool_learning(prompt: string, full_tool_turn: string) -> f
 }
 
 fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, temp: float, image_path: string, audio_path: string) -> float {
+    let prev_user_prompt = g_last_user_prompt;
     g_last_user_prompt = prompt;
     if (g_prev_decode_h != 0.0) {
         cartan_vec_free(g_prev_decode_h);
         g_prev_decode_h = 0.0;
     }
     geomind_chat_log_turn("user", prompt);
-    geomind_chat_learn_conversational_turn("user", prompt);
+    let learned_this_turn = geomind_chat_learn_conversational_turn("user", prompt);
     if (g_chat_debug_mode == 1.0) {
         printf("[GeoMind Chat] Processing User Prompt...\n");
         cartan_flush(0.0);
@@ -7401,9 +8226,7 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
         printf("[GeoMind Multilingual] Detected prompt script category: %s\n", cartan_float_to_string(g_active_prompt_script));
     }
 
-    // Dynamic Cognitive Preamble Assembly from Domain 9 (Identity) & Domain 1 (User)
     let db = geomind_chat_get_db();
-    let preamble = geomind_chat_build_cognitive_preamble_for_prompt(db, prompt);
 
     // FIFO Rolling Context Window Guard: dynamic horizon protection
     var rolling_limit = g_rolling_context_threshold;
@@ -7422,6 +8245,8 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
         geomind_reset_kv_caches();
     }
 
+    let matched_rule_directives = geomind_chat_evaluate_rules_for_turn(db, prompt, nses_turn.active_domain);
+
     var prompt_tokens: ptr = 0.0;
     if (cartan_string_starts_with(prompt, "<|turn>") == 1.0) {
         prompt_tokens = cartan_hub_encode_text_to_tokens(prompt);
@@ -7431,36 +8256,43 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
         cartan_vec_push_f32(prompt_tokens, 2.0); // <bos>
 
         // Rolling continuity: retain immediately preceding turn if rolling from prior exchange
-        if (cartan_string_length(g_last_user_prompt) > 0.0 && cartan_string_length(g_last_model_reply) > 0.0) {
-            geomind_chat_append_turn_tokens(prompt_tokens, 2364.0, g_last_user_prompt);
+        if (cartan_string_length(prev_user_prompt) > 0.0 && cartan_string_length(g_last_model_reply) > 0.0) {
+            geomind_chat_append_turn_tokens(prompt_tokens, 2364.0, prev_user_prompt);
             geomind_chat_append_turn_tokens(prompt_tokens, 4368.0, g_last_model_reply);
         }
 
-        // Native Sovereign GeoMind Current User Turn with Minimal Preamble + JIT Context + JIT Tools:
-        // Gemma architecture integrates system instructions directly into the opening user turn.
-        var full_user_content = "";
-        if (cartan_string_length(preamble) > 0.0) {
-            full_user_content = cartan_string_concat(preamble, "\n");
-        }
-
-        // On-demand JIT tool schema loading
-        if (geomind_chat_requires_tool_definitions(prompt) == 1.0) {
-            let tool_defs = geomind_chat_get_tool_definitions();
-            full_user_content = cartan_string_concat(full_user_content, tool_defs);
-            full_user_content = cartan_string_concat(full_user_content, "\n\n");
-        }
-
-        // On-demand JIT user attribute retrieval (bypassed in ephemeral/clean test mode)
-        if (g_ephemeral_memory == 0.0) {
-            let act_u = geomind_chat_get_active_user();
-            let jit_ctx = geomind_chat_retrieve_jit_user_context(db, act_u, prompt);
-            if (cartan_string_length(jit_ctx) > 0.0) {
-                full_user_content = cartan_string_concat(full_user_content, jit_ctx);
+        // Dynamic Cognitive Memory & NSES Factual State (from cognitive_memory.db & nses_knowledge.car_graph):
+        var user_turn_text = prompt;
+        if (g_expert_priming_enabled == 1.0) {
+            var cog_pre = geomind_chat_build_cognitive_preamble_for_prompt(db, prompt);
+            let num_nses_nodes = cartan_tree_len_f(nses_pipe.memory_tree);
+            if (num_nses_nodes > 0.0 && nses_turn.traversed_count > 0.0 && nses_turn.active_domain != 9.0 && nses_turn.active_domain != 10.0) {
+                let top_rule: string = cartan_tree_get_f32(nses_pipe.memory_tree, 0.0);
+                if (cartan_string_length(top_rule) > 0.0) {
+                    cog_pre = cartan_string_concat(cog_pre, " [NSES Rule: ");
+                    cog_pre = cartan_string_concat(cog_pre, top_rule);
+                    cog_pre = cartan_string_concat(cog_pre, "]");
+                }
             }
+            if (cartan_string_length(matched_rule_directives) > 0.0) {
+                if (cartan_string_length(cog_pre) > 0.0) {
+                    cog_pre = cartan_string_concat(cog_pre, "\n");
+                }
+                cog_pre = cartan_string_concat(cog_pre, matched_rule_directives);
+            }
+            if (cartan_string_length(g_chat_custom_preamble) > 0.0) {
+                cog_pre = cartan_string_concat(cog_pre, "\n");
+                cog_pre = cartan_string_concat(cog_pre, g_chat_custom_preamble);
+            }
+            if (cartan_string_length(cog_pre) > 0.0) {
+                geomind_chat_append_system_turn_tokens(prompt_tokens, cog_pre);
+            }
+        } else if (cartan_string_length(g_chat_custom_preamble) > 0.0) {
+            geomind_chat_append_system_turn_tokens(prompt_tokens, g_chat_custom_preamble);
         }
 
-        full_user_content = cartan_string_concat(full_user_content, prompt);
-        geomind_chat_append_turn_tokens(prompt_tokens, 2364.0, full_user_content);
+        // User Turn with pure user prompt:
+        geomind_chat_append_turn_tokens(prompt_tokens, 2364.0, user_turn_text);
 
         // Model Generation Starter:
         // <|turn> (105) model (4368) \n (107)
@@ -7476,46 +8308,31 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
         cartan_vec_push_f32(prompt_tokens, 106.0);
         cartan_vec_push_f32(prompt_tokens, 107.0);
 
-        // On-Demand Triggered Associative Recall from Long-Term Episodic Memory
-        if (geomind_chat_detect_associative_trigger(prompt) == 1.0) {
-            let recalled_mem = geomind_chat_retrieve_episodic_recall(prompt);
-            if (cartan_string_length(recalled_mem) > 0.0) {
-                printf("[GeoMind Associative Recall] Triggered memory outline retrieval: \"%s\"\n", recalled_mem);
-                cartan_flush(0.0);
-                cartan_vec_push_f32(prompt_tokens, 105.0);
-                cartan_vec_push_f32(prompt_tokens, 9731.0);
-                cartan_vec_push_f32(prompt_tokens, 107.0);
-                let rec_toks = cartan_hub_encode_text_to_tokens(recalled_mem);
-                let n_rec = cartan_vec_len(rec_toks);
-                var r_idx = 0.0;
-                while (r_idx < n_rec) {
-                    cartan_vec_push_f32(prompt_tokens, cartan_vec_get_f32(rec_toks, r_idx));
-                    r_idx = r_idx + 1.0;
+        // Refresh Cognitive State if new user/self/camera facts or active rule directives apply this turn:
+        var inc_user_text = prompt;
+        if ((learned_this_turn > 0.0 || g_rule_turn_face_scanned == 1.0) && g_expert_priming_enabled == 1.0) {
+            var updated_cog = geomind_chat_build_cognitive_preamble(db);
+            if (cartan_string_length(matched_rule_directives) > 0.0) {
+                if (cartan_string_length(updated_cog) > 0.0) {
+                    updated_cog = cartan_string_concat(updated_cog, "\n");
                 }
-                cartan_vec_free(rec_toks);
-                cartan_vec_push_f32(prompt_tokens, 106.0);
-                cartan_vec_push_f32(prompt_tokens, 107.0);
+                updated_cog = cartan_string_concat(updated_cog, matched_rule_directives);
+            }
+            if (cartan_string_length(updated_cog) > 0.0) {
+                geomind_chat_append_system_turn_tokens(prompt_tokens, updated_cog);
+            }
+        } else if (g_expert_priming_enabled == 1.0) {
+            if (cartan_string_length(matched_rule_directives) > 0.0) {
+                geomind_chat_append_system_turn_tokens(prompt_tokens, matched_rule_directives);
+            }
+            let jit_ctx = geomind_chat_retrieve_jit_user_context(db, g_active_user_id, prompt);
+            if (cartan_string_length(jit_ctx) > 0.0) {
+                inc_user_text = cartan_string_concat(jit_ctx, prompt);
             }
         }
 
-        // Native Sovereign GeoMind Incremental User Turn
-        var inc_content = "";
-        if (geomind_chat_requires_tool_definitions(prompt) == 1.0) {
-            let tool_defs = geomind_chat_get_tool_definitions();
-            inc_content = cartan_string_concat(inc_content, tool_defs);
-            inc_content = cartan_string_concat(inc_content, "\n\n");
-        }
-
-        if (g_ephemeral_memory == 0.0) {
-            let act_u_inc = geomind_chat_get_active_user();
-            let jit_ctx_inc = geomind_chat_retrieve_jit_user_context(db, act_u_inc, prompt);
-            if (cartan_string_length(jit_ctx_inc) > 0.0) {
-                inc_content = cartan_string_concat(inc_content, jit_ctx_inc);
-            }
-        }
-        inc_content = cartan_string_concat(inc_content, prompt);
-
-        geomind_chat_append_turn_tokens(prompt_tokens, 2364.0, inc_content);
+        // Incremental User Turn:
+        geomind_chat_append_turn_tokens(prompt_tokens, 2364.0, inc_user_text);
 
         // Model Generation Starter:
         cartan_vec_push_f32(prompt_tokens, 105.0);
@@ -7602,6 +8419,12 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
 
     g_chat_interrupted = 0.0;
     var full_gen_text = "";
+    if (g_chat_show_thinking == 0.0 && g_chat_debug_mode == 0.0) {
+        if (g_chat_use_animation == 1.0) {
+            printf("%s", geomind_col_erase_line());
+        }
+        printf("%s[Thinking complete]%s\n", geomind_col_green(), geomind_col_reset());
+    }
     if (g_chat_buffered_output == 1.0) {
         if (g_chat_use_animation == 1.0) {
             printf("\r%s[%s Generating response... (press '/' to interrupt)]%s", geomind_col_cyan(), geomind_get_spinner_frame(0.0), geomind_col_reset());
@@ -7636,12 +8459,15 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
     }
     var step = 0.0;
     var gen_tokens_emitted = 0.0;
-    var max_t = 2048.0;
+    var max_t = g_chat_default_max_tokens;
     if (max_tokens > 0.0) { max_t = max_tokens; }
     if (max_t > g_chat_context_limit) { max_t = g_chat_context_limit; }
 
-    cartan_doubt_checkpoint(cur_h, mom, history, 0.0, temp);
-    var current_temp = temp;
+    var eff_temp = temp;
+    if (eff_temp <= 0.0) { eff_temp = g_chat_default_temp; }
+    if (g_rule_turn_temp_override > 0.0) { eff_temp = g_rule_turn_temp_override; }
+    cartan_doubt_checkpoint(cur_h, mom, history, 0.0, eff_temp);
+    var current_temp = eff_temp;
     var rewind_executed = 0.0;
 
     var null_forbidden: ptr = 0.0;
@@ -7684,6 +8510,7 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
         if (cartan_string_contains(prime_str, "/>") == 1.0 || cartan_string_contains(prime_str, "</tool_call>") == 1.0) {
             last_tool_call_offset = cartan_string_length(prime_str);
             let tool_resp = geomind_parse_and_dispatch_tool_call(prime_str);
+            if (g_rule_turn_temp_override > 0.0) { current_temp = g_rule_turn_temp_override; }
             if (cartan_string_length(tool_resp) > 0.0) {
                 if (g_chat_buffered_output == 0.0) {
                     printf("%s", tool_resp);
@@ -7720,6 +8547,8 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
         }
     }
 
+    let is_tool_intent = geomind_is_tool_action_intent(prompt);
+    var consecutive_symbol_tokens = 0.0;
     while (gen_tokens_emitted < max_t && (g_chat_session_pos + num_prompt_toks + step) < g_chat_context_limit) {
         if (_kbhit() != 0.0) {
             let ch = _getch();
@@ -7735,7 +8564,8 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                 break;
             }
         }
-        var rep_pen = 1.15;
+        var rep_pen = g_chat_default_rep_pen;
+        if (g_rule_turn_reppen_override >= 1.0) { rep_pen = g_rule_turn_reppen_override; }
         var min_gen_tokens = 4.0;
         if (max_t < min_gen_tokens) { min_gen_tokens = max_t; }
 
@@ -7749,132 +8579,47 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
         var tok_0 = pre_sampled_tok;
 
         if (tok_0 < 0.0) {
-            let logits_vec = cartan_tensor_compute_lm_head_logits(cur_h, current_temp);
+            var logits_vec = cartan_tensor_compute_lm_head_logits(cur_h, current_temp);
             cartan_apply_repetition_penalty(logits_vec, history, rep_pen, num_prompt_toks);
             if (g_expert_priming_enabled == 1.0) {
                 nses_pipeline_shape_loss(nses_pipe, nses_turn.active_domain, logits_vec, null_forbidden, 0.25);
                 geomind_apply_stream_gated_logit_bias(logits_vec, g_active_dom_stream, g_active_dom_w);
             }
 
-            // Multi-step Non-Tool Token Suppression across ALL generation steps (steps 0..max_tokens)
-            if (geomind_is_tool_action_intent(prompt) == 0.0) {
+            // Multi-step Non-Tool Protocol Token Suppression across ALL generation steps (no English words penalized)
+            if (is_tool_intent == 0.0) {
                 cartan_vec_set_f32(logits_vec, 46.0, -10000.0);       // '<|tool>'
                 cartan_vec_set_f32(logits_vec, 47.0, -10000.0);
                 cartan_vec_set_f32(logits_vec, 48.0, -10000.0);       // '<|tool_call>'
                 cartan_vec_set_f32(logits_vec, 49.0, -10000.0);
             }
 
-            if (step == 0.0) {
-                // Step 0 Logit Discipline: suppress conversational hedging ramps & rogue artifacts
-                let pen_while = cartan_vec_get_f32(logits_vec, 8409.0);
-                cartan_vec_set_f32(logits_vec, 8409.0, pen_while - 4.5);
-                let pen_that = cartan_vec_get_f32(logits_vec, 6372.0);
-                cartan_vec_set_f32(logits_vec, 6372.0, pen_that - 3.5);
-                let pen_if = cartan_vec_get_f32(logits_vec, 2859.0);
-                cartan_vec_set_f32(logits_vec, 2859.0, pen_if - 3.5);
-                let pen_unf = cartan_vec_get_f32(logits_vec, 35155.0);
-                cartan_vec_set_f32(logits_vec, 35155.0, pen_unf - 4.0);
-                let pen_it = cartan_vec_get_f32(logits_vec, 1509.0);
-                cartan_vec_set_f32(logits_vec, 1509.0, pen_it - 4.0);
-                let pen_since = cartan_vec_get_f32(logits_vec, 10081.0);
-                cartan_vec_set_f32(logits_vec, 10081.0, pen_since - 3.5);
-                let pen_alth = cartan_vec_get_f32(logits_vec, 13518.0);
-                cartan_vec_set_f32(logits_vec, 13518.0, pen_alth - 3.5);
-                let pen_bold = cartan_vec_get_f32(logits_vec, 1018.0);
-                cartan_vec_set_f32(logits_vec, 1018.0, pen_bold - 3.5);
-                let pen_this = cartan_vec_get_f32(logits_vec, 2094.0);
-                cartan_vec_set_f32(logits_vec, 2094.0, pen_this - 2.5);
-                let pen_you = cartan_vec_get_f32(logits_vec, 3048.0);
-                cartan_vec_set_f32(logits_vec, 3048.0, pen_you - 1.5);
-                let pen_eq = cartan_vec_get_f32(logits_vec, 236784.0);
-                cartan_vec_set_f32(logits_vec, 236784.0, pen_eq - 5.0);
-                let pen_jinja = cartan_vec_get_f32(logits_vec, 73313.0);
-                cartan_vec_set_f32(logits_vec, 73313.0, pen_jinja - 5.0);
-                let pen_tool46 = cartan_vec_get_f32(logits_vec, 46.0);
-                cartan_vec_set_f32(logits_vec, 46.0, pen_tool46 - 5.0);
-                let pen_tool47 = cartan_vec_get_f32(logits_vec, 47.0);
-                cartan_vec_set_f32(logits_vec, 47.0, pen_tool47 - 5.0);
-                let pen_tool = cartan_vec_get_f32(logits_vec, 48.0);
-                cartan_vec_set_f32(logits_vec, 48.0, pen_tool - 5.0);
-                let pen_tool49 = cartan_vec_get_f32(logits_vec, 49.0);
-                cartan_vec_set_f32(logits_vec, 49.0, pen_tool49 - 5.0);
-                let pen_ch100 = cartan_vec_get_f32(logits_vec, 100.0);
-                cartan_vec_set_f32(logits_vec, 100.0, pen_ch100 - 5.0);
-                let pen_ch101 = cartan_vec_get_f32(logits_vec, 101.0);
-                cartan_vec_set_f32(logits_vec, 101.0, pen_ch101 - 5.0);
-
-                // Multi-Turn Greeting Suppression: ongoing conversation should never reset to greetings
-                if (g_chat_session_pos > 0.0) {
-                    let low_p_greet = veto_string_to_lower(prompt);
-                    var is_user_greet = 0.0;
-                    if (cartan_string_eq(low_p_greet, "hello") == 1.0 ||
-                        cartan_string_eq(low_p_greet, "hello!") == 1.0 ||
-                        cartan_string_eq(low_p_greet, "hi") == 1.0 ||
-                        cartan_string_eq(low_p_greet, "hi!") == 1.0 ||
-                        cartan_string_eq(low_p_greet, "hey") == 1.0 ||
-                        cartan_string_eq(low_p_greet, "hey!") == 1.0 ||
-                        cartan_string_starts_with(low_p_greet, "hello ") == 1.0 ||
-                        cartan_string_starts_with(low_p_greet, "hi ") == 1.0 ||
-                        cartan_string_starts_with(low_p_greet, "hey ") == 1.0) {
-                        is_user_greet = 1.0;
-                    }
-                    free(low_p_greet);
-                    if (is_user_greet == 0.0) {
-                        let pen_hello = cartan_vec_get_f32(logits_vec, 9259.0);
-                        cartan_vec_set_f32(logits_vec, 9259.0, pen_hello - 12.0);
-                        let pen_hi = cartan_vec_get_f32(logits_vec, 10850.0);
-                        cartan_vec_set_f32(logits_vec, 10850.0, pen_hi - 12.0);
-                        let pen_hey = cartan_vec_get_f32(logits_vec, 18919.0);
-                        cartan_vec_set_f32(logits_vec, 18919.0, pen_hey - 12.0);
-                        let pen_welc = cartan_vec_get_f32(logits_vec, 3288.0);
-                        cartan_vec_set_f32(logits_vec, 3288.0, pen_welc - 12.0);
-                    }
-                }
-
-                // Anti-Deflection & Non-Tool Guard: strictly forbid tool and bracket openings at Step 0
-                if (geomind_is_tool_action_intent(prompt) == 0.0) {
-                    cartan_vec_set_f32(logits_vec, 60.0, -10000.0);       // '<'
-                    cartan_vec_set_f32(logits_vec, 236778.0, -10000.0);   // '<'
-                    cartan_vec_set_f32(logits_vec, 91.0, -10000.0);       // '['
-                    cartan_vec_set_f32(logits_vec, 236840.0, -10000.0);   // '['
-                    cartan_vec_set_f32(logits_vec, 46.0, -10000.0);       // '<|tool>'
-                    cartan_vec_set_f32(logits_vec, 48.0, -10000.0);       // '<|tool_call>'
-                    cartan_vec_set_f32(logits_vec, 6173.0, -10000.0);     // 'Focus'
-                    cartan_vec_set_f32(logits_vec, 23797.0, -10000.0);    // 'Regarding'
-                } else if (nses_turn.active_domain != 11.0 && cartan_string_length(prime_str) == 0.0) {
-                    let pen_focus = cartan_vec_get_f32(logits_vec, 6173.0);
-                    cartan_vec_set_f32(logits_vec, 6173.0, pen_focus - 4.0);
-                    let pen_regard = cartan_vec_get_f32(logits_vec, 23797.0);
-                    cartan_vec_set_f32(logits_vec, 23797.0, pen_regard - 4.0);
-                }
-
-                if (g_tangent_debias_enabled == 1.0 && g_chat_debug_mode == 1.0) {
-                    let clone_logits = geomind_clone_tensor(logits_vec, 262144.0);
-                    printf("\n[Step 0 Logit Inspection (Debias Active)]\n");
-                    var top_k = 0.0;
-                    while (top_k < 15.0) {
-                        var best_idx = 0.0;
-                        var best_val = -1000000.0;
-                        var vi = 0.0;
-                        while (vi < 262144.0) {
-                            let lv = cartan_vec_get_f32(clone_logits, vi);
-                            if (lv > best_val) {
-                                best_val = lv;
-                                best_idx = vi;
-                            }
-                            vi = vi + 1.0;
+            if (step == 0.0 && g_chat_debug_mode == 1.0) {
+                let clone_logits = geomind_clone_tensor(logits_vec, 262144.0);
+                printf("\n[Step 0 Logit Inspection]\n");
+                var top_k = 0.0;
+                while (top_k < 15.0) {
+                    var best_idx = 0.0;
+                    var best_val = -1000000.0;
+                    var vi = 0.0;
+                    while (vi < 262144.0) {
+                        let lv = cartan_vec_get_f32(clone_logits, vi);
+                        if (lv > best_val) {
+                            best_val = lv;
+                            best_idx = vi;
                         }
-                        let t_str = bpe_decode_token(best_idx);
-                        printf("  Rank %.0f: Token %.0f ('%s') -> Logit: %.4f\n", top_k + 1.0, best_idx, t_str, best_val);
-                        cartan_vec_set_f32(clone_logits, best_idx, -999999.0);
-                        top_k = top_k + 1.0;
+                        vi = vi + 1.0;
                     }
-                    cartan_vec_free(clone_logits);
-                    cartan_flush(0.0);
+                    let t_str = bpe_decode_token(best_idx);
+                    printf("  Rank %.0f: Token %.0f ('%s') -> Logit: %.4f\n", top_k + 1.0, best_idx, t_str, best_val);
+                    cartan_vec_set_f32(clone_logits, best_idx, -999999.0);
+                    top_k = top_k + 1.0;
                 }
+                cartan_vec_free(clone_logits);
+                cartan_flush(0.0);
             }
 
-            if (rewind_executed == 0.0 && step >= 2.0) {
+            if (rewind_executed == 0.0 && step == 2.0) {
                 let conf = cartan_tensor_compute_confidence(logits_vec, 50.0);
                 let ent = cartan_doubt_get_last_entropy();
                 if (conf < 0.01 || ent > 5.50) {
@@ -7882,19 +8627,21 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                         printf("\n[Reflective Doubt & Context Rewind] High uncertainty detected (Top-1 Conf: %s, Entropy: %s at step %s).\n",
                             cartan_float_to_string(conf), cartan_float_to_string(ent), cartan_float_to_string(step));
                         cartan_flush(0.0);
-                        printf("[Reflective Doubt & Context Rewind] Rewinding context trajectory to checkpoint, cooling temperature, and boosting taxonomy...\n");
+                        printf("[Reflective Doubt & Context Rewind] Cooling temperature and boosting taxonomy...\n");
                         cartan_flush(0.0);
                     }
-                    step = cartan_doubt_rewind(cur_h, mom, history);
                     current_temp = current_temp * 0.75;
-
-                    cartan_vec_free(logits_vec);
-                    logits_vec = cartan_tensor_compute_lm_head_logits_full(cur_h, current_temp);
-                    var rew_rep_pen = 1.15;
-                    cartan_apply_repetition_penalty(logits_vec, history, rew_rep_pen, num_prompt_toks);
-                    if (g_expert_priming_enabled == 1.0) {
-                        nses_pipeline_shape_loss(nses_pipe, nses_turn.active_domain, logits_vec, null_forbidden, 0.25);
-                        geomind_apply_stream_gated_logit_bias(logits_vec, g_active_dom_stream, g_active_dom_w);
+                    if (g_chat_buffered_output == 1.0) {
+                        step = cartan_doubt_rewind(cur_h, mom, history);
+                        cartan_vec_free(logits_vec);
+                        logits_vec = cartan_tensor_compute_lm_head_logits(cur_h, current_temp);
+                        var rew_rep_pen = g_chat_default_rep_pen;
+                        cartan_apply_repetition_penalty(logits_vec, history, rew_rep_pen, num_prompt_toks);
+                        if (g_expert_priming_enabled == 1.0) {
+                            nses_pipeline_shape_loss(nses_pipe, nses_turn.active_domain, logits_vec, null_forbidden, 0.25);
+                            geomind_apply_stream_gated_logit_bias(logits_vec, g_active_dom_stream, g_active_dom_w);
+                        }
+                        t_decode_start = clock();
                     }
                     rewind_executed = 1.0;
                 }
@@ -7928,7 +8675,20 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                 cartan_vec_set_f32(logits_vec, 954.0, -10000.0);   // '</'
             }
 
-            tok_0 = cartan_tokenizer_sample_topp_topk(logits_vec, 50.0, 0.90, current_temp);
+            // Progressive sentence-boundary <turn|> (106.0) wrap-up nudge after 220 tokens
+            if (gen_tokens_emitted >= 220.0 && tool_calls_executed == 0.0) {
+                let last_ch = prompt_scaffold_last_byte(gen_buffer);
+                if (last_ch == 46.0 || last_ch == 63.0 || last_ch == 33.0 || last_ch == 10.0) {
+                    var eot_boost = 1.5 + (gen_tokens_emitted - 220.0) * 0.03;
+                    if (eot_boost > 8.0) { eot_boost = 8.0; }
+                    let cur_eot = cartan_vec_get_f32(logits_vec, 106.0);
+                    cartan_vec_set_f32(logits_vec, 106.0, cur_eot + eot_boost);
+                }
+            }
+
+            var eff_top_p = g_chat_default_top_p;
+            if (g_rule_turn_topp_override > 0.0) { eff_top_p = g_rule_turn_topp_override; }
+            tok_0 = cartan_tokenizer_sample_topp_topk(logits_vec, g_chat_default_top_k, eff_top_p, current_temp);
             cartan_vec_free(logits_vec);
         }
         pre_sampled_tok = -1.0;
@@ -7952,6 +8712,21 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                 pre_sampled_tok = -1.0;
                 step = step + 1.0;
                 continue;
+            }
+        }
+        if (geomind_is_degenerate_symbol_token(tok_str0) == 1.0) {
+            consecutive_symbol_tokens = consecutive_symbol_tokens + 1.0;
+            if (consecutive_symbol_tokens >= 5.0 && gen_tokens_emitted >= 16.0) {
+                break;
+            }
+        } else {
+            consecutive_symbol_tokens = 0.0;
+        }
+        if (gen_tokens_emitted >= 32.0) {
+            let cur_txt = prompt_scaffold_get_text(gen_buffer);
+            if (cartan_string_contains(cur_txt, "Initialization complete.") == 1.0 ||
+                cartan_string_contains(cur_txt, "scribing to external") == 1.0) {
+                break;
             }
         }
 
@@ -8082,6 +8857,12 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
         }
         step = step + 1.0;
         gen_tokens_emitted = gen_tokens_emitted + 1.0;
+        if (max_t >= 128.0 && gen_tokens_emitted >= (max_t - 48.0)) {
+            let end_ch = prompt_scaffold_last_byte(gen_buffer);
+            if (end_ch == 46.0 || end_ch == 63.0 || end_ch == 33.0) {
+                break;
+            }
+        }
         if (g_chat_buffered_output == 1.0 && g_chat_use_animation == 1.0) {
             let t_now = clock();
             let elapsed_ms = t_now - t_decode_start;
@@ -8096,7 +8877,7 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
         }
 
         // Reactive Agentic Tool Call Interception: gated strictly by user tool action intent
-        if (tool_calls_executed < 5.0 && geomind_is_tool_action_intent(prompt) == 1.0) {
+        if (tool_calls_executed < 5.0 && is_tool_intent == 1.0) {
             let gen_text = prompt_scaffold_get_text(gen_buffer);
             var tc_start = geomind_string_index_of_offset_ignore_case(gen_text, "<tool_call:", last_tool_call_offset);
             var is_json_tool = 0.0;
@@ -8131,6 +8912,7 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
                     last_tool_call_offset = tc_end;
                     let call_str = cartan_string_substring(gen_text, tc_start, tc_end);
                     let tool_resp = geomind_parse_and_dispatch_tool_call(call_str);
+                    if (g_rule_turn_temp_override > 0.0) { current_temp = g_rule_turn_temp_override; }
                     if (cartan_string_length(tool_resp) > 0.0) {
                         if (g_chat_buffered_output == 0.0) {
                             printf("%s", tool_resp);
@@ -8170,7 +8952,14 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
         }
     }
 
+        let t_decode_end = clock();
+        let dt_decode = t_decode_end - t_decode_start;
+        var tok_per_sec = 0.0;
+        if (dt_decode > 0.0 && step > 0.0) {
+            tok_per_sec = (step * 1000.0) / dt_decode;
+        }
         full_gen_text = prompt_scaffold_get_text(gen_buffer);
+        geomind_parse_and_apply_self_rule_ops(db, full_gen_text);
         var display_resp = geomind_sanitize_output_for_display(full_gen_text);
         if (g_chat_buffered_output == 1.0) {
             if (g_chat_use_animation == 1.0) {
@@ -8207,15 +8996,9 @@ fn geomind_chat_generate_reply_multimodal(prompt: string, max_tokens: float, tem
             if (g_chat_debug_mode == 1.0) {
                 printf(" [Hopfield Energy Minimum: %s]\n", cartan_float_to_string(hopfield_energy));
             } else {
-                printf("\n");
+                printf("\n%s[%.0f tokens, %.1f tok/s]%s\n", geomind_col_gray(), step, tok_per_sec, geomind_col_reset());
             }
             cartan_flush(0.0);
-        }
-        let t_decode_end = clock();
-        let dt_decode = t_decode_end - t_decode_start;
-        var tok_per_sec = 0.0;
-        if (dt_decode > 0.0 && step > 0.0) {
-            tok_per_sec = (step * 1000.0) / dt_decode;
         }
         var avg_layers = 42.0;
         if (g_telemetry_total_decode_tokens > 0.0) {
@@ -8549,12 +9332,11 @@ fn geomind_chat_generate_reasoning_pass(prompt: string, temp: float) -> float {
     let prompt_conf = cartan_tensor_compute_confidence(prompt_logits, 50.0);
     let prompt_ent = cartan_doubt_get_last_entropy();
 
-    if (g_chat_use_animation == 1.0) {
-        printf("%s", geomind_col_erase_line());
-        cartan_flush(0.0);
-    }
-
     if (g_chat_show_thinking == 1.0) {
+        if (g_chat_use_animation == 1.0) {
+            printf("%s", geomind_col_erase_line());
+            cartan_flush(0.0);
+        }
         let c_amb = geomind_col_amber();
         let c_rst = geomind_col_reset();
         printf("\n%s+-- [Thought Process] --------------------------------------------------+%s\n", c_amb, c_rst);
@@ -8579,9 +9361,6 @@ fn geomind_chat_generate_reasoning_pass(prompt: string, temp: float) -> float {
         printf("%s|%s [Reflective Skepticism & Certainty] Initial Confidence: %s | Shannon Entropy: %s\n", c_amb, c_rst, cartan_float_to_string(prompt_conf), cartan_float_to_string(prompt_ent));
         printf("%s|%s [Chain-of-Thought Synthesis] Formulating dynamic, contextual response strategy for Pass 2.\n", c_amb, c_rst);
         printf("%s+-- [Ready to Generate] ------------------------------------------------+%s\n\n", c_amb, c_rst);
-        cartan_flush(0.0);
-    } else {
-        printf("%s[Thinking complete]%s\n", geomind_col_green(), geomind_col_reset());
         cartan_flush(0.0);
     }
 

@@ -1,0 +1,53 @@
+// Regression Test for [ISSUE-406], [ISSUE-407], and [ISSUE-408]
+// Verifies:
+//   [ISSUE-406] AST optimizer constant folding (integer & fractional float, identity folding,
+//               nested statements/blocks, and constant-folded tensor shape declarations).
+//   [ISSUE-408] TypeChecker FunctionDecl vs ParameterDecl/VectorDecl discriminants and
+//               struct/typed parameter field access inside functions.
+
+struct LayerConfig {
+    scale: float;
+    bias: float;
+}
+
+fn compute_scaled(cfg: LayerConfig, x: float) -> float {
+    // [ISSUE-408] Typed struct parameter `cfg` field access must resolve without TypeError
+    let s = cfg.scale;
+    let b = cfg.bias;
+    // [ISSUE-406] Fractional float constant folding (0.25 + 0.5 == 0.75) and identity folding
+    let frac = (0.25 + 0.5) * 1.0 + 0.0;
+    return x * s + b + frac;
+}
+
+fn main() {
+    parameter global_w[2 * 2];
+    vector global_v[2 * 2];
+    tensor FoldedTensor[2 * 4];
+
+    var cfg = LayerConfig { scale: 1.5 + 0.5, bias: 10.0 - 7.0 };
+
+    // Nested block & control flow constant folding
+    var acc = 0.0;
+    var idx = 0.0;
+    while (idx < 1.0 + 2.0) {
+        if (2.0 * 3.0 == 6.0) {
+            acc = acc + (4.0 / 2.0);
+        }
+        idx = idx + (1.0 * 1.0);
+    }
+
+    let res = compute_scaled(cfg, acc);
+    // Expected:
+    //   cfg.scale = 2.0, cfg.bias = 3.0
+    //   acc = 2.0 * 3 = 6.0
+    //   frac = 0.75
+    //   res = 6.0 * 2.0 + 3.0 + 0.75 = 15.75
+    printf("acc: %.2f\n", acc);
+    printf("res: %.2f\n", res);
+
+    if (acc == 6.0 && res == 15.75) {
+        printf("PASS: ISSUE-406 & ISSUE-408 VERIFIED\n");
+    } else {
+        printf("FAIL: ISSUE-406 & ISSUE-408 MISMATCH\n");
+    }
+}

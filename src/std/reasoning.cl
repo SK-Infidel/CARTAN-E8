@@ -219,48 +219,58 @@ fn cartan_tensor_compute_confidence(logits: ptr, top_k: float) -> float {
     if (k > 50.0) { k = 50.0; }
     if (k > len) { k = len; }
 
-    let top_logits = cartan_vec_create();
+    let top_logits = malloc(k * 8.0);
     var idx = 0.0;
     while (idx < k) {
-        cartan_vec_push_f32(top_logits, -1000000.0);
+        top_logits[idx] = -1000000.0;
         idx = idx + 1.0;
     }
 
+    let is_flat = (cartan_c_is_tree(logits) == 0.0);
     var i = 0.0;
     while (i < len) {
-        let val = cartan_vec_get_f32(logits, i);
-        let last_top = cartan_vec_get_f32(top_logits, k - 1.0);
+        var val = 0.0;
+        if (is_flat) {
+            val = logits[2.0 + i];
+        } else {
+            val = cartan_vec_get_f32(logits, i);
+        }
+        let last_top = top_logits[k - 1.0];
         if (val > last_top) {
             var pos = k - 1.0;
-            while (pos > 0.0 && val > cartan_vec_get_f32(top_logits, pos - 1.0)) {
-                cartan_vec_set_f32(top_logits, pos, cartan_vec_get_f32(top_logits, pos - 1.0));
+            while (pos > 0.0 && val > top_logits[pos - 1.0]) {
+                top_logits[pos] = top_logits[pos - 1.0];
                 pos = pos - 1.0;
             }
-            cartan_vec_set_f32(top_logits, pos, val);
+            top_logits[pos] = val;
         }
         i = i + 1.0;
     }
 
-    let max_l = cartan_vec_get_f32(top_logits, 0.0);
-    let exp_vals = cartan_vec_create();
+    let max_l = top_logits[0.0];
+    let exp_vals = malloc(k * 8.0);
     var sum_exp = 0.0;
     var j = 0.0;
     while (j < k) {
-        let e = math_exp(cartan_vec_get_f32(top_logits, j) - max_l);
-        cartan_vec_push_f32(exp_vals, e);
+        let e = math_exp(top_logits[j] - max_l);
+        exp_vals[j] = e;
         sum_exp = sum_exp + e;
         j = j + 1.0;
     }
 
-    if (sum_exp <= 0.0) { return 0.0; }
+    if (sum_exp <= 0.0) {
+        free(top_logits);
+        free(exp_vals);
+        return 0.0;
+    }
 
-    let top1_prob = cartan_vec_get_f32(exp_vals, 0.0) / sum_exp;
+    let top1_prob = exp_vals[0.0] / sum_exp;
     g_doubt_last_confidence = top1_prob;
 
     var entropy = 0.0;
     var m = 0.0;
     while (m < k) {
-        let p = cartan_vec_get_f32(exp_vals, m) / sum_exp;
+        let p = exp_vals[m] / sum_exp;
         if (p > 0.000000000001) {
             entropy = entropy - (p * math_log(p));
         }
@@ -268,6 +278,8 @@ fn cartan_tensor_compute_confidence(logits: ptr, top_k: float) -> float {
     }
     g_doubt_last_entropy = entropy;
 
+    free(top_logits);
+    free(exp_vals);
     return top1_prob;
 }
 

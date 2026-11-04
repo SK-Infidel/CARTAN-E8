@@ -19,6 +19,7 @@ extern fn cartan_f32_ptr_add(p: ptr, offset: float) -> ptr;
 extern fn cartan_simd_dot_f32(p1: ptr, p2: ptr, count: float) -> float;
 extern fn cartan_simd_dot_i8_f32(w_i8: ptr, x_f32: ptr, scale: float, count: float) -> float;
 extern fn cartan_simd_dot_i4_f32(w_i4: ptr, x_f32: ptr, scale: float, count: float) -> float;
+extern fn cartan_simd_axpy_f32(dst: ptr, src: ptr, scale: float, count: float) -> void;
 extern fn cartan_byte_at(p: ptr, offset: float) -> float;
 extern fn cartan_set_byte(p: ptr, offset: float, val: float) -> void;
 extern fn cartan_f32_at(p: ptr, offset: float) -> float;

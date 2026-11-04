@@ -656,6 +656,9 @@ fn geomind_chat_interactive_loop(image_arg: string, audio_arg: string, tokens_ar
             printf("  /ls [path]              List directory contents\n");
             printf("  /browse <url>           Fetch and parse web page with hyperlinks\n");
             printf("  /screen                 Capture active desktop and extract on-screen OCR text\n");
+            printf("  /config, /reload        Display or reload geomind_config.json\n");
+            printf("  /rules                  Display all cognitive rules (from config & cognitive_memory.db)\n");
+            printf("  /rule <op> ...          Manage rules: enable <id> | disable <id> | del <id> | add <id>|<trig>|<hook>|<dir>\n");
             printf("  /debug                  Toggle diagnostic telemetry\n");
             printf("  /exit, exit, quit       End interactive REPL session\n");
             printf("  Shortcut: Press '/' at any time during generation to immediately interrupt.\n\n");
@@ -873,14 +876,24 @@ fn geomind_chat_interactive_loop(image_arg: string, audio_arg: string, tokens_ar
             let b_out = geomind_tool_browse_web(b_url);
             printf("%s\n\n", b_out);
             cartan_flush(0.0);
+        } else if (cartan_string_eq(line, "/config") == 1.0) {
+            geomind_chat_print_config();
+        } else if (cartan_string_eq(line, "/reload") == 1.0) {
+            geomind_chat_load_config();
+            geomind_chat_print_config();
+        } else if (cartan_string_eq(line, "/rules") == 1.0) {
+            geomind_chat_print_rules();
+        } else if (cartan_string_starts_with(line, "/rule ") == 1.0) {
+            geomind_chat_handle_rule_repl_command(line);
         } else if (cartan_string_eq(line, "/screen") == 1.0) {
             let s_out = geomind_tool_read_screen();
             printf("%s\n\n", s_out);
             cartan_flush(0.0);
         } else {
             if (len > 0.0) {
-                geomind_chat_generate_reasoning_pass(line, 0.7);
-                geomind_chat_generate_reply_multimodal(line, tokens_arg, 0.7, image_arg, audio_arg);
+                let cur_temp = geomind_chat_get_default_temp();
+                geomind_chat_generate_reasoning_pass(line, cur_temp);
+                geomind_chat_generate_reply_multimodal(line, tokens_arg, cur_temp, image_arg, audio_arg);
                 cartan_flush(0.0);
             }
         }
@@ -906,11 +919,13 @@ fn geomind_run_chat_mode(arg_count: float, no_priming: float) -> float {
     var prompt_arg = get_cli_prompt(arg_count);
     var tokens_arg = get_cli_param_float("-tokens", arg_count, 0.0);
     if (tokens_arg <= 0.0) {
-        tokens_arg = get_cli_param_float("-max-tokens", arg_count, 2048.0);
+        tokens_arg = get_cli_param_float("-max-tokens", arg_count, geomind_chat_get_default_max_tokens());
     }
-    let temp_arg = get_cli_param_float("-temp", arg_count, 0.7);
-    let cli_context = get_cli_param_float("-context", arg_count, 16384.0);
-    geomind_chat_set_context_limit(cli_context);
+    let temp_arg = get_cli_param_float("-temp", arg_count, geomind_chat_get_default_temp());
+    if (get_cli_flag_present("-context", arg_count) > 0.0) {
+        let cli_context = get_cli_param_float("-context", arg_count, geomind_chat_get_context_limit());
+        geomind_chat_set_context_limit(cli_context);
+    }
 
     let user_cli = get_cli_param("-user", arg_count);
     if (cartan_string_length(user_cli) > 0.0) {
@@ -925,6 +940,11 @@ fn geomind_run_chat_mode(arg_count: float, no_priming: float) -> float {
         geomind_chat_set_show_thinking(1.0);
     }
 
+    let buffered_flag = get_cli_flag_present("-buffered", arg_count) +
+                        get_cli_flag_present("--buffered", arg_count);
+    if (buffered_flag > 0.0) {
+        geomind_chat_set_buffered_output(1.0);
+    }
     let stream_flag = get_cli_flag_present("-stream", arg_count) +
                       get_cli_flag_present("--stream", arg_count);
     if (stream_flag > 0.0) {
@@ -970,9 +990,12 @@ fn main() -> float {
         print_help_dialogue();
         return 0.0;
     }
-    let default_tokens = get_cli_param_float("-tokens", arg_count, 2048.0);
-    let cli_context = get_cli_param_float("-context", arg_count, 16384.0);
-    geomind_chat_set_context_limit(cli_context);
+    geomind_chat_load_config();
+    let default_tokens = get_cli_param_float("-tokens", arg_count, geomind_chat_get_default_max_tokens());
+    if (get_cli_flag_present("-context", arg_count) > 0.0) {
+        let cli_context = get_cli_param_float("-context", arg_count, geomind_chat_get_context_limit());
+        geomind_chat_set_context_limit(cli_context);
+    }
     let debug_flag = get_cli_flag_present("-debug", arg_count);
     if (debug_flag > 0.0) {
         geomind_chat_set_debug_mode(1.0);
@@ -1057,7 +1080,9 @@ fn main() -> float {
                       get_cli_flag_present("--debias", arg_count);
     let no_debias_flag = get_cli_flag_present("-no-debias", arg_count) +
                          get_cli_flag_present("--no-debias", arg_count);
-    if (debias_flag > 0.0 && no_debias_flag == 0.0) {
+    if (no_debias_flag > 0.0) {
+        geomind_chat_set_tangent_debias(0.0);
+    } else if (debias_flag > 0.0) {
         geomind_chat_set_tangent_debias(1.0);
         let layer_str = get_cli_param("-debias-layer", arg_count);
         if (cartan_string_length(layer_str) > 0.0) {
@@ -1074,8 +1099,6 @@ fn main() -> float {
             }
         }
         printf("[GeoMind Mode] Tangent Bundle Alignment Debias ENABLED (Layer %.0f Rank-%.0f Orthonormal Subspace Active, Strength %.2f)\n", geomind_chat_get_debias_layer(), geomind_chat_get_debias_rank(), geomind_chat_get_debias_strength());
-    } else {
-        geomind_chat_set_tangent_debias(0.0);
     }
 
     // Default mode: Interactive chat (launches automatically when typing geomind.exe or if no non-chat mode was requested)

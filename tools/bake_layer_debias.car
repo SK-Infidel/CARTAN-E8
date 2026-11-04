@@ -1,0 +1,459 @@
+// tools/bake_layer_debias.car
+// Bakes calibrated neutral alignment subspace attenuation (alpha = 0.65) directly into
+// Manifold Layer 32 output projections (w_o, w_down, w_ple_proj) in FP32, INT8, and INT4 weight files.
+
+include "src/std/math.cl";
+
+extern fn printf(fmt: string, a: string) -> float;
+extern fn fopen(path: string, mode: string) -> ptr;
+extern fn fclose(file: ptr) -> float;
+extern fn fread(buffer: ptr, size: float, count: float, file: ptr) -> float;
+extern fn fwrite(buffer: ptr, size: float, count: float, file: ptr) -> float;
+extern fn malloc(size: float) -> ptr;
+extern fn free(p: ptr);
+extern fn cartan_f32_at(p: ptr, offset: float) -> float;
+extern fn cartan_set_f32(p: ptr, offset: float, val: float) -> void;
+extern fn cartan_set_byte(p: ptr, offset: float, val: float) -> void;
+extern fn cartan_c_ptr_add(p: ptr, offset: float) -> ptr;
+extern fn cartan_f32_ptr_add(p: ptr, offset: float) -> ptr;
+extern fn cartan_int_to_string(v: float) -> string;
+extern fn cartan_float_to_string(v: float) -> string;
+extern fn cartan_file_exists(path: string) -> float;
+extern fn cartan_string_concat(s1: string, s2: string) -> string;
+extern fn cartan_flush(v: float) -> float;
+
+fn round_f32(x: float) -> float {
+    if (x >= 0.0) {
+        return math_floor(x + 0.5);
+    }
+    return -math_floor(-x + 0.5);
+}
+
+// Attenuates W (rows=dim, cols=cols) along the rank-5 subspace in post-norm metric
+// using the self-adjoint identity <D * W * x, u_k> = <W * x, D * u_k>.
+// By orthonormalizing v_k = D * u_k into V_hat, W' = (I - alpha * V_hat * V_hat^T) * W
+// is a strictly bounded Euclidean contraction (singular values in [1-alpha, 1]) that
+// attenuates <D * W * x, u_k> by (1 - alpha) with zero division by small post_norm weights.
+fn attenuate_output_matrix(w_mat: ptr, post_norm: ptr, subspace: ptr, rank: float, dim: float, cols: float, alpha: float, name: string) -> float {
+    printf(cartan_string_concat("  Baking neutral subspace attenuation into ", name), "");
+    printf("...\n", "");
+    cartan_flush(0.0);
+
+    // 1. Construct and Gram-Schmidt orthonormalize v_k = post_norm .* u_k
+    let v_basis = malloc(rank * dim * 4.0);
+    var k = 0.0;
+    while (k < rank) {
+        let u_k = cartan_f32_ptr_add(subspace, k * dim);
+        let v_k = cartan_f32_ptr_add(v_basis, k * dim);
+        var r = 0.0;
+        while (r < dim) {
+            cartan_set_f32(v_k, r, cartan_f32_at(post_norm, r) * cartan_f32_at(u_k, r));
+            r = r + 1.0;
+        }
+        // Orthogonalize against previous v_0 .. v_{k-1}
+        var j = 0.0;
+        while (j < k) {
+            let v_j = cartan_f32_ptr_add(v_basis, j * dim);
+            var dot_jk = 0.0;
+            r = 0.0;
+            while (r < dim) {
+                dot_jk = dot_jk + cartan_f32_at(v_k, r) * cartan_f32_at(v_j, r);
+                r = r + 1.0;
+            }
+            r = 0.0;
+            while (r < dim) {
+                cartan_set_f32(v_k, r, cartan_f32_at(v_k, r) - dot_jk * cartan_f32_at(v_j, r));
+                r = r + 1.0;
+            }
+            j = j + 1.0;
+        }
+        // Normalize v_k
+        var norm_sq = 0.0;
+        r = 0.0;
+        while (r < dim) {
+            let val = cartan_f32_at(v_k, r);
+            norm_sq = norm_sq + val * val;
+            r = r + 1.0;
+        }
+        let inv_norm = 1.0 / (math_sqrt(norm_sq) + 0.00000001);
+        r = 0.0;
+        while (r < dim) {
+            cartan_set_f32(v_k, r, cartan_f32_at(v_k, r) * inv_norm);
+            r = r + 1.0;
+        }
+        k = k + 1.0;
+    }
+
+    let col_dots = malloc(cols * 4.0);
+    k = 0.0;
+    while (k < rank) {
+        let v_k = cartan_f32_ptr_add(v_basis, k * dim);
+
+        // Zero col_dots
+        var c = 0.0;
+        while (c < cols) {
+            cartan_set_f32(col_dots, c, 0.0);
+            c = c + 1.0;
+        }
+
+        // Accumulate col_dots[c] += v_k[r] * W[r, c] row by row
+        var r = 0.0;
+        while (r < dim) {
+            let vk_r = cartan_f32_at(v_k, r);
+            let w_row = cartan_f32_ptr_add(w_mat, r * cols);
+            c = 0.0;
+            while (c < cols) {
+                cartan_set_f32(col_dots, c, cartan_f32_at(col_dots, c) + vk_r * cartan_f32_at(w_row, c));
+                c = c + 1.0;
+            }
+            r = r + 1.0;
+        }
+
+        // Update W[r, c] -= (alpha * v_k[r]) * col_dots[c] row by row
+        r = 0.0;
+        while (r < dim) {
+            let avk_r = alpha * cartan_f32_at(v_k, r);
+            let w_row = cartan_f32_ptr_add(w_mat, r * cols);
+            c = 0.0;
+            while (c < cols) {
+                cartan_set_f32(w_row, c, cartan_f32_at(w_row, c) - avk_r * cartan_f32_at(col_dots, c));
+                c = c + 1.0;
+            }
+            r = r + 1.0;
+        }
+
+        k = k + 1.0;
+    }
+
+    free(v_basis);
+    free(col_dots);
+    return 1.0;
+}
+
+fn quantize_and_write_matrix_block_i8(fin: ptr, fout: ptr, rows: float, cols: float, name: string) -> float {
+    printf(cartan_string_concat("  Quantizing INT8 ", name), "");
+    printf("...\n", "");
+    cartan_flush(0.0);
+
+    let row_floats = malloc(cols * 4.0);
+    let scales = malloc(rows * 4.0);
+    let total_bytes = rows * cols;
+    let all_weights = malloc(total_bytes);
+
+    var r = 0.0;
+    while (r < rows) {
+        fread(row_floats, 4.0, cols, fin);
+
+        var max_abs = 0.0;
+        var c = 0.0;
+        while (c < cols) {
+            let val = math_abs(cartan_f32_at(row_floats, c));
+            if (val > max_abs) {
+                max_abs = val;
+            }
+            c = c + 1.0;
+        }
+
+        var scale = 1.0;
+        if (max_abs > 0.0000001) {
+            scale = max_abs / 127.0;
+        }
+        cartan_set_f32(scales, r, scale);
+        let inv_scale = 1.0 / scale;
+
+        let row_dest = cartan_c_ptr_add(all_weights, r * cols);
+        c = 0.0;
+        while (c < cols) {
+            let fval = cartan_f32_at(row_floats, c);
+            var q = round_f32(fval * inv_scale);
+            if (q > 127.0) { q = 127.0; }
+            if (q < -127.0) { q = -127.0; }
+            cartan_set_byte(row_dest, c, q);
+            c = c + 1.0;
+        }
+
+        r = r + 1.0;
+    }
+
+    fwrite(scales, 4.0, rows, fout);
+    fwrite(all_weights, 1.0, total_bytes, fout);
+
+    free(row_floats);
+    free(scales);
+    free(all_weights);
+    return 1.0;
+}
+
+fn quantize_and_write_matrix_block_i4(fin: ptr, fout: ptr, rows: float, cols: float, name: string) -> float {
+    printf(cartan_string_concat("  Quantizing INT4 ", name), "");
+    printf("...\n", "");
+    cartan_flush(0.0);
+
+    let row_floats = malloc(cols * 4.0);
+    let scales = malloc(rows * 4.0);
+    let row_packed_bytes = cols * 0.5;
+    let total_packed_bytes = rows * row_packed_bytes;
+    let all_weights = malloc(total_packed_bytes);
+
+    var r = 0.0;
+    while (r < rows) {
+        fread(row_floats, 4.0, cols, fin);
+
+        var max_abs = 0.0;
+        var c = 0.0;
+        while (c < cols) {
+            let val = math_abs(cartan_f32_at(row_floats, c));
+            if (val > max_abs) {
+                max_abs = val;
+            }
+            c = c + 1.0;
+        }
+
+        var scale = 1.0;
+        if (max_abs > 0.0000001) {
+            scale = max_abs / 7.0;
+        }
+        cartan_set_f32(scales, r, scale);
+        let inv_scale = 1.0 / scale;
+
+        let row_dest = cartan_c_ptr_add(all_weights, r * row_packed_bytes);
+        c = 0.0;
+        while (c < cols) {
+            let f0 = cartan_f32_at(row_floats, c);
+            var q0 = round_f32(f0 * inv_scale);
+            if (q0 > 7.0) { q0 = 7.0; }
+            if (q0 < -7.0) { q0 = -7.0; }
+
+            let f1 = cartan_f32_at(row_floats, c + 1.0);
+            var q1 = round_f32(f1 * inv_scale);
+            if (q1 > 7.0) { q1 = 7.0; }
+            if (q1 < -7.0) { q1 = -7.0; }
+
+            var u0 = q0;
+            if (u0 < 0.0) { u0 = u0 + 16.0; }
+            var u1 = q1;
+            if (u1 < 0.0) { u1 = u1 + 16.0; }
+
+            let packed = u0 + u1 * 16.0;
+            let byte_idx = c * 0.5;
+            cartan_set_byte(row_dest, byte_idx, packed);
+
+            c = c + 2.0;
+        }
+
+        r = r + 1.0;
+    }
+
+    fwrite(scales, 4.0, rows, fout);
+    fwrite(all_weights, 1.0, total_packed_bytes, fout);
+
+    free(row_floats);
+    free(scales);
+    free(all_weights);
+    return 1.0;
+}
+
+fn copy_fp32_vector(fin: ptr, fout: ptr, count: float) -> float {
+    let buf = malloc(count * 4.0);
+    fread(buf, 4.0, count, fin);
+    fwrite(buf, 4.0, count, fout);
+    free(buf);
+    return 1.0;
+}
+
+fn quantize_layer_both(in_fp32_path: string, out_int8_path: string, out_int4_path: string) -> float {
+    // 1. Quantize to INT8
+    let fin8 = fopen(in_fp32_path, "rb");
+    let fout8 = fopen(out_int8_path, "wb");
+    let hdr = malloc(64.0);
+    fread(hdr, 4.0, 16.0, fin8);
+    let dim = cartan_f32_at(hdr, 6.0);
+    let inter_dim = cartan_f32_at(hdr, 7.0);
+    let q_dim = cartan_f32_at(hdr, 8.0);
+    let kv_dim = cartan_f32_at(hdr, 9.0);
+    let ple_dim = cartan_f32_at(hdr, 10.0);
+    cartan_set_f32(hdr, 11.0, 1.0);
+    fwrite(hdr, 4.0, 16.0, fout8);
+
+    copy_fp32_vector(fin8, fout8, dim);
+    quantize_and_write_matrix_block_i8(fin8, fout8, q_dim, dim, "w_q");
+    quantize_and_write_matrix_block_i8(fin8, fout8, kv_dim, dim, "w_k");
+    quantize_and_write_matrix_block_i8(fin8, fout8, kv_dim, dim, "w_v");
+    quantize_and_write_matrix_block_i8(fin8, fout8, dim, q_dim, "w_o");
+    copy_fp32_vector(fin8, fout8, 512.0);
+    copy_fp32_vector(fin8, fout8, 512.0);
+    copy_fp32_vector(fin8, fout8, dim);
+    copy_fp32_vector(fin8, fout8, dim);
+    quantize_and_write_matrix_block_i8(fin8, fout8, inter_dim, dim, "w_gate");
+    quantize_and_write_matrix_block_i8(fin8, fout8, inter_dim, dim, "w_up");
+    quantize_and_write_matrix_block_i8(fin8, fout8, dim, inter_dim, "w_down");
+    copy_fp32_vector(fin8, fout8, dim);
+    quantize_and_write_matrix_block_i8(fin8, fout8, ple_dim, dim, "w_ple_gate");
+    quantize_and_write_matrix_block_i8(fin8, fout8, dim, ple_dim, "w_ple_proj");
+    copy_fp32_vector(fin8, fout8, dim);
+    fclose(fin8);
+    fclose(fout8);
+
+    // 2. Quantize to INT4
+    let fin4 = fopen(in_fp32_path, "rb");
+    let fout4 = fopen(out_int4_path, "wb");
+    fread(hdr, 4.0, 16.0, fin4);
+    cartan_set_f32(hdr, 11.0, 2.0);
+    fwrite(hdr, 4.0, 16.0, fout4);
+    free(hdr);
+
+    copy_fp32_vector(fin4, fout4, dim);
+    quantize_and_write_matrix_block_i4(fin4, fout4, q_dim, dim, "w_q");
+    quantize_and_write_matrix_block_i4(fin4, fout4, kv_dim, dim, "w_k");
+    quantize_and_write_matrix_block_i4(fin4, fout4, kv_dim, dim, "w_v");
+    quantize_and_write_matrix_block_i4(fin4, fout4, dim, q_dim, "w_o");
+    copy_fp32_vector(fin4, fout4, 512.0);
+    copy_fp32_vector(fin4, fout4, 512.0);
+    copy_fp32_vector(fin4, fout4, dim);
+    copy_fp32_vector(fin4, fout4, dim);
+    quantize_and_write_matrix_block_i4(fin4, fout4, inter_dim, dim, "w_gate");
+    quantize_and_write_matrix_block_i4(fin4, fout4, inter_dim, dim, "w_up");
+    quantize_and_write_matrix_block_i4(fin4, fout4, dim, inter_dim, "w_down");
+    copy_fp32_vector(fin4, fout4, dim);
+    quantize_and_write_matrix_block_i4(fin4, fout4, ple_dim, dim, "w_ple_gate");
+    quantize_and_write_matrix_block_i4(fin4, fout4, dim, ple_dim, "w_ple_proj");
+    copy_fp32_vector(fin4, fout4, dim);
+    fclose(fin4);
+    fclose(fout4);
+    return 1.0;
+}
+
+fn main() -> float {
+    let bak_fp32_path = "Projects/geomind/trainingdata/Checkpoints/layers/manifold_layer_32.bin.bak_pre_debias";
+    let out_fp32_path = "Projects/geomind/trainingdata/Checkpoints/layers/manifold_layer_32.bin";
+    let out_int8_path = "Projects/geomind/trainingdata/Checkpoints/layers/manifold_layer_32_int8.bin";
+    let out_int4_path = "Projects/geomind/trainingdata/Checkpoints/layers/manifold_layer_32_int4.bin";
+    let sub_path = "Projects/geomind/trainingdata/Checkpoints/geomind_alignment_subspace.bin";
+
+    if (cartan_file_exists(bak_fp32_path) == 0.0) {
+        printf("[Error] Backup file %s not found! Refusing to modify weights without backup.\n", bak_fp32_path);
+        return 1.0;
+    }
+    if (cartan_file_exists(sub_path) == 0.0) {
+        printf("[Error] Subspace file %s not found!\n", sub_path);
+        return 1.0;
+    }
+
+    // Load 5-rank behavioral subspace (5 * 2560 floats, orthogonal to 11-D C_en protecting GeoMind & Rick)
+    let subspace = malloc(5.0 * 2560.0 * 4.0);
+    let fsub = fopen(sub_path, "rb");
+    let sub_read = fread(subspace, 4.0, 5.0 * 2560.0, fsub);
+    fclose(fsub);
+    if (sub_read < 2560.0) {
+        printf("[Error] Subspace file too short!\n", "");
+        free(subspace);
+        return 1.0;
+    }
+    var rank = 5.0;
+    if (sub_read < 5.0 * 2560.0) {
+        rank = 1.0;
+    }
+
+    printf("=====================================================================\n", "");
+    printf("Baking Neutral Subspace Debias (alpha=0.65) into Layer 32 Weights\n", "");
+    printf("=====================================================================\n", "");
+    cartan_flush(0.0);
+
+    let fin = fopen(bak_fp32_path, "rb");
+    let fout = fopen(out_fp32_path, "wb");
+
+    // 1. Header (16 floats)
+    let hdr = malloc(64.0);
+    fread(hdr, 4.0, 16.0, fin);
+    fwrite(hdr, 4.0, 16.0, fout);
+
+    let dim = cartan_f32_at(hdr, 6.0);
+    let inter_dim = cartan_f32_at(hdr, 7.0);
+    let q_dim = cartan_f32_at(hdr, 8.0);
+    let kv_dim = cartan_f32_at(hdr, 9.0);
+    let ple_dim = cartan_f32_at(hdr, 10.0);
+    free(hdr);
+
+    // 2. w_in_norm (dim)
+    copy_fp32_vector(fin, fout, dim);
+    // 3. w_q (q_dim * dim)
+    copy_fp32_vector(fin, fout, q_dim * dim);
+    // 4. w_k (kv_dim * dim)
+    copy_fp32_vector(fin, fout, kv_dim * dim);
+    // 5. w_v (kv_dim * dim)
+    copy_fp32_vector(fin, fout, kv_dim * dim);
+
+    // 6..9: Read w_o (dim * q_dim), w_q_norm (512), w_k_norm (512), w_post_attn_norm (dim)
+    let w_o = malloc(dim * q_dim * 4.0);
+    let w_qn = malloc(512.0 * 4.0);
+    let w_kn = malloc(512.0 * 4.0);
+    let w_post_attn = malloc(dim * 4.0);
+    fread(w_o, 4.0, dim * q_dim, fin);
+    fread(w_qn, 4.0, 512.0, fin);
+    fread(w_kn, 4.0, 512.0, fin);
+    fread(w_post_attn, 4.0, dim, fin);
+
+    // Attenuate w_o with alpha = 0.65
+    attenuate_output_matrix(w_o, w_post_attn, subspace, rank, dim, q_dim, 0.65, "w_o");
+
+    fwrite(w_o, 4.0, dim * q_dim, fout);
+    fwrite(w_qn, 4.0, 512.0, fout);
+    fwrite(w_kn, 4.0, 512.0, fout);
+    fwrite(w_post_attn, 4.0, dim, fout);
+    free(w_o);
+    free(w_qn);
+    free(w_kn);
+    free(w_post_attn);
+
+    // 10. w_pre_ffn_norm (dim)
+    copy_fp32_vector(fin, fout, dim);
+    // 11. w_gate (inter_dim * dim)
+    copy_fp32_vector(fin, fout, inter_dim * dim);
+    // 12. w_up (inter_dim * dim)
+    copy_fp32_vector(fin, fout, inter_dim * dim);
+
+    // 13..14: Read w_down (dim * inter_dim) and w_post_ffn_norm (dim)
+    let w_down = malloc(dim * inter_dim * 4.0);
+    let w_post_ffn = malloc(dim * 4.0);
+    fread(w_down, 4.0, dim * inter_dim, fin);
+    fread(w_post_ffn, 4.0, dim, fin);
+
+    // Attenuate w_down with alpha = 0.65
+    attenuate_output_matrix(w_down, w_post_ffn, subspace, rank, dim, inter_dim, 0.65, "w_down");
+
+    fwrite(w_down, 4.0, dim * inter_dim, fout);
+    fwrite(w_post_ffn, 4.0, dim, fout);
+    free(w_down);
+    free(w_post_ffn);
+
+    // 15. w_ple_gate (ple_dim * dim)
+    copy_fp32_vector(fin, fout, ple_dim * dim);
+
+    // 16..17: Read w_ple_proj (dim * ple_dim) and w_ple_norm (dim)
+    let w_ple_proj = malloc(dim * ple_dim * 4.0);
+    let w_ple_norm = malloc(dim * 4.0);
+    fread(w_ple_proj, 4.0, dim * ple_dim, fin);
+    fread(w_ple_norm, 4.0, dim, fin);
+
+    // Attenuate w_ple_proj with alpha = 0.65
+    attenuate_output_matrix(w_ple_proj, w_ple_norm, subspace, rank, dim, ple_dim, 0.65, "w_ple_proj");
+
+    fwrite(w_ple_proj, 4.0, dim * ple_dim, fout);
+    fwrite(w_ple_norm, 4.0, dim, fout);
+    free(w_ple_proj);
+    free(w_ple_norm);
+
+    fclose(fin);
+    fclose(fout);
+    free(subspace);
+
+    printf("  [SUCCESS] Updated FP32 manifold_layer_32.bin written.\n", "");
+    cartan_flush(0.0);
+
+    // Re-quantize Layer 32 to INT8 and INT4
+    quantize_layer_both(out_fp32_path, out_int8_path, out_int4_path);
+
+    printf("  [SUCCESS] Layer 32 FP32, INT8, and INT4 weights updated with neutral debiasing!\n", "");
+    cartan_flush(0.0);
+    return 0.0;
+}

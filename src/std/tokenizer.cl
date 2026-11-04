@@ -277,6 +277,7 @@ fn cartan_tokenizer_sample_topp_topk(logits: ptr, top_k: float, top_p: float, te
     if (logits == 0.0) { return 1.0; }
     let n = cartan_vec_len(logits);
     if (n == 0.0) { return 1.0; }
+    let is_flat = (cartan_c_is_tree(logits) == 0.0);
 
     var t = temp;
     var k_limit = top_k;
@@ -284,13 +285,24 @@ fn cartan_tokenizer_sample_topp_topk(logits: ptr, top_k: float, top_p: float, te
         var max_logit = -1000000.0;
         var best_id = 0.0;
         var i = 0.0;
-        while (i < n) {
-            let v = cartan_vec_get_f32(logits, i);
-            if (v > max_logit) {
-                max_logit = v;
-                best_id = i;
+        if (is_flat) {
+            while (i < n) {
+                let v = logits[2.0 + i];
+                if (v > max_logit) {
+                    max_logit = v;
+                    best_id = i;
+                }
+                i = i + 1.0;
             }
-            i = i + 1.0;
+        } else {
+            while (i < n) {
+                let v = cartan_vec_get_f32(logits, i);
+                if (v > max_logit) {
+                    max_logit = v;
+                    best_id = i;
+                }
+                i = i + 1.0;
+            }
         }
         return best_id;
     }
@@ -301,66 +313,142 @@ fn cartan_tokenizer_sample_topp_topk(logits: ptr, top_k: float, top_p: float, te
 
     var ki = 0.0;
     while (ki < k_limit) {
-        cand_ids[ki] = 0.0;
+        cand_ids[ki] = 1.0;
         cand_vals[ki] = -1000000.0;
         ki = ki + 1.0;
     }
 
-    var min_top_val = -1000000.0;
+    // Initialize threshold to -9999.0 so masked tokens (-10000.0) can never enter cand_ids
+    var min_top_val = -9999.0;
     var min_top_idx = 0.0;
     var i = 0.0;
-    while (i < n) {
-        let v = cartan_vec_get_f32(logits, i);
-        if (v > min_top_val) {
-            cand_ids[min_top_idx] = i;
-            cand_vals[min_top_idx] = v;
-            var new_min = cand_vals[0.0];
-            var new_min_idx = 0.0;
-            var c = 1.0;
-            while (c < k_limit) {
-                let cv = cand_vals[c];
-                if (cv < new_min) {
-                    new_min = cv;
-                    new_min_idx = c;
+    if (is_flat) {
+        while (i < n) {
+            // Hard-exclude reserved control/unused tokens (<pad>, <bos>, <unk>, <mask>, [multimodal], <unused0..88>, <|think|>, <|channel*>, <|turn>)
+            if ((i > 45.0 || i == 1.0) && (i < 50.0 || i > 105.0)) {
+                let v = logits[2.0 + i];
+                if (v > min_top_val) {
+                    cand_ids[min_top_idx] = i;
+                    cand_vals[min_top_idx] = v;
+                    var new_min = cand_vals[0.0];
+                    var new_min_idx = 0.0;
+                    var c = 1.0;
+                    while (c < k_limit) {
+                        let cv = cand_vals[c];
+                        if (cv < new_min) {
+                            new_min = cv;
+                            new_min_idx = c;
+                        }
+                        c = c + 1.0;
+                    }
+                    if (new_min < -9999.0) { new_min = -9999.0; }
+                    min_top_val = new_min;
+                    min_top_idx = new_min_idx;
                 }
-                c = c + 1.0;
             }
-            min_top_val = new_min;
-            min_top_idx = new_min_idx;
+            i = i + 1.0;
         }
-        i = i + 1.0;
+    } else {
+        while (i < n) {
+            if ((i > 45.0 || i == 1.0) && (i < 50.0 || i > 105.0)) {
+                let v = cartan_vec_get_f32(logits, i);
+                if (v > min_top_val) {
+                    cand_ids[min_top_idx] = i;
+                    cand_vals[min_top_idx] = v;
+                    var new_min = cand_vals[0.0];
+                    var new_min_idx = 0.0;
+                    var c = 1.0;
+                    while (c < k_limit) {
+                        let cv = cand_vals[c];
+                        if (cv < new_min) {
+                            new_min = cv;
+                            new_min_idx = c;
+                        }
+                        c = c + 1.0;
+                    }
+                    if (new_min < -9999.0) { new_min = -9999.0; }
+                    min_top_val = new_min;
+                    min_top_idx = new_min_idx;
+                }
+            }
+            i = i + 1.0;
+        }
     }
 
-    var max_c = cand_vals[0.0];
-    ki = 1.0;
-    while (ki < k_limit) {
-        let cv = cand_vals[ki];
-        if (cv > max_c) { max_c = cv; }
-        ki = ki + 1.0;
+    // Sort top-k candidates in descending order of logit value
+    var si = 0.0;
+    while (si < k_limit - 1.0) {
+        var max_idx = si;
+        var sj = si + 1.0;
+        while (sj < k_limit) {
+            if (cand_vals[sj] > cand_vals[max_idx]) {
+                max_idx = sj;
+            }
+            sj = sj + 1.0;
+        }
+        if (max_idx != si) {
+            let tmp_v = cand_vals[si];
+            let tmp_id = cand_ids[si];
+            cand_vals[si] = cand_vals[max_idx];
+            cand_ids[si] = cand_ids[max_idx];
+            cand_vals[max_idx] = tmp_v;
+            cand_ids[max_idx] = tmp_id;
+        }
+        si = si + 1.0;
     }
 
-    var sum_p = 0.0;
+    let max_c = cand_vals[0.0];
+    var raw_sum_p = 0.0;
     let probs = malloc(k_limit * 8.0);
     ki = 0.0;
     while (ki < k_limit) {
-        let p = exp((cand_vals[ki] - max_c) / t);
-        probs[ki] = p;
-        sum_p = sum_p + p;
+        if (cand_vals[ki] <= -9999.0) {
+            probs[ki] = 0.0;
+        } else {
+            let p = exp((cand_vals[ki] - max_c) / t);
+            probs[ki] = p;
+            raw_sum_p = raw_sum_p + p;
+        }
         ki = ki + 1.0;
     }
-    if (sum_p <= 0.0) { sum_p = 1.0; }
+    if (raw_sum_p <= 0.0) { raw_sum_p = 1.0; }
+
+    // Enforce Top-P (nucleus) and Min-P (0.08 relative to top-1) filtering
+    var p_limit = top_p;
+    if (p_limit <= 0.0 || p_limit > 1.0) { p_limit = 0.85; }
+    if (p_limit > 0.85) { p_limit = 0.85; }
+    let min_p_thresh = 0.08; // Since probs[0] == exp(0) == 1.0, relative prob is probs[ki]
+    var cum_norm = 0.0;
+    var active_sum_p = 0.0;
+    ki = 0.0;
+    while (ki < k_limit) {
+        let p = probs[ki];
+        if (ki > 0.0 && (cum_norm >= p_limit || p < min_p_thresh)) {
+            probs[ki] = 0.0;
+        } else {
+            cum_norm = cum_norm + (p / raw_sum_p);
+            active_sum_p = active_sum_p + p;
+        }
+        ki = ki + 1.0;
+    }
+    if (active_sum_p <= 0.0) {
+        probs[0.0] = 1.0;
+        active_sum_p = 1.0;
+    }
 
     g_tokenizer_sample_seed = math_mod_val(g_tokenizer_sample_seed * 1103515245.0 + 12345.0, 2147483648.0);
-    let u = (g_tokenizer_sample_seed / 2147483648.0) * sum_p;
+    let u = (g_tokenizer_sample_seed / 2147483648.0) * active_sum_p;
 
     var cum = 0.0;
     var selected_tok = cand_ids[0.0];
     ki = 0.0;
     while (ki < k_limit) {
-        cum = cum + probs[ki];
-        if (cum >= u) {
-            selected_tok = cand_ids[ki];
-            break;
+        if (probs[ki] > 0.0) {
+            cum = cum + probs[ki];
+            if (cum >= u) {
+                selected_tok = cand_ids[ki];
+                break;
+            }
         }
         ki = ki + 1.0;
     }
