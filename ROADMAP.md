@@ -106,3 +106,15 @@ flowchart TD
   - Implement GPU kernels (`webgpu_get_e8_finsler_randers_attn_shader` and `webgpu_get_e8_gauge_spinor_fano_shader`) for per-layer $W_{\text{gauge}}^{(\ell)} \times h_{\text{gauge}}$, $W_{\text{spinor}}^{(\ell)} \times h_{\text{spinor}}$, 8D Octonion Fano cross-gating, Finsler-Randers Causal Attention, and Sherman-Morrison inverse Randers weight updates across all $L$ layers.
 - [x] **4.2 GPU/CPU Parity & End-to-End Multi-Layer Convergence Verification**:
   - Verify strict numerical parity and monotonic reduction of multi-layer Markov-Lagrangian Action $\mathcal{S}$ (`16.104899 -> 2.171461` in `test_e8_suite.exe`), exact adjoint identity (`err = 0.000000000`), and checkpoint persistence (`geomind_e8_deep_stack.bin`).
+
+---
+
+### Stage 5: Two-Tier Byte-Latent (`BLT`) 42-Layer Patch Pipeline & Developmental Anchor Focus Engine (`Projects/geomind/byte_latent.cl` & `Projects/geomind/main.car`)
+- [x] **5.1 Default 42-Layer Sovereign Depth & Two-Tier BLT Patch Stepping**:
+  - Default the Deep $E_8$ Manifold Stack to **42 layers** (`L = 42.0`, 1.32M parameters in ~5.28 MB L3 cache).
+  - Decouple Tier 1 (within-patch byte-level orthography via 3-byte local Markov context prior $P(b_t \mid b_{t-3}, b_{t-2}, b_{t-1})$ and $256 \times 256$ transition matrix) from Tier 2 (42-Layer Deep $E_8$ Gauge-Spinor Stack stepping strictly at dynamic surprisal patch boundaries).
+- [x] **5.2 Developmental Anchor Crystallization & Selective Resonance Focus Engine ("Cocktail-Party / Baby-Focus")**:
+  - Crystallize low-action concept patches (`avg_patch_act <= 1.55` or `-anchor <word>` seed concepts) into 248-D Anchor Basins $A_m \in S^{247}$.
+  - Compute Killing-Cartan resonance $\mathcal{R}(P_k) = \max_m \langle P_k, A_m \rangle_{E_8}$ at each patch boundary:
+    - Suppress 42-layer backpropagation during uncomprehended `"blah blah blah"` noise ($\mathcal{R}(P_k) < 0.72$ and `focus_horizon == 0`).
+    - Open a 2-patch ($i + 1$) **Laser-Focus Window** whenever an anchor resonates ($\mathcal{R}(P_k) \ge 0.72$), automatically crystallizing stabilized neighbor words into new Anchor Basins.

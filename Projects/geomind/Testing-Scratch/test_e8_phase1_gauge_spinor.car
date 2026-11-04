@@ -401,7 +401,26 @@ fn main() -> int {
         return 1;
     }
 
-    printf("\n=== ALL CARTAN-E8 (PHASES 1-4 & DEEP NON-EUCLIDEAN STACK STAGES 1-3) VERIFICATION TESTS PASSED 100%% ===\n");
+    // 11. Stage 5: Developmental Anchor Crystallization & Selective Resonance Focus ("Cocktail-Party / Baby-Focus")
+    geomind_e8_anchors_reset();
+    geomind_e8_seed_concept_word("ball");
+    let init_anchors = g_e8_anchor_count;
+    let noisy_stream = "Quarterly macroeconomic bond yields fluctuated wildly. Throw the ball! Bounce the ball for fun! Bureaucratic municipal zoning subcommittee adjourned.";
+    let focus_act = geomind_byte_latent_train_deep_e8_corpus(noisy_stream, 4.0, 4.0, 0.04, 0.0);
+    let final_anchors = g_e8_anchor_count;
+    let focus_hits = g_e8_focus_hits;
+    let noise_skips = g_e8_noise_skips;
+    let focus_gen = geomind_byte_latent_generate_deep_e8("Bounce the ball", 4.0, 14.0);
+    printf("[Test 5.4] Developmental Anchor Crystallization & Focus: init_anchors=%.0f -> final_anchors=%.0f, focus_hits=%.0f, noise_skips=%.0f, Gen='%s'\n",
+        init_anchors, final_anchors, focus_hits, noise_skips, focus_gen);
+    cartan_flush(0.0);
+    if (final_anchors <= init_anchors || focus_hits <= 0.0 || noise_skips <= 0.0) {
+        printf("FAIL: Developmental Anchor Crystallization or Selective Noise Filtering failed.\n");
+        return 1;
+    }
+    geomind_e8_anchors_reset();
+
+    printf("\n=== ALL CARTAN-E8 (PHASES 1-5 & DEEP NON-EUCLIDEAN STACK) VERIFICATION TESTS PASSED 100%% ===\n");
     cartan_flush(0.0);
     return 0;
 }

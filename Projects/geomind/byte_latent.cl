@@ -1112,6 +1112,201 @@ fn geomind_byte_latent_generate(prompt: string, gen_len: float) -> string {
 }
 
 // ============================================================================
+// STAGE 5: DEVELOPMENTAL ANCHOR CRYSTALLIZATION & SELECTIVE RESONANCE FOCUS ENGINE
+// ============================================================================
+// Models child-like developmental concept acquisition on S^{247}:
+// - Crystallized Anchor Basins: up to 128 248-D E8 Patch Attractors on S^{247}
+//   with maturity/mass M_m in [0, 1] and FNV-style patch hash IDs.
+// - Resonance Filter R(P_k): Killing-Cartan inner product on S^{247} against crystallized anchors.
+// - Selective Plasticity Gate ("Cocktail-Party / Baby-Focus"):
+//   * "Blah Blah Blah" Noise State (R(P_k) low & focus_horizon == 0):
+//     Suppresses 42-layer backward plasticity (lr_gate = 0.0) so uncomprehended noise
+//     never scrambles the deep Gauge/Spinor matrices.
+//   * "Laser-Focus" State (R(P_k) >= 0.55):
+//     Opens a 2-patch (i + 1) developmental focus window (focus_horizon = 2.0) where
+//     the 42-layer E8 stack fires at full plasticity (lr_gate = 1.0) to bind surrounding
+//     modifiers/verbs (e.g., "bounce", "throw") to the resonant anchor ("ball").
+//   * Automatic Frontier Crystallization: When a neighbor patch inside a focus window
+//     achieves low Lagrangian Action S, it crystallizes into a new Anchor Basin on S^{247}!
+
+var g_e8_anchor_count: float = 0.0;
+var g_e8_anchor_coords: ptr = 0.0;     // 128 * 248 floats (crystallized S^{247} coordinates)
+var g_e8_anchor_masses: ptr = 0.0;     // 128 floats (maturity/mass in [0, 1])
+var g_e8_anchor_hashes: ptr = 0.0;     // 128 floats (patch byte-sequence signature)
+var g_e8_focus_hits: float = 0.0;
+var g_e8_noise_skips: float = 0.0;
+var g_e8_newly_crystallized: float = 0.0;
+
+fn geomind_e8_anchors_init_if_needed() {
+    if (g_e8_anchor_coords != 0.0) { return; }
+    g_e8_anchor_coords = cartan_tensor_alloc(128.0 * 248.0);
+    g_e8_anchor_masses = cartan_tensor_alloc(128.0);
+    g_e8_anchor_hashes = cartan_tensor_alloc(128.0);
+    var i = 0.0;
+    while (i < 128.0 * 248.0) {
+        cartan_vec_set_f32(g_e8_anchor_coords, i, 0.0);
+        if (i < 128.0) {
+            cartan_vec_set_f32(g_e8_anchor_masses, i, 0.0);
+            cartan_vec_set_f32(g_e8_anchor_hashes, i, -1.0);
+        }
+        i = i + 1.0;
+    }
+    g_e8_anchor_count = 0.0;
+}
+
+fn geomind_e8_anchors_reset() {
+    geomind_e8_anchors_init_if_needed();
+    g_e8_anchor_count = 0.0;
+    g_e8_focus_hits = 0.0;
+    g_e8_noise_skips = 0.0;
+    g_e8_newly_crystallized = 0.0;
+    var i = 0.0;
+    while (i < 128.0) {
+        cartan_vec_set_f32(g_e8_anchor_masses, i, 0.0);
+        cartan_vec_set_f32(g_e8_anchor_hashes, i, -1.0);
+        i = i + 1.0;
+    }
+}
+
+// Compute unit-normalized Killing-Cartan E8 cosine resonance between patch_248 and anchor idx
+fn geomind_e8_anchor_killing_sim(patch_248: ptr, anchor_idx: float) -> float {
+    let a_off = anchor_idx * 248.0;
+    var dot_g = 0.0;
+    var norm_p_g = 0.0;
+    var norm_a_g = 0.0;
+    var d = 0.0;
+    while (d < 248.0) {
+        let sub_idx = floor(d / 31.0);
+        let kw = geom_killing_form_dynkin_weight(sub_idx);
+        let pv = cartan_vec_get_f32(patch_248, d);
+        let av = cartan_vec_get_f32(g_e8_anchor_coords, a_off + d);
+        dot_g = dot_g + pv * av * kw;
+        norm_p_g = norm_p_g + pv * pv * kw;
+        norm_a_g = norm_a_g + av * av * kw;
+        d = d + 1.0;
+    }
+    let denom = sqrt(norm_p_g * norm_a_g);
+    if (denom < 0.000001) { return 0.0; }
+    return dot_g / denom;
+}
+
+// Query maximum resonance R(P_k) in [-1, 1] across all crystallized E8 Anchor Basins
+fn geomind_e8_query_anchor_resonance(patch_248: ptr, patch_hash: float) -> float {
+    geomind_e8_anchors_init_if_needed();
+    if (g_e8_anchor_count <= 0.0) { return 0.0; }
+    var best_sim = -1.0;
+    var m = 0.0;
+    while (m < g_e8_anchor_count) {
+        let a_hash = cartan_vec_get_f32(g_e8_anchor_hashes, m);
+        if (patch_hash > 0.0 && a_hash == patch_hash) {
+            return 1.0;
+        }
+        let sim = geomind_e8_anchor_killing_sim(patch_248, m);
+        if (sim > best_sim) {
+            best_sim = sim;
+        }
+        m = m + 1.0;
+    }
+    return best_sim;
+}
+
+// Crystallize or reinforce a 248-D E8 Patch state as an Anchor Basin on S^{247}
+fn geomind_e8_crystallize_patch_vec(patch_248: ptr, patch_hash: float, initial_mass: float) -> float {
+    geomind_e8_anchors_init_if_needed();
+    // Check if an anchor with matching hash or very high Killing similarity (>= 0.92) already exists
+    var m = 0.0;
+    while (m < g_e8_anchor_count) {
+        let a_hash = cartan_vec_get_f32(g_e8_anchor_hashes, m);
+        let sim = geomind_e8_anchor_killing_sim(patch_248, m);
+        if ((patch_hash > 0.0 && a_hash == patch_hash) || sim >= 0.92) {
+            let old_mass = cartan_vec_get_f32(g_e8_anchor_masses, m);
+            var new_mass = old_mass + 0.15;
+            if (new_mass > 1.0) { new_mass = 1.0; }
+            cartan_vec_set_f32(g_e8_anchor_masses, m, new_mass);
+            // Gently retract anchor coordinate toward new observation on S^{247}
+            let a_off = m * 248.0;
+            var d = 0.0;
+            var nsq = 0.0;
+            while (d < 248.0) {
+                let av = cartan_vec_get_f32(g_e8_anchor_coords, a_off + d);
+                let pv = cartan_vec_get_f32(patch_248, d);
+                let upd = 0.85 * av + 0.15 * pv;
+                cartan_vec_set_f32(g_e8_anchor_coords, a_off + d, upd);
+                nsq = nsq + upd * upd;
+                d = d + 1.0;
+            }
+            if (nsq > 0.000001) {
+                let scale = sqrt(248.0 / nsq);
+                d = 0.0;
+                while (d < 248.0) {
+                    cartan_vec_set_f32(g_e8_anchor_coords, a_off + d, cartan_vec_get_f32(g_e8_anchor_coords, a_off + d) * scale);
+                    d = d + 1.0;
+                }
+            }
+            return m;
+        }
+        m = m + 1.0;
+    }
+
+    if (g_e8_anchor_count >= 128.0) { return -1.0; }
+    let idx = g_e8_anchor_count;
+    let a_off = idx * 248.0;
+    var nsq = 0.0;
+    var d = 0.0;
+    while (d < 248.0) {
+        let pv = cartan_vec_get_f32(patch_248, d);
+        cartan_vec_set_f32(g_e8_anchor_coords, a_off + d, pv);
+        nsq = nsq + pv * pv;
+        d = d + 1.0;
+    }
+    if (nsq > 0.000001) {
+        let scale = sqrt(248.0 / nsq);
+        d = 0.0;
+        while (d < 248.0) {
+            cartan_vec_set_f32(g_e8_anchor_coords, a_off + d, cartan_vec_get_f32(g_e8_anchor_coords, a_off + d) * scale);
+            d = d + 1.0;
+        }
+    }
+    cartan_vec_set_f32(g_e8_anchor_masses, idx, initial_mass);
+    cartan_vec_set_f32(g_e8_anchor_hashes, idx, patch_hash);
+    g_e8_anchor_count = g_e8_anchor_count + 1.0;
+    g_e8_newly_crystallized = g_e8_newly_crystallized + 1.0;
+    return idx;
+}
+
+// Seed a word/phrase (e.g., "ball") directly into the Crystallized Anchor Basin table on S^{247}
+fn geomind_e8_seed_concept_word(word: string) -> float {
+    geomind_byte_latent_init_if_needed();
+    geomind_e8_anchors_init_if_needed();
+    let wlen = cartan_string_length(word);
+    if (wlen <= 0.0) { return -1.0; }
+    let accum = cartan_vec_create();
+    var d = 0.0;
+    while (d < 248.0) {
+        cartan_vec_push_f32(accum, 0.0);
+        d = d + 1.0;
+    }
+    var p_hash = 17.0;
+    var i = 0.0;
+    while (i < wlen) {
+        var b = cartan_byte_at(word, i);
+        if (b < 0.0) { b = b + 256.0; }
+        b = math_mod_val(floor(b), 256.0);
+        // Ignore trailing space in hash/fold if user passed single word, or include it if part of patch
+        geomind_fold_byte_into_e8_patch(accum, b, i);
+        p_hash = math_mod_val(p_hash * 131.0 + b, 1000003.0);
+        i = i + 1.0;
+    }
+    let idx = geomind_e8_crystallize_patch_vec(accum, p_hash, 1.0);
+    // Also crystallize the word with a trailing space (since BLT patches often terminate on ' ')
+    geomind_fold_byte_into_e8_patch(accum, 32.0, wlen);
+    let p_hash_sp = math_mod_val(p_hash * 131.0 + 32.0, 1000003.0);
+    geomind_e8_crystallize_patch_vec(accum, p_hash_sp, 1.0);
+    cartan_vec_free(accum);
+    return idx;
+}
+
+// ============================================================================
 // STAGE 1-3: DEEP L-LAYER E8 GAUGE-SPINOR MANIFOLD BYTE-LATENT TRAINER & GENERATOR
 // ============================================================================
 // True Two-Tier Byte-Latent Transformer (BLT) Manifold Pipeline:
@@ -1206,6 +1401,9 @@ fn geomind_byte_latent_train_deep_e8_corpus(
         var cur_b = 32.0;
         var next_b = 32.0;
         var patch_len = 0.0;
+        var patch_hash = 17.0;
+        var patch_act_sum = 0.0;
+        var focus_horizon = 0.0;
         var stack_t_geo = 0.0;
 
         while (step < max_steps) {
@@ -1220,6 +1418,7 @@ fn geomind_byte_latent_train_deep_e8_corpus(
             let p3_prior = geomind_markov_get_3gram_prob(b3, b2, cur_b, next_b);
             let surp = geomind_markov_surprisal_bits(b2, cur_b);
             geomind_fold_byte_into_e8_patch(h_patch_accum, cur_b, patch_len);
+            patch_hash = math_mod_val(patch_hash * 131.0 + cur_b, 1000003.0);
             patch_len = patch_len + 1.0;
 
             let row_off = cur_b * 248.0;
@@ -1244,28 +1443,52 @@ fn geomind_byte_latent_train_deep_e8_corpus(
             // 2. Tier 1 (Every Byte): Fast Local 120 (+) 128 Gauge-Spinor Cross-Gate
             geomind_e8_gauge_spinor_cross_gate(h_pre_local, h_local, 0.25);
 
-            // 3. Tier 2 (Surprisal Patch Boundary Detector):
-            // Step the 42-Layer Deep E8 Stack ONLY when a dynamic patch boundary is crossed!
+            // 3. Tier 2 (Surprisal Patch Boundary Detector & Selective Resonance Focus Filter):
             let is_patch_boundary = ((surp >= 3.2 && patch_len >= 2.0) || cur_b == 32.0 || patch_len >= 6.0 || step == 0.0 || step == (max_steps - 1.0));
             let markov_v = p3_prior;
+            var patch_res = 0.0;
+            var in_focus = 1.0;
 
             if (is_patch_boundary) {
-                d = 0.0;
-                while (d < 248.0) {
-                    cartan_vec_set_f32(h_prev_patch, d, cartan_vec_get_f32(h_top_patch, d));
-                    d = d + 1.0;
+                if (g_e8_anchor_count > 0.0) {
+                    patch_res = geomind_e8_query_anchor_resonance(h_patch_accum, patch_hash);
+                    if (patch_res >= 0.72) {
+                        // Child heard a resonant Anchor concept! Open Laser-Focus Window for (i + 1) neighbors:
+                        focus_horizon = 2.0;
+                        in_focus = 1.0;
+                        g_e8_focus_hits = g_e8_focus_hits + 1.0;
+                    } else if (focus_horizon > 0.0) {
+                        // Neighbor patch inside the active (i + 1) Laser-Focus Window:
+                        in_focus = 1.0;
+                        focus_horizon = focus_horizon - 1.0;
+                        g_e8_focus_hits = g_e8_focus_hits + 1.0;
+                    } else {
+                        // "Blah Blah Blah" Uncomprehended Noise State: suppress 42-layer plasticity!
+                        in_focus = 0.0;
+                        g_e8_noise_skips = g_e8_noise_skips + 1.0;
+                    }
                 }
-                var prev_patch_ptr: ptr = 0.0;
-                if (patch_steps_taken > 0.0) { prev_patch_ptr = h_prev_patch; }
-                stack_t_geo = geomind_e8_stack_forward_step(h_patch_accum, prev_patch_ptr, markov_v, 0.85, h_top_patch);
-                patch_steps_taken = patch_steps_taken + 1.0;
+
+                if (in_focus == 1.0) {
+                    d = 0.0;
+                    while (d < 248.0) {
+                        cartan_vec_set_f32(h_prev_patch, d, cartan_vec_get_f32(h_top_patch, d));
+                        d = d + 1.0;
+                    }
+                    var prev_patch_ptr: ptr = 0.0;
+                    if (patch_steps_taken > 0.0) { prev_patch_ptr = h_prev_patch; }
+                    stack_t_geo = geomind_e8_stack_forward_step(h_patch_accum, prev_patch_ptr, markov_v, 0.85, h_top_patch);
+                    patch_steps_taken = patch_steps_taken + 1.0;
+                }
             }
 
             // 4. Decode 256 byte logits from fused (h_local, h_top_patch) + pre-update 3-gram Markov prior
             geomind_byte_latent_decode_logits_blt(h_local, h_top_patch, b3, b2, cur_b, logits_256);
 
-            // Now update the 3-gram Markov transition counts after decoding so there is zero lookahead leakage
-            geomind_markov_update_3gram(b3, b2, cur_b, next_b);
+            // Only update 3-gram Markov counts when in focus (or when no anchor filter is active)
+            if (g_e8_anchor_count == 0.0 || focus_horizon > 0.0 || in_focus == 1.0) {
+                geomind_markov_update_3gram(b3, b2, cur_b, next_b);
+            }
 
             // 5. Evaluate Markov-Lagrangian Action Loss
             let base_act = geomind_lagrangian_action_step(
@@ -1274,8 +1497,13 @@ fn geomind_byte_latent_train_deep_e8_corpus(
             let well_factor = 1.0 - 0.5 * markov_v;
             let act_s = base_act + 0.04 * stack_t_geo * well_factor;
             epoch_action_sum = epoch_action_sum + act_s;
+            patch_act_sum = patch_act_sum + act_s;
 
-            // 6. Geodesic Kinetic Energy Restoring Force & Readout Head Backprop
+            // 6. Geodesic Kinetic Energy Restoring Force & Readout Head Backprop (Gated by Selective Focus)
+            var local_lr_scale = 1.0;
+            if (g_e8_anchor_count > 0.0 && in_focus == 0.0 && focus_horizon <= 0.0) {
+                local_lr_scale = 0.05; // 95% plasticity suppression during "blah blah blah" noise
+            }
             geomind_e8_geodesic_kinetic_grad_248(h_prev_local, h_local, g_byte_e8_randers_b_248, geo_grad, 0.12 * well_factor);
 
             d = 0.0;
@@ -1292,30 +1520,44 @@ fn geomind_byte_latent_train_deep_e8_corpus(
                     if (math_abs_val(del_c) > 0.005) {
                         let w_dc = cartan_vec_get_f32(g_byte_e8_head_248x256, d * 256.0 + c);
                         dh_d = dh_d + w_dc * del_c;
-                        let new_w = geom_frs_riemannian_gradient_step(w_dc, h_comb * del_c, b_d, eff_lr);
+                        let new_w = geom_frs_riemannian_gradient_step(w_dc, h_comb * del_c, b_d, eff_lr * local_lr_scale);
                         cartan_vec_set_f32(g_byte_e8_head_248x256, d * 256.0 + c, new_w);
                     }
                     c = c + 1.0;
                 }
-                cartan_vec_set_f32(dh_local, d, 0.65 * dh_d);
-                cartan_vec_set_f32(dh_patch_accum, d, cartan_vec_get_f32(dh_patch_accum, d) + 0.35 * dh_d);
+                cartan_vec_set_f32(dh_local, d, 0.65 * dh_d * local_lr_scale);
+                cartan_vec_set_f32(dh_patch_accum, d, cartan_vec_get_f32(dh_patch_accum, d) + 0.35 * dh_d * local_lr_scale);
                 d = d + 1.0;
             }
 
             // 7. Tier 1 Backward: Adjoint Local Cross-Gate -> Byte Embedding Update
             geomind_e8_gauge_spinor_cross_gate_backward(h_pre_local, dh_local, dh_pre_local, 0.25);
 
-            // 8. Tier 2 Backward (At Patch Boundary): Backpropagate accumulated patch gradient through all L layers!
+            // 8. Tier 2 Backward (At Patch Boundary):
+            // Only backpropagate through the 42-Layer Deep E8 Stack if in_focus == 1.0!
+            // If this neighbor patch inside the focus window achieved low Lagrangian Action, crystallize it as a new Anchor!
             if (is_patch_boundary) {
-                geomind_e8_stack_backward_step(dh_patch_accum, eff_lr * 0.15, 0.04 * well_factor, dh_in_stack);
+                let avg_patch_act = patch_act_sum / patch_len;
+                if (in_focus == 1.0) {
+                    geomind_e8_stack_backward_step(dh_patch_accum, eff_lr * 0.15, 0.04 * well_factor, dh_in_stack);
+                    // Automatic Frontier Crystallization: if a neighbor patch in the focus window stabilizes (low action & >= 3 bytes),
+                    // crystallize it into the Anchor Basin table so the circle of comprehension expands outward!
+                    if (g_e8_anchor_count > 0.0 && patch_len >= 3.0 && avg_patch_act <= 1.55) {
+                        geomind_e8_crystallize_patch_vec(h_patch_accum, patch_hash, 0.60);
+                    }
+                }
                 d = 0.0;
                 while (d < 248.0) {
-                    cartan_vec_set_f32(dh_pre_local, d, cartan_vec_get_f32(dh_pre_local, d) + 0.35 * cartan_vec_get_f32(dh_in_stack, d));
+                    if (in_focus == 1.0) {
+                        cartan_vec_set_f32(dh_pre_local, d, cartan_vec_get_f32(dh_pre_local, d) + 0.35 * cartan_vec_get_f32(dh_in_stack, d));
+                    }
                     cartan_vec_set_f32(dh_patch_accum, d, 0.0);
                     cartan_vec_set_f32(h_patch_accum, d, 0.0);
                     d = d + 1.0;
                 }
                 patch_len = 0.0;
+                patch_hash = 17.0;
+                patch_act_sum = 0.0;
             }
 
             // 9. Update Byte-to-E8 Embedding row and Finsler-Randers Drift 1-form beta
