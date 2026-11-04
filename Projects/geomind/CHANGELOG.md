@@ -4,6 +4,19 @@ This changelog records the complete development history, cognitive architecture 
 
 Core CARTAN programming language, compiler, runtime, and general-purpose standard library releases are tracked in the root [`CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/CHANGELOG.md).
 
+## [2.4.0] - 2026-11-04 (GeoMind v2 `CARTAN-E8` Stage 5.4: Clean 467-Chunk Storytelling Corpus Pipeline, 8,192-Concept $O(1)$ Anchor Hash Index, Short-Term Synaptic Depression Buffer, & Rung 4 Multi-Genre Storytelling Ingestion)
+
+### Completed & Validated
+- **Deterministic Zero-Regex `storytelling_corpus.txt` Cleaner & 467-Chunk Curriculum Builder ([`tools/clean_and_chunk_storytelling.py`](file:///C:/Users/rich-/source/repos/CARTAN/tools/clean_and_chunk_storytelling.py), [`Projects/geomind/trainingdata/storytelling_chunks/manifest.json`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/trainingdata/storytelling_chunks/manifest.json), [`Projects/geomind/trainingdata/storytelling_corpus_clean.txt`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/trainingdata/storytelling_corpus_clean.txt))**:
+  - Stripped 707 KB of synthetic dialogue prompt boilerplate, publisher catalogs, tables of contents, prefaces, colophons, and nested `[Illustration: ...]` blocks.
+  - Unwrapped 70-column hard-wrapped and double-spaced Gutenberg lines (`Dracula`, `Great Expectations`, `Sherlock Holmes`, `Anthem`) into complete paragraphs, stitched sentences interrupted by mid-sentence page illustrations (`Pride And Prejudice`), and normalized all UTF-8 typography to pure 7-bit printable ASCII (`5,340,977` clean bytes across **467 digestible ~12 KB chunks** ordered across Tiers 1–5).
+- **8,192-Concept $O(1)$ Open-Addressed $E_8$ Anchor Basin Hash Index & Short-Term Synaptic Depression ([`Projects/geomind/byte_latent.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L1294-L1550))**:
+  - Expanded `g_e8_anchor_coords` from `512` to **`8,192` crystallized concepts** (`8192 x 248` floats on $S^{247}$) backed by a `16,384`-slot open-addressed hash table (`g_e8_anchor_hash_lut`) for $O(1)$ anchor resonance lookup and crystallization.
+  - Added a 16-slot Short-Term Synaptic Depression (Refractory) buffer (`ref_w1`, `ref_byte`) in [`geomind_byte_latent_generate_deep_e8`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L1972-L2142) to prevent limit-cycle loops on parallel sentence openings (e.g., `"It is a sin to write this. It is a fearful word, alone. The laws say that none among"`).
+- **4-Rung Storytelling Curriculum & Cross-Book Concept Recombination (`--curriculum`) ([`Projects/geomind/byte_latent.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L2220-L2345))**:
+  - Monotonic anchor growth across all 4 rungs: **`155 -> 240 -> 496 -> 535 -> 826 -> 1034 -> 1182` crystallized concepts**.
+  - Verified clean generation across Sci-Fi (`Gen 5`), *Alice in Wonderland* (`Gen 6`), *Anthem* (`Gen 7`), and unseen cross-book recombinations (`Novel 6 ('Alice stood on the')` $\to$ `"Alice stood on the observation deck of Orbital Station Epsilon, watching the "`).
+
 ## [2.3.0] - 2026-11-04 (GeoMind v2 `CARTAN-E8` Stage 5.3: 3-Rung Concentric English Developmental Curriculum (`--curriculum`), 4-Block Hierarchical Tapestry Hub Markov Engine, & Non-Expansive 42-Layer $S^{247}$ Sphere Retraction)
 
 ### Completed & Validated

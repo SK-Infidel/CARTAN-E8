@@ -766,6 +766,8 @@ fn geomind_byte_latent_load_weights(path: string) -> float {
     return 1.0;
 }
 
+var g_byte_e8_skip_disk_autoload: float = 0.0;
+
 fn geomind_byte_latent_init_if_needed() -> float {
     if (g_byte_e8_initialized == 1.0 && g_byte_e8_emb_256x248 != 0.0) {
         return 1.0;
@@ -773,9 +775,9 @@ fn geomind_byte_latent_init_if_needed() -> float {
     geomind_init_e8_roots_if_needed();
     geomind_markov_init_if_needed();
 
-    g_byte_e8_emb_256x248 = cartan_tensor_alloc(63488.0);
-    g_byte_e8_head_248x256 = cartan_tensor_alloc(63488.0);
-    g_byte_e8_randers_b_248 = cartan_tensor_alloc(248.0);
+    if (g_byte_e8_emb_256x248 == 0.0) { g_byte_e8_emb_256x248 = cartan_tensor_alloc(63488.0); }
+    if (g_byte_e8_head_248x256 == 0.0) { g_byte_e8_head_248x256 = cartan_tensor_alloc(63488.0); }
+    if (g_byte_e8_randers_b_248 == 0.0) { g_byte_e8_randers_b_248 = cartan_tensor_alloc(248.0); }
 
     // Initialize 256 x 248 Byte-to-E8 table directly from canonical 240 E8 roots + 8D Cartan torus harmonics
     var b = 0.0;
@@ -817,7 +819,7 @@ fn geomind_byte_latent_init_if_needed() -> float {
     }
 
     g_byte_e8_initialized = 1.0;
-    if (cartan_file_exists("Projects/geomind/trainingdata/checkpoints/geomind_byte_latent_e8.bin") == 1.0) {
+    if (g_byte_e8_skip_disk_autoload == 0.0 && cartan_file_exists("Projects/geomind/trainingdata/checkpoints/geomind_byte_latent_e8.bin") == 1.0) {
         geomind_byte_latent_load_weights("Projects/geomind/trainingdata/checkpoints/geomind_byte_latent_e8.bin");
     }
     return 1.0;
@@ -1292,9 +1294,10 @@ fn geomind_byte_latent_generate(prompt: string, gen_len: float) -> string {
 //     achieves low Lagrangian Action S, it crystallizes into a new Anchor Basin on S^{247}!
 
 var g_e8_anchor_count: float = 0.0;
-var g_e8_anchor_coords: ptr = 0.0;     // 512 * 248 floats (crystallized S^{247} coordinates)
-var g_e8_anchor_masses: ptr = 0.0;     // 512 floats (maturity/mass in [0, 1])
-var g_e8_anchor_hashes: ptr = 0.0;     // 512 floats (patch byte-sequence signature)
+var g_e8_anchor_coords: ptr = 0.0;     // 8192 * 248 floats (crystallized S^{247} coordinates)
+var g_e8_anchor_masses: ptr = 0.0;     // 8192 floats (maturity/mass in [0, 1])
+var g_e8_anchor_hashes: ptr = 0.0;     // 8192 floats (patch byte-sequence signature)
+var g_e8_anchor_hash_lut: ptr = 0.0;   // 16384-slot O(1) open-addressed hash index -> anchor idx
 var g_e8_focus_hits: float = 0.0;
 var g_e8_noise_skips: float = 0.0;
 var g_e8_newly_crystallized: float = 0.0;
@@ -1302,19 +1305,55 @@ var g_e8_primer_crystallize_all: float = 0.0; // When 1.0 (Rung 1 Primer), train
 
 fn geomind_e8_anchors_init_if_needed() {
     if (g_e8_anchor_coords != 0.0) { return; }
-    g_e8_anchor_coords = cartan_tensor_alloc(512.0 * 248.0);
-    g_e8_anchor_masses = cartan_tensor_alloc(512.0);
-    g_e8_anchor_hashes = cartan_tensor_alloc(512.0);
+    g_e8_anchor_coords = cartan_tensor_alloc(8192.0 * 248.0);
+    g_e8_anchor_masses = cartan_tensor_alloc(8192.0);
+    g_e8_anchor_hashes = cartan_tensor_alloc(8192.0);
+    g_e8_anchor_hash_lut = cartan_tensor_alloc(16384.0);
     var i = 0.0;
-    while (i < 512.0 * 248.0) {
-        cartan_vec_set_f32(g_e8_anchor_coords, i, 0.0);
-        if (i < 512.0) {
-            cartan_vec_set_f32(g_e8_anchor_masses, i, 0.0);
-            cartan_vec_set_f32(g_e8_anchor_hashes, i, -1.0);
-        }
+    while (i < 8192.0) {
+        cartan_vec_set_f32(g_e8_anchor_masses, i, 0.0);
+        cartan_vec_set_f32(g_e8_anchor_hashes, i, -1.0);
+        i = i + 1.0;
+    }
+    i = 0.0;
+    while (i < 16384.0) {
+        cartan_vec_set_f32(g_e8_anchor_hash_lut, i, -1.0);
         i = i + 1.0;
     }
     g_e8_anchor_count = 0.0;
+}
+
+fn geomind_e8_anchor_lut_insert(patch_hash: float, anchor_idx: float) {
+    if (patch_hash <= 0.0 || anchor_idx < 0.0) { return; }
+    let base_slot = math_mod_val(floor(patch_hash * 2654435761.0), 16384.0);
+    var probe = 0.0;
+    while (probe < 32.0) {
+        let slot = math_mod_val(base_slot + probe, 16384.0);
+        let cur_idx = cartan_vec_get_f32(g_e8_anchor_hash_lut, slot);
+        if (cur_idx < 0.0 || cur_idx == anchor_idx) {
+            cartan_vec_set_f32(g_e8_anchor_hash_lut, slot, anchor_idx);
+            return;
+        }
+        probe = probe + 1.0;
+    }
+}
+
+fn geomind_e8_find_anchor_by_hash(patch_hash: float) -> float {
+    if (patch_hash <= 0.0 || g_e8_anchor_count <= 0.0 || g_e8_anchor_hash_lut == 0.0) { return -1.0; }
+    let base_slot = math_mod_val(floor(patch_hash * 2654435761.0), 16384.0);
+    var probe = 0.0;
+    while (probe < 32.0) {
+        let slot = math_mod_val(base_slot + probe, 16384.0);
+        let cand_idx = cartan_vec_get_f32(g_e8_anchor_hash_lut, slot);
+        if (cand_idx < 0.0) {
+            return -1.0;
+        }
+        if (cartan_vec_get_f32(g_e8_anchor_hashes, cand_idx) == patch_hash) {
+            return cand_idx;
+        }
+        probe = probe + 1.0;
+    }
+    return -1.0;
 }
 
 fn geomind_e8_anchors_reset() {
@@ -1324,9 +1363,14 @@ fn geomind_e8_anchors_reset() {
     g_e8_noise_skips = 0.0;
     g_e8_newly_crystallized = 0.0;
     var i = 0.0;
-    while (i < 512.0) {
+    while (i < 8192.0) {
         cartan_vec_set_f32(g_e8_anchor_masses, i, 0.0);
         cartan_vec_set_f32(g_e8_anchor_hashes, i, -1.0);
+        i = i + 1.0;
+    }
+    i = 0.0;
+    while (i < 16384.0) {
+        cartan_vec_set_f32(g_e8_anchor_hash_lut, i, -1.0);
         i = i + 1.0;
     }
 }
@@ -1336,19 +1380,21 @@ fn geomind_e8_anchors_save(path: string) -> float {
     if (path == 0.0 || g_e8_anchor_count <= 0.0) { return 0.0; }
     let f = fopen(path, "wb");
     if (f == 0.0) { return 0.0; }
-    let total_elems = 1.0 + 512.0 + 512.0 + 512.0 * 248.0;
+    let cnt = g_e8_anchor_count;
+    let total_elems = 1.0 + cnt + cnt + cnt * 248.0;
     let buf = malloc(total_elems * 8.0);
     if (buf == 0.0) { fclose(f); return 0.0; }
-    buf[0.0] = g_e8_anchor_count;
+    buf[0.0] = cnt;
     var i = 0.0;
-    while (i < 512.0) {
+    while (i < cnt) {
         buf[1.0 + i] = cartan_vec_get_f32(g_e8_anchor_masses, i);
-        buf[513.0 + i] = cartan_vec_get_f32(g_e8_anchor_hashes, i);
+        buf[1.0 + cnt + i] = cartan_vec_get_f32(g_e8_anchor_hashes, i);
         i = i + 1.0;
     }
     i = 0.0;
-    while (i < 512.0 * 248.0) {
-        buf[1025.0 + i] = cartan_vec_get_f32(g_e8_anchor_coords, i);
+    let coord_base = 1.0 + 2.0 * cnt;
+    while (i < cnt * 248.0) {
+        buf[coord_base + i] = cartan_vec_get_f32(g_e8_anchor_coords, i);
         i = i + 1.0;
     }
     fwrite(buf, 8.0, total_elems, f);
@@ -1360,26 +1406,38 @@ fn geomind_e8_anchors_save(path: string) -> float {
 fn geomind_e8_anchors_load(path: string) -> float {
     geomind_e8_anchors_init_if_needed();
     if (path == 0.0 || cartan_file_exists(path) == 0.0) { return 0.0; }
-    let total_elems = 1.0 + 512.0 + 512.0 + 512.0 * 248.0;
     let f_sz = cartan_get_binary_file_size(path);
-    if (f_sz < total_elems * 8.0) { return 0.0; }
+    if (f_sz < 16.0) { return 0.0; }
     let f = fopen(path, "rb");
     if (f == 0.0) { return 0.0; }
-    let buf = malloc(total_elems * 8.0);
-    if (buf == 0.0) { fclose(f); return 0.0; }
-    fread(buf, 8.0, total_elems, f);
+    let hdr = malloc(8.0);
+    fread(hdr, 8.0, 1.0, f);
+    var cnt = hdr[0.0];
+    free(hdr);
+    if (cnt <= 0.0 || cnt > 8192.0) { fclose(f); return 0.0; }
+    let total_elems = 1.0 + cnt + cnt + cnt * 248.0;
+    if (f_sz < total_elems * 8.0) { fclose(f); return 0.0; }
     fclose(f);
-    g_e8_anchor_count = buf[0.0];
-    if (g_e8_anchor_count > 512.0) { g_e8_anchor_count = 512.0; }
+    let f2 = fopen(path, "rb");
+    if (f2 == 0.0) { return 0.0; }
+    let buf = malloc(total_elems * 8.0);
+    if (buf == 0.0) { fclose(f2); return 0.0; }
+    fread(buf, 8.0, total_elems, f2);
+    fclose(f2);
+    geomind_e8_anchors_reset();
+    g_e8_anchor_count = cnt;
     var i = 0.0;
-    while (i < 512.0) {
+    while (i < cnt) {
+        let mh = buf[1.0 + cnt + i];
         cartan_vec_set_f32(g_e8_anchor_masses, i, buf[1.0 + i]);
-        cartan_vec_set_f32(g_e8_anchor_hashes, i, buf[513.0 + i]);
+        cartan_vec_set_f32(g_e8_anchor_hashes, i, mh);
+        geomind_e8_anchor_lut_insert(mh, i);
         i = i + 1.0;
     }
     i = 0.0;
-    while (i < 512.0 * 248.0) {
-        cartan_vec_set_f32(g_e8_anchor_coords, i, buf[1025.0 + i]);
+    let coord_base = 1.0 + 2.0 * cnt;
+    while (i < cnt * 248.0) {
+        cartan_vec_set_f32(g_e8_anchor_coords, i, buf[coord_base + i]);
         i = i + 1.0;
     }
     free(buf);
@@ -1408,65 +1466,62 @@ fn geomind_e8_anchor_killing_sim(patch_248: ptr, anchor_idx: float) -> float {
     return dot_g / denom;
 }
 
-// Query maximum resonance R(P_k) in [-1, 1] across all crystallized E8 Anchor Basins
+// Query maximum resonance R(P_k) in [-1, 1] across crystallized E8 Anchor Basins (O(1) hash fast-path + local Killing probe)
 fn geomind_e8_query_anchor_resonance(patch_248: ptr, patch_hash: float) -> float {
     geomind_e8_anchors_init_if_needed();
     if (g_e8_anchor_count <= 0.0) { return 0.0; }
+    let exact_idx = geomind_e8_find_anchor_by_hash(patch_hash);
+    if (exact_idx >= 0.0) {
+        return 1.0;
+    }
     var best_sim = -1.0;
-    var m = 0.0;
-    while (m < g_e8_anchor_count) {
-        let a_hash = cartan_vec_get_f32(g_e8_anchor_hashes, m);
-        if (patch_hash > 0.0 && a_hash == patch_hash) {
-            return 1.0;
-        }
+    let start_m = math_mod_val(patch_hash, g_e8_anchor_count);
+    var k = 0.0;
+    var lim = 16.0;
+    if (g_e8_anchor_count < lim) { lim = g_e8_anchor_count; }
+    while (k < lim) {
+        let m = math_mod_val(start_m + k, g_e8_anchor_count);
         let sim = geomind_e8_anchor_killing_sim(patch_248, m);
         if (sim > best_sim) {
             best_sim = sim;
         }
-        m = m + 1.0;
+        k = k + 1.0;
     }
     return best_sim;
 }
 
-// Crystallize or reinforce a 248-D E8 Patch state as an Anchor Basin on S^{247}
+// Crystallize or reinforce a 248-D E8 Patch state as an Anchor Basin on S^{247} (up to 8192 concepts)
 fn geomind_e8_crystallize_patch_vec(patch_248: ptr, patch_hash: float, initial_mass: float) -> float {
     geomind_e8_anchors_init_if_needed();
-    // Check if an anchor with matching hash or very high Killing similarity (>= 0.92) already exists
-    var m = 0.0;
-    while (m < g_e8_anchor_count) {
-        let a_hash = cartan_vec_get_f32(g_e8_anchor_hashes, m);
-        let sim = geomind_e8_anchor_killing_sim(patch_248, m);
-        if ((patch_hash > 0.0 && a_hash == patch_hash) || sim >= 0.92) {
-            let old_mass = cartan_vec_get_f32(g_e8_anchor_masses, m);
-            var new_mass = old_mass + 0.15;
-            if (new_mass > 1.0) { new_mass = 1.0; }
-            cartan_vec_set_f32(g_e8_anchor_masses, m, new_mass);
-            // Gently retract anchor coordinate toward new observation on S^{247}
-            let a_off = m * 248.0;
-            var d = 0.0;
-            var nsq = 0.0;
+    let exact_m = geomind_e8_find_anchor_by_hash(patch_hash);
+    if (exact_m >= 0.0) {
+        let old_mass = cartan_vec_get_f32(g_e8_anchor_masses, exact_m);
+        var new_mass = old_mass + 0.15;
+        if (new_mass > 1.0) { new_mass = 1.0; }
+        cartan_vec_set_f32(g_e8_anchor_masses, exact_m, new_mass);
+        let a_off = exact_m * 248.0;
+        var d = 0.0;
+        var nsq = 0.0;
+        while (d < 248.0) {
+            let av = cartan_vec_get_f32(g_e8_anchor_coords, a_off + d);
+            let pv = cartan_vec_get_f32(patch_248, d);
+            let upd = 0.85 * av + 0.15 * pv;
+            cartan_vec_set_f32(g_e8_anchor_coords, a_off + d, upd);
+            nsq = nsq + upd * upd;
+            d = d + 1.0;
+        }
+        if (nsq > 0.000001) {
+            let scale = sqrt(248.0 / nsq);
+            d = 0.0;
             while (d < 248.0) {
-                let av = cartan_vec_get_f32(g_e8_anchor_coords, a_off + d);
-                let pv = cartan_vec_get_f32(patch_248, d);
-                let upd = 0.85 * av + 0.15 * pv;
-                cartan_vec_set_f32(g_e8_anchor_coords, a_off + d, upd);
-                nsq = nsq + upd * upd;
+                cartan_vec_set_f32(g_e8_anchor_coords, a_off + d, cartan_vec_get_f32(g_e8_anchor_coords, a_off + d) * scale);
                 d = d + 1.0;
             }
-            if (nsq > 0.000001) {
-                let scale = sqrt(248.0 / nsq);
-                d = 0.0;
-                while (d < 248.0) {
-                    cartan_vec_set_f32(g_e8_anchor_coords, a_off + d, cartan_vec_get_f32(g_e8_anchor_coords, a_off + d) * scale);
-                    d = d + 1.0;
-                }
-            }
-            return m;
         }
-        m = m + 1.0;
+        return exact_m;
     }
 
-    if (g_e8_anchor_count >= 512.0) { return -1.0; }
+    if (g_e8_anchor_count >= 8192.0) { return -1.0; }
     let idx = g_e8_anchor_count;
     let a_off = idx * 248.0;
     var nsq = 0.0;
@@ -1487,6 +1542,7 @@ fn geomind_e8_crystallize_patch_vec(patch_248: ptr, patch_hash: float, initial_m
     }
     cartan_vec_set_f32(g_e8_anchor_masses, idx, initial_mass);
     cartan_vec_set_f32(g_e8_anchor_hashes, idx, patch_hash);
+    geomind_e8_anchor_lut_insert(patch_hash, idx);
     g_e8_anchor_count = g_e8_anchor_count + 1.0;
     g_e8_newly_crystallized = g_e8_newly_crystallized + 1.0;
     return idx;
@@ -1543,8 +1599,9 @@ fn geomind_byte_latent_train_deep_e8_corpus(
     geomind_byte_latent_init_if_needed();
     var L = floor(num_layers);
     if (L < 1.0) { L = 42.0; }
+    let was_stack_init = g_e8_stack_initialized;
     geomind_e8_stack_init(L);
-    if (cartan_file_exists("Projects/geomind/trainingdata/checkpoints/geomind_e8_deep_stack.bin") == 1.0) {
+    if (was_stack_init == 0.0 && cartan_file_exists("Projects/geomind/trainingdata/checkpoints/geomind_e8_deep_stack.bin") == 1.0) {
         geomind_e8_stack_load("Projects/geomind/trainingdata/checkpoints/geomind_e8_deep_stack.bin");
     }
 
@@ -1914,6 +1971,17 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
         c = c + 1.0;
     }
 
+    // 16-slot Short-Term Synaptic Depression (Refractory) Buffer on (word1_hub_id, outgoing_first_byte)
+    let ref_w1 = cartan_vec_create();
+    let ref_byte = cartan_vec_create();
+    var r_idx = 0.0;
+    while (r_idx < 16.0) {
+        cartan_vec_push_f32(ref_w1, -1.0);
+        cartan_vec_push_f32(ref_byte, -1.0);
+        r_idx = r_idx + 1.0;
+    }
+    var ref_ptr = 0.0;
+
     let plen = cartan_string_length(prompt);
     var b3 = 32.0;
     var b2 = 32.0;
@@ -1934,6 +2002,11 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
         if (cur_b < 0.0) { cur_b = cur_b + 256.0; }
         cur_b = math_mod_val(floor(cur_b), 256.0);
         if (cur_b == 13.0 || cur_b == 10.0) { cur_b = 32.0; }
+        if (i > 0.0 && b2 == 32.0 && cur_b != 32.0 && g_markov_ctx_word1_id > 0.0) {
+            cartan_vec_set_f32(ref_w1, ref_ptr, g_markov_ctx_word1_id);
+            cartan_vec_set_f32(ref_byte, ref_ptr, cur_b);
+            ref_ptr = math_mod_val(ref_ptr + 1.0, 16.0);
+        }
         let is_alnum1 = ((cur_b >= 97.0 && cur_b <= 122.0) || (cur_b >= 65.0 && cur_b <= 90.0) || (cur_b >= 48.0 && cur_b <= 57.0));
         if (is_alnum1) {
             geomind_fold_byte_into_e8_patch(h_patch_accum, cur_b, patch_len);
@@ -2025,11 +2098,27 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
             // Prevent 3 consecutive identical characters (e.g., "fff") and consecutive spaces ("  ")
             if (b2 == cur_b && cur_b == c) { lv = lv - 12.0; }
             if (cur_b == 32.0 && c == 32.0) { lv = lv - 12.0; }
+            // Apply Short-Term Synaptic Depression (Refractory damping) on recently traversed outgoing word branches
+            if (cur_b == 32.0 && c != 32.0 && g_markov_ctx_word1_id > 0.0) {
+                r_idx = 0.0;
+                while (r_idx < 16.0) {
+                    if (cartan_vec_get_f32(ref_w1, r_idx) == g_markov_ctx_word1_id && cartan_vec_get_f32(ref_byte, r_idx) == c) {
+                        lv = lv - 3.5;
+                    }
+                    r_idx = r_idx + 1.0;
+                }
+            }
             if (lv > best_l) {
                 best_l = lv;
                 best_b = c;
             }
             c = c + 1.0;
+        }
+
+        if (cur_b == 32.0 && best_b != 32.0 && g_markov_ctx_word1_id > 0.0) {
+            cartan_vec_set_f32(ref_w1, ref_ptr, g_markov_ctx_word1_id);
+            cartan_vec_set_f32(ref_byte, ref_ptr, best_b);
+            ref_ptr = math_mod_val(ref_ptr + 1.0, 16.0);
         }
 
         out_str = cartan_string_concat(out_str, cartan_char_from_code(best_b));
@@ -2106,6 +2195,8 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
         step = step + 1.0;
     }
 
+    cartan_vec_free(ref_w1);
+    cartan_vec_free(ref_byte);
     cartan_vec_free(h_prev_local);
     cartan_vec_free(h_pre_local);
     cartan_vec_free(h_local);
@@ -2119,11 +2210,12 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
 }
 
 // ============================================================================
-// STAGE 5.3: 3-RUNG CONCENTRIC ENGLISH DEVELOPMENTAL CURRICULUM (--curriculum)
+// STAGE 5.3: 4-RUNG CONCENTRIC ENGLISH DEVELOPMENTAL CURRICULUM (--curriculum)
 // ============================================================================
 // Rung 1: Nursery Primer (`e8_nursery_primer.txt`) - Full Foundation Mode, crystallizes core English SVO + glue anchors.
 // Rung 2: Grounded Concept Triples (`e8_concept_triples.txt`) - Selective Resonance Focus around Rung 1 anchors.
 // Rung 3: Multi-Pass TinyStories (`hf_roneneldan_TinyStories.txt`) - Progressive comprehension expansion across passes.
+// Rung 4: Digestible Storytelling Chunks (`storytelling_chunks/`) - Multi-genre narratives & classical literature.
 fn geomind_run_english_curriculum(num_layers: float, lr: float) -> float {
     var L = floor(num_layers);
     if (L < 1.0) { L = 42.0; }
@@ -2135,7 +2227,15 @@ fn geomind_run_english_curriculum(num_layers: float, lr: float) -> float {
     printf("================================================================================\n");
     cartan_flush(0.0);
 
-    // Start from a clean Anchor Basin registry for the developmental trajectory
+    // Start from a clean Anchor Basin registry, Markov Tapestry, and 42-Layer E8 Stack
+    g_markov_initialized = 0.0;
+    geomind_markov_init_if_needed();
+    g_byte_e8_skip_disk_autoload = 1.0;
+    g_byte_e8_initialized = 0.0;
+    geomind_byte_latent_init_if_needed();
+    g_byte_e8_skip_disk_autoload = 0.0;
+    g_e8_stack_initialized = 0.0;
+    geomind_e8_stack_init(L);
     geomind_e8_anchors_reset();
     geomind_visualizer_reset();
 
@@ -2212,6 +2312,44 @@ fn geomind_run_english_curriculum(num_layers: float, lr: float) -> float {
         cartan_flush(0.0);
     }
 
+    // ------------------------------------------------------------------------
+    // RUNG 4: Digestible Storytelling Chunks (Modern Sci-Fi/Mystery + Alice + Anthem)
+    // ------------------------------------------------------------------------
+    let chunk_modern = "Projects/geomind/trainingdata/storytelling_chunks/chunk_005_t1_GeoMind_Modern_Narratives.txt";
+    let chunk_alice = "Projects/geomind/trainingdata/storytelling_chunks/chunk_007_t2_Alice_In_Wonderland.txt";
+    let chunk_anthem = "Projects/geomind/trainingdata/storytelling_chunks/chunk_019_t2_Anthem.txt";
+    if (cartan_file_exists(chunk_modern) == 1.0 && cartan_file_exists(chunk_alice) == 1.0 && cartan_file_exists(chunk_anthem) == 1.0) {
+        let txt_modern = cartan_string_substring(cartan_read_file(chunk_modern), 0.0, 5000.0);
+        let txt_alice = cartan_string_substring(cartan_read_file(chunk_alice), 0.0, 5000.0);
+        let txt_anthem = cartan_string_substring(cartan_read_file(chunk_anthem), 0.0, 5000.0);
+
+        g_e8_focus_hits = 0.0;
+        g_e8_noise_skips = 0.0;
+        let a_pre_mod = g_e8_anchor_count;
+        let s_mod = geomind_byte_latent_train_deep_e8_corpus(txt_modern, L, 2.0, eff_lr * 0.80, 1.0);
+        printf("[Rung 4a | Chunk 005 Modern Narratives] Action S = %.6f | Anchors: %.0f -> %.0f | FocusHits = %.0f | NoiseSkipped = %.0f\n",
+            s_mod, a_pre_mod, g_e8_anchor_count, g_e8_focus_hits, g_e8_noise_skips);
+
+        g_e8_focus_hits = 0.0;
+        g_e8_noise_skips = 0.0;
+        let a_pre_ali = g_e8_anchor_count;
+        let s_ali = geomind_byte_latent_train_deep_e8_corpus(txt_alice, L, 2.0, eff_lr * 0.80, 1.0);
+        printf("[Rung 4b | Chunk 007 Alice Wonderland]  Action S = %.6f | Anchors: %.0f -> %.0f | FocusHits = %.0f | NoiseSkipped = %.0f\n",
+            s_ali, a_pre_ali, g_e8_anchor_count, g_e8_focus_hits, g_e8_noise_skips);
+
+        g_e8_focus_hits = 0.0;
+        g_e8_noise_skips = 0.0;
+        let a_pre_ant = g_e8_anchor_count;
+        let s_ant = geomind_byte_latent_train_deep_e8_corpus(txt_anthem, L, 2.0, eff_lr * 0.80, 1.0);
+        printf("[Rung 4c | Chunk 019 Anthem]            Action S = %.6f | Anchors: %.0f -> %.0f | FocusHits = %.0f | NoiseSkipped = %.0f\n",
+            s_ant, a_pre_ant, g_e8_anchor_count, g_e8_focus_hits, g_e8_noise_skips);
+
+        printf("  -> Gen 5 (Sci-Fi): %s\n", geomind_byte_latent_generate_deep_e8("Commander Vane stood on", L, 60.0));
+        printf("  -> Gen 6 (Alice):  %s\n", geomind_byte_latent_generate_deep_e8("Alice was beginning to", L, 60.0));
+        printf("  -> Gen 7 (Anthem): %s\n", geomind_byte_latent_generate_deep_e8("It is a sin to write", L, 60.0));
+        cartan_flush(0.0);
+    }
+
     printf("--------------------------------------------------------------------------------\n");
     printf("  NOVEL CONCEPT RECOMBINATION TEST (Unseen Prefixes Bridging Shared Word Hubs)\n");
     printf("--------------------------------------------------------------------------------\n");
@@ -2220,9 +2358,11 @@ fn geomind_run_english_curriculum(num_layers: float, lr: float) -> float {
     printf("  -> Novel 3 ('Cold water is'):            %s\n", geomind_byte_latent_generate_deep_e8("Cold water is", L, 48.0));
     printf("  -> Novel 4 ('When rain falls, the cat'): %s\n", geomind_byte_latent_generate_deep_e8("When rain falls, the cat", L, 48.0));
     printf("  -> Novel 5 ('The dog can bounce'):       %s\n", geomind_byte_latent_generate_deep_e8("The dog can bounce", L, 48.0));
+    printf("  -> Novel 6 ('Alice stood on the'):       %s\n", geomind_byte_latent_generate_deep_e8("Alice stood on the", L, 56.0));
+    printf("  -> Novel 7 ('Commander Vane found a'):   %s\n", geomind_byte_latent_generate_deep_e8("Commander Vane found a", L, 56.0));
     cartan_flush(0.0);
 
-    geomind_visualizer_export_html("manifold_relaxation.html", "3-Rung Concentric English Curriculum");
+    geomind_visualizer_export_html("manifold_relaxation.html", "4-Rung Concentric Storytelling Curriculum");
     printf("================================================================================\n");
     cartan_flush(0.0);
     return g_e8_anchor_count;
