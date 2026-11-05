@@ -14,6 +14,12 @@ include "Projects/geomind/streams.cl";
 include "Projects/geomind/e8_stack.cl";
 
 extern fn Sleep(ms: float);
+extern fn cartan_f32_at(p: ptr, offset: float) -> float;
+extern fn cartan_set_f32(p: ptr, offset: float, val: float) -> void;
+extern fn cartan_i32_at(p: ptr, offset: float) -> float;
+extern fn cartan_set_i32(p: ptr, offset: float, val: float) -> void;
+extern fn cartan_i64_at(p: ptr, offset: float) -> float;
+extern fn cartan_set_i64(p: ptr, offset: float, val: float) -> void;
 
 // Converts a single byte/ASCII code (0..255) into a 1-character null-terminated string
 fn cartan_char_from_code(code: float) -> string {
@@ -43,6 +49,7 @@ var g_markov_ctx_word3_id: float = 0.0;
 var g_markov_ctx_syn1_id: float = 0.0;
 var g_markov_ctx_syn2_id: float = 0.0;
 var g_markov_ctx_syn3_id: float = 0.0;
+var g_markov_ctx_syn_weight: float = 1.0;
 var g_markov_hub_occupied_slots: float = 0.0;
 var g_markov_initialized: float = 0.0;
 var g_byte_e8_skip_disk_autoload: float = 0.0;
@@ -1547,20 +1554,42 @@ fn geomind_e8_anchor_killing_sim(patch_248: ptr, anchor_idx: float) -> float {
 }
 
 // ============================================================================
-// WORDNET TAXONOMY + INFORMATION CONTENT (IC) + HOMONYM SENSE-GUARD ENGINE
+// STAGE 5.6: DIFFERENTIABLE 248x248 E8 RELATIONAL OPERATORS (R_isa, R_prop),
+// WORDNET + IC TAXONOMIC ENGINE, & GGUF v3 OPEN-WEIGHTS SERIALIZER
 // ============================================================================
 // Maps surface word hashes (`patch_hash`) to canonical WordNet Synset IDs (`700000..949999`),
+// hypernym head hashes (`g_wordnet_head_hash`), S^{247} unit coordinates (`g_wordnet_lemma_vecs`),
 // calibrated Information Content (`IC`) weights, and syntactic Homonym SenseGuards (`1.0` = noun-only).
+// Trains two continuous 248x248 Lie-algebraic relational weight matrices on S^{247}:
+// - `g_e8_rel_isa_248x248`: Asymmetric Hypernym Operator R_isa (e.g. sparrow -> bird, kitten -> cat, puppy -> dog, orb -> ball)
+// - `g_e8_rel_prop_248x248`: Compositional Property & Valence Operator R_prop (e.g. kitten -> young, run/play/bounce -> fun)
 var g_wordnet_initialized: float = 0.0;
 var g_wordnet_lemma_hash: ptr = 0.0;
 var g_wordnet_synset_hash: ptr = 0.0;
+var g_wordnet_head_hash: ptr = 0.0;
 var g_wordnet_ic_weight: ptr = 0.0;
 var g_wordnet_sense_guard: ptr = 0.0;
+var g_wordnet_lemma_vecs: ptr = 0.0;
+
+var g_e8_rel_initialized: float = 0.0;
+var g_e8_rel_isa_248x248: ptr = 0.0;
+var g_e8_rel_prop_248x248: ptr = 0.0;
+var g_e8_rel_tmp_u: ptr = 0.0;
+var g_e8_rel_tmp_v: ptr = 0.0;
+var g_e8_vec_fun: ptr = 0.0;
+var g_e8_rel_updates_count: float = 0.0;
+
 var g_wn_verb_to: float = 0.0;
 var g_wn_verb_can: float = 0.0;
 var g_wn_verb_will: float = 0.0;
 var g_wn_verb_not: float = 0.0;
 var g_wn_verb_do: float = 0.0;
+var g_wn_hash_is: float = 0.0;
+var g_wn_hash_a: float = 0.0;
+var g_wn_hash_and: float = 0.0;
+var g_wn_hash_likes: float = 0.0;
+var g_wn_hash_bounce: float = 0.0;
+var g_wn_hash_bouncing: float = 0.0;
 
 var g_ctx_prev2_hash: float = 17.0;
 var g_ctx_prev_hash: float = 17.0;
@@ -1585,6 +1614,167 @@ fn geomind_word_patch_hash(word: string) -> float {
         i = i + 1.0;
     }
     return h;
+}
+
+// Project a case-normalized word patch hash `word_hash` onto its canonical quasi-orthogonal S^{247} coordinate (||v||_2 = sqrt(248))
+// via E8 Chebyshev-Harmonic basis coordinates + 3 cascaded Weyl root reflections on the 240 kissing roots
+fn geomind_e8_hash_to_vec_248(word_hash: float, out_248: ptr) {
+    let h1 = math_mod_val(word_hash * 7919.0 + 104729.0, 1000003.0);
+    let h2 = math_mod_val(word_hash * 15485863.0 + 32452843.0, 1000003.0);
+    var d = 0.0;
+    while (d < 248.0) {
+        let ph1 = math_mod_val(h1 * (d + 1.0) * 0.6180339887, 6.283185307);
+        let ph2 = math_mod_val(h2 * (248.0 - d) * 0.4142135623, 6.283185307);
+        let val = cos(ph1) + 0.70710678 * sin(ph2 + d * 0.137);
+        cartan_vec_set_f32(out_248, d, val);
+        d = d + 1.0;
+    }
+    geomind_weyl_reflect_vector_248(out_248, math_mod_val(word_hash, 240.0));
+    geomind_weyl_reflect_vector_248(out_248, math_mod_val(h1, 240.0));
+    geomind_weyl_reflect_vector_248(out_248, math_mod_val(h2, 240.0));
+    var nsq = 0.0;
+    d = 0.0;
+    while (d < 248.0) {
+        let v = cartan_vec_get_f32(out_248, d);
+        nsq = nsq + v * v;
+        d = d + 1.0;
+    }
+    if (nsq > 0.000001) {
+        let sc = sqrt(248.0 / nsq);
+        d = 0.0;
+        while (d < 248.0) {
+            cartan_vec_set_f32(out_248, d, cartan_vec_get_f32(out_248, d) * sc);
+            d = d + 1.0;
+        }
+    }
+}
+
+// Fold a surface word string directly into its deterministic S^{247} coordinate (||v||_2 = sqrt(248))
+fn geomind_e8_word_to_vec_248(word: string, out_248: ptr) {
+    let wh = geomind_word_patch_hash(word);
+    geomind_e8_hash_to_vec_248(wh, out_248);
+}
+
+fn geomind_e8_rel_init_if_needed() {
+    if (g_e8_rel_initialized == 1.0 && g_e8_rel_isa_248x248 != 0.0) { return; }
+    g_e8_rel_isa_248x248 = cartan_tensor_alloc(61504.0);
+    g_e8_rel_prop_248x248 = cartan_tensor_alloc(61504.0);
+    g_e8_rel_tmp_u = cartan_vec_create();
+    g_e8_rel_tmp_v = cartan_vec_create();
+    g_e8_vec_fun = cartan_vec_create();
+    var d = 0.0;
+    while (d < 248.0) {
+        cartan_vec_push_f32(g_e8_rel_tmp_u, 0.0);
+        cartan_vec_push_f32(g_e8_rel_tmp_v, 0.0);
+        cartan_vec_push_f32(g_e8_vec_fun, 0.0);
+        d = d + 1.0;
+    }
+    var i = 0.0;
+    while (i < 61504.0) {
+        cartan_vec_set_f32(g_e8_rel_isa_248x248, i, 0.0);
+        cartan_vec_set_f32(g_e8_rel_prop_248x248, i, 0.0);
+        i = i + 1.0;
+    }
+    g_e8_rel_initialized = 1.0;
+    geomind_e8_word_to_vec_248("fun", g_e8_vec_fun);
+}
+
+// Compute directed bilinear Killing-Cartan relational score S(u --[R]--> v) = (1/248) * <v, R * u>
+fn geomind_e8_rel_score_vec(rel_mat_248x248: ptr, u_248: ptr, v_248: ptr) -> float {
+    geomind_e8_rel_init_if_needed();
+    var total = 0.0;
+    var r = 0.0;
+    while (r < 248.0) {
+        let vr = cartan_vec_get_f32(v_248, r);
+        let row_off = r * 248.0;
+        var row_dot = 0.0;
+        var c = 0.0;
+        while (c < 248.0) {
+            row_dot = row_dot + cartan_vec_get_f32(rel_mat_248x248, row_off + c) * cartan_vec_get_f32(u_248, c);
+            c = c + 1.0;
+        }
+        total = total + vr * row_dot;
+        r = r + 1.0;
+    }
+    return total / 248.0;
+}
+
+// Analytical Rank-2 Asymmetric Riemannian Projection-Gradient Step on R in R^{248x248}:
+// Drives forward score S(u -> v) toward `target_w` while simultaneously driving reverse S(v -> u) toward 0.0 when `asym_contrast == 1.0`
+fn geomind_e8_rel_train_step(
+    rel_mat_248x248: ptr,
+    u_248: ptr,
+    v_248: ptr,
+    target_w: float,
+    asym_contrast: float,
+    lr: float
+) -> float {
+    geomind_e8_rel_init_if_needed();
+    let s_fwd = geomind_e8_rel_score_vec(rel_mat_248x248, u_248, v_248);
+    var s_rev = 0.0;
+    if (asym_contrast > 0.0) {
+        s_rev = geomind_e8_rel_score_vec(rel_mat_248x248, v_248, u_248);
+    }
+    let err_fwd = s_fwd - target_w;
+    let err_rev = s_rev * asym_contrast;
+    let step_scale = lr / 248.0;
+
+    var r = 0.0;
+    while (r < 248.0) {
+        let vr = cartan_vec_get_f32(v_248, r);
+        let ur = cartan_vec_get_f32(u_248, r);
+        let row_off = r * 248.0;
+        var c = 0.0;
+        while (c < 248.0) {
+            let uc = cartan_vec_get_f32(u_248, c);
+            let vc = cartan_vec_get_f32(v_248, c);
+            let grad_rc = err_fwd * vr * uc + err_rev * ur * vc;
+            let old_w = cartan_vec_get_f32(rel_mat_248x248, row_off + c);
+            cartan_vec_set_f32(rel_mat_248x248, row_off + c, old_w - step_scale * grad_rc);
+            c = c + 1.0;
+        }
+        r = r + 1.0;
+    }
+    g_e8_rel_updates_count = g_e8_rel_updates_count + 1.0;
+    return s_fwd;
+}
+
+// Evaluate directed relational weight S(word_u --[R]--> word_v) directly from the 248x248 manifold tensor
+fn geomind_e8_rel_score_words(rel_mat_248x248: ptr, word_u: string, word_v: string) -> float {
+    geomind_e8_rel_init_if_needed();
+    geomind_e8_word_to_vec_248(word_u, g_e8_rel_tmp_u);
+    geomind_e8_word_to_vec_248(word_v, g_e8_rel_tmp_v);
+    return geomind_e8_rel_score_vec(rel_mat_248x248, g_e8_rel_tmp_u, g_e8_rel_tmp_v);
+}
+
+// Compute cosine alignment <R_prop * u, R_prop * v> / (||R_prop * u|| ||R_prop * v||) in 248-D property/valence space
+fn geomind_e8_rel_prop_cosine_words(word_u: string, word_v: string) -> float {
+    geomind_e8_rel_init_if_needed();
+    geomind_e8_word_to_vec_248(word_u, g_e8_rel_tmp_u);
+    geomind_e8_word_to_vec_248(word_v, g_e8_rel_tmp_v);
+    var dot_uv = 0.0;
+    var n_u = 0.0;
+    var n_v = 0.0;
+    var r = 0.0;
+    while (r < 248.0) {
+        let row_off = r * 248.0;
+        var ru = 0.0;
+        var rv = 0.0;
+        var c = 0.0;
+        while (c < 248.0) {
+            let w_rc = cartan_vec_get_f32(g_e8_rel_prop_248x248, row_off + c);
+            ru = ru + w_rc * cartan_vec_get_f32(g_e8_rel_tmp_u, c);
+            rv = rv + w_rc * cartan_vec_get_f32(g_e8_rel_tmp_v, c);
+            c = c + 1.0;
+        }
+        dot_uv = dot_uv + ru * rv;
+        n_u = n_u + ru * ru;
+        n_v = n_v + rv * rv;
+        r = r + 1.0;
+    }
+    let denom = sqrt(n_u * n_v);
+    if (denom < 0.000001) { return 0.0; }
+    return dot_uv / denom;
 }
 
 fn geomind_parse_simple_float(s: string) -> float {
@@ -1612,7 +1802,7 @@ fn geomind_parse_simple_float(s: string) -> float {
     return val + frac;
 }
 
-fn geomind_wordnet_insert_hash(lh: float, sh: float, ic_val: float, guard: float) {
+fn geomind_wordnet_insert_hash(lh: float, sh: float, head_lh: float, ic_val: float, guard: float, vec_248: ptr) {
     if (lh <= 17.0 || sh <= 0.0) { return; }
     let h0 = math_mod_val(lh * 13331.0, 4096.0);
     var probe = 0.0;
@@ -1622,8 +1812,17 @@ fn geomind_wordnet_insert_hash(lh: float, sh: float, ic_val: float, guard: float
         if (cur_l == 0.0 || cur_l == lh) {
             cartan_vec_set_f32(g_wordnet_lemma_hash, slot, lh);
             cartan_vec_set_f32(g_wordnet_synset_hash, slot, sh);
+            cartan_vec_set_f32(g_wordnet_head_hash, slot, head_lh);
             cartan_vec_set_f32(g_wordnet_ic_weight, slot, ic_val);
             cartan_vec_set_f32(g_wordnet_sense_guard, slot, guard);
+            if (vec_248 != 0.0) {
+                let v_base = slot * 248.0;
+                var d = 0.0;
+                while (d < 248.0) {
+                    cartan_vec_set_f32(g_wordnet_lemma_vecs, v_base + d, cartan_vec_get_f32(vec_248, d));
+                    d = d + 1.0;
+                }
+            }
             return;
         }
         probe = probe + 1.0;
@@ -1632,9 +1831,12 @@ fn geomind_wordnet_insert_hash(lh: float, sh: float, ic_val: float, guard: float
 
 fn geomind_wordnet_register_node(synset_path: string, lemmas_csv: string, ic_val: float, sense_guard: float) {
     if (cartan_string_length(synset_path) == 0.0 || cartan_string_length(lemmas_csv) == 0.0) { return; }
+    geomind_e8_rel_init_if_needed();
     let sh = 700000.0 + math_mod_val(geomind_word_patch_hash(synset_path), 250000.0);
     let n = cartan_string_length(lemmas_csv);
+    var head_lh = 0.0;
     var lh = 17.0;
+    var word_start = 0.0;
     var i = 0.0;
     while (i <= n) {
         var b = 44.0;
@@ -1644,9 +1846,26 @@ fn geomind_wordnet_register_node(synset_path: string, lemmas_csv: string, ic_val
         }
         if (b == 44.0) {
             if (lh != 17.0) {
-                geomind_wordnet_insert_hash(lh, sh, ic_val, sense_guard);
+                let lemma_str = cartan_string_substring(lemmas_csv, word_start, i);
+                if (head_lh == 0.0) {
+                    head_lh = lh;
+                    geomind_e8_word_to_vec_248(lemma_str, g_e8_rel_tmp_v);
+                    geomind_wordnet_insert_hash(lh, sh, head_lh, ic_val, sense_guard, g_e8_rel_tmp_v);
+                } else {
+                    geomind_e8_word_to_vec_248(lemma_str, g_e8_rel_tmp_u);
+                    geomind_wordnet_insert_hash(lh, sh, head_lh, ic_val, sense_guard, g_e8_rel_tmp_u);
+                    // Train asymmetric R_isa(hyponym -> hypernym_head) weighted by WordNet IC specificity
+                    var w_target = 0.50 + 0.042 * ic_val;
+                    if (w_target > 0.94) { w_target = 0.94; }
+                    var p = 0.0;
+                    while (p < 5.0) {
+                        geomind_e8_rel_train_step(g_e8_rel_isa_248x248, g_e8_rel_tmp_u, g_e8_rel_tmp_v, w_target, 1.0, 0.45);
+                        p = p + 1.0;
+                    }
+                }
             }
             lh = 17.0;
+            word_start = i + 1.0;
         } else {
             if (b >= 65.0 && b <= 90.0) { b = b + 32.0; }
             if ((b >= 97.0 && b <= 122.0) || (b >= 48.0 && b <= 57.0)) {
@@ -1659,16 +1878,27 @@ fn geomind_wordnet_register_node(synset_path: string, lemmas_csv: string, ic_val
 
 fn geomind_wordnet_init_if_needed() {
     if (g_wordnet_initialized == 1.0) { return; }
+    g_wordnet_initialized = 1.0;
     g_wordnet_lemma_hash = cartan_tensor_alloc(4096.0);
     g_wordnet_synset_hash = cartan_tensor_alloc(4096.0);
+    g_wordnet_head_hash = cartan_tensor_alloc(4096.0);
     g_wordnet_ic_weight = cartan_tensor_alloc(4096.0);
     g_wordnet_sense_guard = cartan_tensor_alloc(4096.0);
+    g_wordnet_lemma_vecs = cartan_tensor_alloc(4096.0 * 248.0);
 
     g_wn_verb_to = geomind_word_patch_hash("to");
     g_wn_verb_can = geomind_word_patch_hash("can");
     g_wn_verb_will = geomind_word_patch_hash("will");
     g_wn_verb_not = geomind_word_patch_hash("not");
     g_wn_verb_do = geomind_word_patch_hash("do");
+    g_wn_hash_is = geomind_word_patch_hash("is");
+    g_wn_hash_a = geomind_word_patch_hash("a");
+    g_wn_hash_and = geomind_word_patch_hash("and");
+    g_wn_hash_likes = geomind_word_patch_hash("likes");
+    g_wn_hash_bounce = geomind_word_patch_hash("bounce");
+    g_wn_hash_bouncing = geomind_word_patch_hash("bouncing");
+
+    geomind_e8_rel_init_if_needed();
 
     let tax_path = "Projects/geomind/trainingdata/wordnet_taxonomy.txt";
     if (cartan_file_exists(tax_path) == 1.0) {
@@ -1717,11 +1947,58 @@ fn geomind_wordnet_init_if_needed() {
             }
         }
     }
-    g_wordnet_initialized = 1.0;
+}
+
+// Compute the continuous 248x248 manifold hypernym weight S(word --[R_isa]--> head_hypernym) on S^{247}
+fn geomind_wordnet_get_isa_manifold_weight(patch_hash: float) -> float {
+    geomind_wordnet_init_if_needed();
+    if (patch_hash <= 17.0) { return 0.0; }
+    let h0 = math_mod_val(patch_hash * 13331.0, 4096.0);
+    var probe = 0.0;
+    var word_slot = -1.0;
+    var head_lh = 0.0;
+    while (probe < 32.0) {
+        let slot = math_mod_val(h0 + probe * 7.0, 4096.0);
+        let cur_l = cartan_vec_get_f32(g_wordnet_lemma_hash, slot);
+        if (cur_l == 0.0) { return 0.0; }
+        if (cur_l == patch_hash) {
+            word_slot = slot;
+            head_lh = cartan_vec_get_f32(g_wordnet_head_hash, slot);
+            break;
+        }
+        probe = probe + 1.0;
+    }
+    if (word_slot < 0.0 || head_lh <= 17.0) { return 0.0; }
+    if (head_lh == patch_hash) { return 1.0; }
+
+    let hh0 = math_mod_val(head_lh * 13331.0, 4096.0);
+    var hprobe = 0.0;
+    var head_slot = -1.0;
+    while (hprobe < 32.0) {
+        let hslot = math_mod_val(hh0 + hprobe * 7.0, 4096.0);
+        let hcur = cartan_vec_get_f32(g_wordnet_lemma_hash, hslot);
+        if (hcur == 0.0) { break; }
+        if (hcur == head_lh) {
+            head_slot = hslot;
+            break;
+        }
+        hprobe = hprobe + 1.0;
+    }
+    if (head_slot < 0.0) { return 0.85; }
+
+    let u_base = word_slot * 248.0;
+    let v_base = head_slot * 248.0;
+    var d = 0.0;
+    while (d < 248.0) {
+        cartan_vec_set_f32(g_e8_rel_tmp_u, d, cartan_vec_get_f32(g_wordnet_lemma_vecs, u_base + d));
+        cartan_vec_set_f32(g_e8_rel_tmp_v, d, cartan_vec_get_f32(g_wordnet_lemma_vecs, v_base + d));
+        d = d + 1.0;
+    }
+    return geomind_e8_rel_score_vec(g_e8_rel_isa_248x248, g_e8_rel_tmp_u, g_e8_rel_tmp_v);
 }
 
 // Resolve `patch_hash` to its canonical WordNet Synset ID (`700000..949999`), gated by syntactic `SenseGuard`
-// so noun-verb homonyms ("book", "fire", "water", "fish", "light", "rain") never activate a noun synset after "to"/"can"/"will".
+// AND continuous 248x248 manifold `R_isa` weight verification (`w_isa >= 0.35`).
 fn geomind_wordnet_resolve_synset(patch_hash: float, prev_patch_hash: float) -> float {
     geomind_wordnet_init_if_needed();
     if (patch_hash <= 17.0) { return 0.0; }
@@ -1739,6 +2016,16 @@ fn geomind_wordnet_resolve_synset(patch_hash: float, prev_patch_hash: float) -> 
                     prev_patch_hash == g_wn_verb_do) {
                     return 0.0;
                 }
+            }
+            let head_lh = cartan_vec_get_f32(g_wordnet_head_hash, slot);
+            if (head_lh != patch_hash) {
+                let w_isa = geomind_wordnet_get_isa_manifold_weight(patch_hash);
+                if (w_isa < 0.35) {
+                    return 0.0;
+                }
+                g_markov_ctx_syn_weight = w_isa;
+            } else {
+                g_markov_ctx_syn_weight = 1.0;
             }
             return cartan_vec_get_f32(g_wordnet_synset_hash, slot);
         }
@@ -1764,7 +2051,7 @@ fn geomind_wordnet_get_ic(patch_hash: float) -> float {
     return 8.0;
 }
 
-// Query maximum resonance R(P_k) in [-1, 1] across crystallized E8 Anchor Basins (O(1) hash + WordNet Synset fast-path + local Killing probe)
+// Query maximum resonance R(P_k) in [-1, 1] across crystallized E8 Anchor Basins (O(1) hash + R_isa manifold weight + local Killing probe)
 fn geomind_e8_query_anchor_resonance(patch_248: ptr, patch_hash: float) -> float {
     geomind_e8_anchors_init_if_needed();
     if (g_e8_anchor_count <= 0.0) { return 0.0; }
@@ -1772,12 +2059,14 @@ fn geomind_e8_query_anchor_resonance(patch_248: ptr, patch_hash: float) -> float
     if (exact_idx >= 0.0) {
         return 1.0;
     }
-    // Check if the word's WordNet Synset is already a crystallized Anchor Basin on S^{247}
+    // Check if the word's WordNet Synset is a crystallized Anchor Basin AND verified by the 248x248 R_isa operator
     let syn_h = geomind_wordnet_resolve_synset(patch_hash, g_ctx_last_hash);
     if (syn_h > 0.0) {
         let syn_idx = geomind_e8_find_anchor_by_hash(syn_h);
         if (syn_idx >= 0.0) {
-            return 0.95;
+            var res_w = g_markov_ctx_syn_weight;
+            if (res_w < 0.85) { res_w = 0.85; }
+            return res_w;
         }
     }
     var best_sim = -1.0;
@@ -1859,7 +2148,6 @@ fn geomind_e8_crystallize_patch_vec(patch_248: ptr, patch_hash: float, initial_m
     var eff_mass = initial_mass * (ic_w / 10.0);
     if (eff_mass > 1.0) { eff_mass = 1.0; }
     let idx = geomind_e8_crystallize_patch_vec_internal(patch_248, patch_hash, eff_mass);
-    // Also crystallize/gravitate the canonical WordNet Synset Basin on S^{247} so synonyms share a geometric attractor
     let syn_h = geomind_wordnet_resolve_synset(patch_hash, g_ctx_last_hash);
     if (syn_h > 0.0) {
         geomind_e8_crystallize_patch_vec_internal(patch_248, syn_h, eff_mass);
@@ -1896,6 +2184,273 @@ fn geomind_e8_seed_concept_word(word: string) -> float {
     let idx = geomind_e8_crystallize_patch_vec(accum, p_hash, 1.0);
     cartan_vec_free(accum);
     return idx;
+}
+
+// ============================================================================
+// STAGE 5.6.3: UNIVERSAL GGUF v3 OPEN-WEIGHTS EXPORTER & VERIFIER
+// ============================================================================
+// Exports all 42 Non-Euclidean E8 layers + Cartan Moving-Frame Pullback matrices
+// + 248x248 Relational Tensors (`R_isa`, `R_prop`) + Crystallized S^{247} Concept Anchors
+// into a spec-compliant GGUF v3 binary weight file (`0x46554747`, version 3, 32-byte aligned F32 tensors).
+var g_gguf_scratch_8: ptr = 0.0;
+
+fn geomind_gguf_init_scratch() {
+    if (g_gguf_scratch_8 == 0.0) {
+        g_gguf_scratch_8 = malloc(32.0);
+    }
+}
+
+fn geomind_gguf_align32(val: float) -> float {
+    let rem = math_mod_val(val, 32.0);
+    if (rem == 0.0) { return val; }
+    return val + (32.0 - rem);
+}
+
+fn geomind_gguf_write_u32(f: ptr, val: float, pos: float) -> float {
+    geomind_gguf_init_scratch();
+    cartan_set_i32(g_gguf_scratch_8, 0.0, val);
+    fwrite(g_gguf_scratch_8, 4.0, 1.0, f);
+    return pos + 4.0;
+}
+
+fn geomind_gguf_write_u64(f: ptr, val: float, pos: float) -> float {
+    geomind_gguf_init_scratch();
+    cartan_set_i64(g_gguf_scratch_8, 0.0, val);
+    fwrite(g_gguf_scratch_8, 8.0, 1.0, f);
+    return pos + 8.0;
+}
+
+fn geomind_gguf_write_f32(f: ptr, val: float, pos: float) -> float {
+    geomind_gguf_init_scratch();
+    cartan_set_f32(g_gguf_scratch_8, 0.0, val);
+    fwrite(g_gguf_scratch_8, 4.0, 1.0, f);
+    return pos + 4.0;
+}
+
+fn geomind_gguf_write_str(f: ptr, s: string, pos: float) -> float {
+    let slen = cartan_string_length(s);
+    var p = geomind_gguf_write_u64(f, slen, pos);
+    if (slen > 0.0) {
+        fwrite(s, 1.0, slen, f);
+        p = p + slen;
+    }
+    return p;
+}
+
+fn geomind_gguf_write_kv_str(f: ptr, key: string, val: string, pos: float) -> float {
+    var p = geomind_gguf_write_str(f, key, pos);
+    p = geomind_gguf_write_u32(f, 8.0, p); // GGUF_METADATA_VALUE_TYPE_STRING = 8
+    p = geomind_gguf_write_str(f, val, p);
+    return p;
+}
+
+fn geomind_gguf_write_kv_u32(f: ptr, key: string, val: float, pos: float) -> float {
+    var p = geomind_gguf_write_str(f, key, pos);
+    p = geomind_gguf_write_u32(f, 4.0, p); // GGUF_METADATA_VALUE_TYPE_UINT32 = 4
+    p = geomind_gguf_write_u32(f, val, p);
+    return p;
+}
+
+fn geomind_gguf_write_tensor_info_1d(f: ptr, name: string, d0: float, data_off_vec: ptr, pos: float) -> float {
+    var p = geomind_gguf_write_str(f, name, pos);
+    p = geomind_gguf_write_u32(f, 1.0, p); // n_dims = 1
+    p = geomind_gguf_write_u64(f, d0, p);
+    p = geomind_gguf_write_u32(f, 0.0, p); // GGML_TYPE_F32 = 0
+    let cur_off = cartan_vec_get_f32(data_off_vec, 0.0);
+    p = geomind_gguf_write_u64(f, cur_off, p);
+    let next_off = cur_off + geomind_gguf_align32(d0 * 4.0);
+    cartan_vec_set_f32(data_off_vec, 0.0, next_off);
+    return p;
+}
+
+fn geomind_gguf_write_tensor_info_2d(f: ptr, name: string, d0: float, d1: float, data_off_vec: ptr, pos: float) -> float {
+    var p = geomind_gguf_write_str(f, name, pos);
+    p = geomind_gguf_write_u32(f, 2.0, p); // n_dims = 2
+    p = geomind_gguf_write_u64(f, d0, p);
+    p = geomind_gguf_write_u64(f, d1, p);
+    p = geomind_gguf_write_u32(f, 0.0, p); // GGML_TYPE_F32 = 0
+    let cur_off = cartan_vec_get_f32(data_off_vec, 0.0);
+    p = geomind_gguf_write_u64(f, cur_off, p);
+    let next_off = cur_off + geomind_gguf_align32(d0 * d1 * 4.0);
+    cartan_vec_set_f32(data_off_vec, 0.0, next_off);
+    return p;
+}
+
+fn geomind_gguf_pad_stream32(f: ptr, pos: float) -> float {
+    geomind_gguf_init_scratch();
+    let rem = math_mod_val(pos, 32.0);
+    if (rem == 0.0) { return pos; }
+    let pad = 32.0 - rem;
+    var i = 0.0;
+    while (i < pad) {
+        cartan_set_byte(g_gguf_scratch_8, i, 0.0);
+        i = i + 1.0;
+    }
+    fwrite(g_gguf_scratch_8, 1.0, pad, f);
+    return pos + pad;
+}
+
+fn geomind_gguf_write_f32_slice(f: ptr, src_vec: ptr, src_off: float, count: float, pos: float) -> float {
+    let byte_sz = count * 4.0;
+    let f32_buf = malloc(byte_sz + 32.0);
+    var i = 0.0;
+    while (i < count) {
+        cartan_set_f32(f32_buf, i, cartan_vec_get_f32(src_vec, src_off + i));
+        i = i + 1.0;
+    }
+    fwrite(f32_buf, 4.0, count, f);
+    free(f32_buf);
+    var p = pos + byte_sz;
+    p = geomind_gguf_pad_stream32(f, p);
+    return p;
+}
+
+// Compute Layer l's 248x248 Cartan Moving-Frame Euclidean Pullback Matrix:
+// W_eff^{(l)} = (G^{(l)})^{1/2} (W_gauge^{(l)} (+) W_spinor^{(l)} + CrossGate) (G^{(l)})^{-1/2}
+fn geomind_e8_compute_layer_pullback_248x248(l: float, out_248x248: ptr) {
+    let g_base = l * 14400.0;
+    let s_base = l * 16384.0;
+    let a_base = l * 744.0;
+    let b_base = l * 248.0;
+    var r = 0.0;
+    while (r < 248.0) {
+        let sub_r = floor(r / 31.0);
+        let kw_r = geom_killing_form_dynkin_weight(sub_r);
+        let br = cartan_vec_get_f32(g_e8_stack_randers_b, b_base + r);
+        let sr = sqrt(kw_r + br * br);
+        let wq_r = cartan_vec_get_f32(g_e8_stack_w_attn, a_base + r);
+        let row_off = r * 248.0;
+
+        var c = 0.0;
+        while (c < 248.0) {
+            let sub_c = floor(c / 31.0);
+            let kw_c = geom_killing_form_dynkin_weight(sub_c);
+            let bc = cartan_vec_get_f32(g_e8_stack_randers_b, b_base + c);
+            let sc = sqrt(kw_c + bc * bc);
+            let wk_c = cartan_vec_get_f32(g_e8_stack_w_attn, a_base + 248.0 + c);
+
+            var base_w = 0.0;
+            if (r < 120.0 && c < 120.0) {
+                base_w = cartan_vec_get_f32(g_e8_stack_w_gauge, g_base + r * 120.0 + c);
+            } else if (r >= 120.0 && c >= 120.0) {
+                base_w = cartan_vec_get_f32(g_e8_stack_w_spinor, s_base + (r - 120.0) * 128.0 + (c - 120.0));
+            } else {
+                base_w = 0.25 * (wq_r * bc - wk_c * br);
+            }
+            let eff_w = (sr / sc) * base_w + br * bc;
+            cartan_vec_set_f32(out_248x248, row_off + c, eff_w);
+            c = c + 1.0;
+        }
+        r = r + 1.0;
+    }
+}
+
+fn geomind_export_gguf_v3(path: string) -> float {
+    geomind_byte_latent_init_if_needed();
+    geomind_e8_rel_init_if_needed();
+    let L = g_e8_stack_num_layers;
+    if (L <= 0.0) { return 0.0; }
+    var n_anc = g_e8_anchor_count;
+    if (n_anc < 1.0) { n_anc = 1.0; }
+
+    let f = fopen(path, "wb");
+    if (f == 0.0) { return 0.0; }
+
+    // 7 Global Tensors + 6 Per-Layer Tensors * L layers
+    let n_tensors = 7.0 + 6.0 * L;
+    let n_kv = 7.0;
+
+    var pos = 0.0;
+    // 1. GGUF v3 Header: magic "GGUF" (0x46554747 = 1179993927), version 3, tensor_count, metadata_kv_count
+    pos = geomind_gguf_write_u32(f, 1179993927.0, pos);
+    pos = geomind_gguf_write_u32(f, 3.0, pos);
+    pos = geomind_gguf_write_u64(f, n_tensors, pos);
+    pos = geomind_gguf_write_u64(f, n_kv, pos);
+
+    // 2. GGUF v3 Metadata Key-Value Table
+    pos = geomind_gguf_write_kv_str(f, "general.architecture", "cartan-e8", pos);
+    pos = geomind_gguf_write_kv_str(f, "general.name", "CARTAN-E8-42L-Sovereign-Manifold", pos);
+    pos = geomind_gguf_write_kv_u32(f, "cartan-e8.context_length", 8192.0, pos);
+    pos = geomind_gguf_write_kv_u32(f, "cartan-e8.embedding_length", 248.0, pos);
+    pos = geomind_gguf_write_kv_u32(f, "cartan-e8.block_count", L, pos);
+    pos = geomind_gguf_write_kv_u32(f, "cartan-e8.concept_anchor_count", n_anc, pos);
+    pos = geomind_gguf_write_kv_u32(f, "cartan-e8.fano_associator_triads", 1920.0, pos);
+
+    // 3. GGUF v3 Tensor Info Table
+    let data_off_vec = cartan_vec_create();
+    cartan_vec_push_f32(data_off_vec, 0.0);
+
+    pos = geomind_gguf_write_tensor_info_2d(f, "token_embd.weight", 248.0, 256.0, data_off_vec, pos);
+    pos = geomind_gguf_write_tensor_info_2d(f, "output.weight", 256.0, 248.0, data_off_vec, pos);
+    pos = geomind_gguf_write_tensor_info_1d(f, "e8.randers_drift.weight", 248.0, data_off_vec, pos);
+    pos = geomind_gguf_write_tensor_info_2d(f, "e8.rel_isa.weight", 248.0, 248.0, data_off_vec, pos);
+    pos = geomind_gguf_write_tensor_info_2d(f, "e8.rel_prop.weight", 248.0, 248.0, data_off_vec, pos);
+    pos = geomind_gguf_write_tensor_info_2d(f, "e8.concept_anchors.weight", 248.0, n_anc, data_off_vec, pos);
+    pos = geomind_gguf_write_tensor_info_1d(f, "e8.concept_ic_mass.weight", n_anc, data_off_vec, pos);
+
+    var l = 0.0;
+    while (l < L) {
+        let l_str = cartan_int_to_string(l);
+        let pfx = cartan_string_concat("blk.", cartan_string_concat(l_str, "."));
+        pos = geomind_gguf_write_tensor_info_2d(f, cartan_string_concat(pfx, "e8_gauge.weight"), 120.0, 120.0, data_off_vec, pos);
+        pos = geomind_gguf_write_tensor_info_2d(f, cartan_string_concat(pfx, "e8_spinor.weight"), 128.0, 128.0, data_off_vec, pos);
+        pos = geomind_gguf_write_tensor_info_2d(f, cartan_string_concat(pfx, "attn_qkv.weight"), 248.0, 3.0, data_off_vec, pos);
+        pos = geomind_gguf_write_tensor_info_2d(f, cartan_string_concat(pfx, "ffn_moe.weight"), 16.0, 16.0, data_off_vec, pos);
+        pos = geomind_gguf_write_tensor_info_1d(f, cartan_string_concat(pfx, "randers_drift.weight"), 248.0, data_off_vec, pos);
+        pos = geomind_gguf_write_tensor_info_2d(f, cartan_string_concat(pfx, "cartan_pullback.weight"), 248.0, 248.0, data_off_vec, pos);
+        l = l + 1.0;
+    }
+
+    // Pad header + tensor info table to 32-byte alignment before writing binary tensor data
+    pos = geomind_gguf_pad_stream32(f, pos);
+
+    // 4. Write 32-byte aligned F32 Tensor Data
+    pos = geomind_gguf_write_f32_slice(f, g_byte_e8_emb_256x248, 0.0, 63488.0, pos);
+    pos = geomind_gguf_write_f32_slice(f, g_byte_e8_head_248x256, 0.0, 63488.0, pos);
+    pos = geomind_gguf_write_f32_slice(f, g_byte_e8_randers_b_248, 0.0, 248.0, pos);
+    pos = geomind_gguf_write_f32_slice(f, g_e8_rel_isa_248x248, 0.0, 61504.0, pos);
+    pos = geomind_gguf_write_f32_slice(f, g_e8_rel_prop_248x248, 0.0, 61504.0, pos);
+    pos = geomind_gguf_write_f32_slice(f, g_e8_anchor_coords, 0.0, n_anc * 248.0, pos);
+    pos = geomind_gguf_write_f32_slice(f, g_e8_anchor_masses, 0.0, n_anc, pos);
+
+    let pullback_buf = cartan_tensor_alloc(61504.0);
+    l = 0.0;
+    while (l < L) {
+        pos = geomind_gguf_write_f32_slice(f, g_e8_stack_w_gauge, l * 14400.0, 14400.0, pos);
+        pos = geomind_gguf_write_f32_slice(f, g_e8_stack_w_spinor, l * 16384.0, 16384.0, pos);
+        pos = geomind_gguf_write_f32_slice(f, g_e8_stack_w_attn, l * 744.0, 744.0, pos);
+        pos = geomind_gguf_write_f32_slice(f, g_e8_stack_u_moe, l * 256.0, 256.0, pos);
+        pos = geomind_gguf_write_f32_slice(f, g_e8_stack_randers_b, l * 248.0, 248.0, pos);
+        geomind_e8_compute_layer_pullback_248x248(l, pullback_buf);
+        pos = geomind_gguf_write_f32_slice(f, pullback_buf, 0.0, 61504.0, pos);
+        l = l + 1.0;
+    }
+
+    cartan_vec_free(pullback_buf);
+    cartan_vec_free(data_off_vec);
+    fclose(f);
+    return pos;
+}
+
+// Verify a GGUF v3 file on disk by reading back its binary header (magic, version, tensor_count, kv_count, file size)
+fn geomind_verify_gguf_v3(path: string) -> float {
+    if (cartan_file_exists(path) == 0.0) { return 0.0; }
+    let f_sz = cartan_get_binary_file_size(path);
+    if (f_sz < 24.0) { return 0.0; }
+    let f = fopen(path, "rb");
+    if (f == 0.0) { return 0.0; }
+    let hdr = malloc(24.0);
+    fread(hdr, 1.0, 24.0, f);
+    fclose(f);
+    let magic = cartan_i32_at(hdr, 0.0);
+    let ver = cartan_i32_at(hdr, 1.0);
+    let n_tens = cartan_i64_at(hdr, 1.0);
+    let n_kv = cartan_i64_at(hdr, 2.0);
+    free(hdr);
+    if (magic != 1179993927.0 || ver != 3.0) { return 0.0; }
+    printf("  [GGUF v3 Verified] Path: %s | Magic: 'GGUF' (v%.0f) | Tensors: %.0f | Metadata KVs: %.0f | Size: %.2f MB\n",
+        path, ver, n_tens, n_kv, f_sz / 1048576.0);
+    return n_tens;
 }
 
 // ============================================================================
@@ -1947,6 +2502,7 @@ fn geomind_markov_reset_patch_context() {
     g_markov_ctx_syn1_id = 0.0;
     g_markov_ctx_syn2_id = 0.0;
     g_markov_ctx_syn3_id = 0.0;
+    g_markov_ctx_syn_weight = 1.0;
 }
 
 fn geomind_markov_advance_patch_context(
@@ -2096,6 +2652,11 @@ fn geomind_byte_latent_train_deep_e8_corpus(
     let dh_in_stack = cartan_vec_create();
     let geo_grad = cartan_vec_create();
     let emb_vec = cartan_vec_create();
+    let p_v3 = cartan_vec_create();
+    let p_v2 = cartan_vec_create();
+    let p_v1 = cartan_vec_create();
+    let p_v0 = cartan_vec_create();
+    let cur_p_vec = cartan_vec_create();
     let logits_256 = cartan_vec_create();
     let delta_256 = cartan_vec_create();
 
@@ -2113,6 +2674,11 @@ fn geomind_byte_latent_train_deep_e8_corpus(
         cartan_vec_push_f32(dh_in_stack, 0.0);
         cartan_vec_push_f32(geo_grad, 0.0);
         cartan_vec_push_f32(emb_vec, 0.0);
+        cartan_vec_push_f32(p_v3, 0.0);
+        cartan_vec_push_f32(p_v2, 0.0);
+        cartan_vec_push_f32(p_v1, 0.0);
+        cartan_vec_push_f32(p_v0, 0.0);
+        cartan_vec_push_f32(cur_p_vec, 0.0);
         d = d + 1.0;
     }
     var c = 0.0;
@@ -2153,6 +2719,10 @@ fn geomind_byte_latent_train_deep_e8_corpus(
         var patch_act_sum = 0.0;
         var focus_horizon = 0.0;
         var stack_t_geo = 0.0;
+        var p_h3 = 17.0;
+        var p_h2 = 17.0;
+        var p_h1 = 17.0;
+        var p_h0 = 17.0;
         geomind_markov_reset_patch_context();
 
         while (step < max_steps) {
@@ -2170,6 +2740,10 @@ fn geomind_byte_latent_train_deep_e8_corpus(
             if (cur_b == 32.0 && next_b == 32.0) {
                 if (is_para_break == 1.0) {
                     geomind_markov_reset_patch_context();
+                    p_h3 = 17.0;
+                    p_h2 = 17.0;
+                    p_h1 = 17.0;
+                    p_h0 = 17.0;
                 }
                 step = step + 1.0;
                 continue;
@@ -2254,6 +2828,48 @@ fn geomind_byte_latent_train_deep_e8_corpus(
                     let mv_step = geomind_markov_get_prob(b2, cur_b);
                     stack_t_geo = geomind_e8_stack_forward_step(h_patch_accum, prev_patch_ptr, mv_step, 0.85, h_top_patch);
                     patch_steps_taken = patch_steps_taken + 1.0;
+
+                    // Stage 5.6: Train Differentiable 248x248 Relational Operators (R_isa, R_prop) from live copular/affordance frames
+                    geomind_e8_hash_to_vec_248(saved_patch_hash, cur_p_vec);
+
+                    // 1. Definitional Taxonomic Copula: "<Subj> is a <Adj> <Hypernym>" (e.g. "A sparrow is a small bird", "A kitten is a young cat")
+                    if (p_h3 != 17.0 && p_h2 == g_wn_hash_is && p_h1 == g_wn_hash_a && p_h0 != 17.0) {
+                        geomind_e8_rel_train_step(g_e8_rel_isa_248x248, p_v3, cur_p_vec, 0.92, 1.0, 0.45);
+                        geomind_e8_rel_train_step(g_e8_rel_prop_248x248, p_v3, p_v0, 0.90, 1.0, 0.45);
+                    }
+                    // 2. Attributive & Gerund Copula: "<Subj> is <Prop>" or "<Gerund> a <Noun> is <Prop>" (e.g. "The ball is round", "Bouncing a ball is fun")
+                    if (p_h1 != 17.0 && p_h0 == g_wn_hash_is && saved_patch_hash != g_wn_hash_a) {
+                        geomind_e8_rel_train_step(g_e8_rel_prop_248x248, p_v1, cur_p_vec, 0.90, 1.0, 0.45);
+                        if (p_h3 != 17.0 && p_h2 == g_wn_hash_a) {
+                            geomind_e8_rel_train_step(g_e8_rel_prop_248x248, p_v3, cur_p_vec, 0.92, 1.0, 0.45);
+                        }
+                    }
+                    // 3. Enjoyed Play & Affordance Frame: "likes to <Verb> [and <Verb2>]" or "can bounce" -> R_prop(Verb) => fun
+                    if ((p_h1 == g_wn_hash_likes && p_h0 == g_wn_verb_to) ||
+                        (p_h3 == g_wn_hash_likes && p_h2 == g_wn_verb_to && p_h0 == g_wn_hash_and) ||
+                        (p_h0 == g_wn_verb_can && saved_patch_hash == g_wn_hash_bounce)) {
+                        geomind_e8_rel_train_step(g_e8_rel_prop_248x248, cur_p_vec, g_e8_vec_fun, 0.90, 1.0, 0.45);
+                    }
+
+                    if (is_para_break == 1.0 || patch_sent_end == 1.0) {
+                        p_h3 = 17.0;
+                        p_h2 = 17.0;
+                        p_h1 = 17.0;
+                        p_h0 = 17.0;
+                    } else {
+                        p_h3 = p_h2;
+                        p_h2 = p_h1;
+                        p_h1 = p_h0;
+                        p_h0 = saved_patch_hash;
+                        d = 0.0;
+                        while (d < 248.0) {
+                            cartan_vec_set_f32(p_v3, d, cartan_vec_get_f32(p_v2, d));
+                            cartan_vec_set_f32(p_v2, d, cartan_vec_get_f32(p_v1, d));
+                            cartan_vec_set_f32(p_v1, d, cartan_vec_get_f32(p_v0, d));
+                            cartan_vec_set_f32(p_v0, d, cartan_vec_get_f32(cur_p_vec, d));
+                            d = d + 1.0;
+                        }
+                    }
                 }
 
                 geomind_markov_advance_patch_context(patch_hash, patch_alnum_len, is_para_break, patch_sent_end, patch_comma_end);
@@ -2398,6 +3014,11 @@ fn geomind_byte_latent_train_deep_e8_corpus(
     cartan_vec_free(dh_in_stack);
     cartan_vec_free(geo_grad);
     cartan_vec_free(emb_vec);
+    cartan_vec_free(p_v3);
+    cartan_vec_free(p_v2);
+    cartan_vec_free(p_v1);
+    cartan_vec_free(p_v0);
+    cartan_vec_free(cur_p_vec);
     cartan_vec_free(logits_256);
     cartan_vec_free(delta_256);
     return final_avg_action;
@@ -2835,6 +3456,39 @@ fn geomind_run_english_curriculum(num_layers: float, lr: float) -> float {
     printf("  -> Grok 2 ('A gentle kitten'):           %s\n", geomind_byte_latent_generate_deep_e8("A gentle kitten", L, 48.0));
     printf("  -> Grok 3 ('A sparrow can'):             %s\n", geomind_byte_latent_generate_deep_e8("A sparrow can", L, 48.0));
     printf("  -> Grok 4 ('You can bounce the orb'):    %s\n", geomind_byte_latent_generate_deep_e8("You can bounce the orb", L, 48.0));
+    printf("--------------------------------------------------------------------------------\n");
+    printf("  248x248 MANIFOLD CONCEPT-WEIGHTING & RELATIONAL UNDERSTANDING AUDIT (S^247)\n");
+    printf("--------------------------------------------------------------------------------\n");
+    let w_sparrow_bird = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "sparrow", "bird");
+    let w_bird_sparrow = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "bird", "sparrow");
+    let w_kitten_cat   = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "kitten", "cat");
+    let w_cat_kitten   = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "cat", "kitten");
+    let w_puppy_dog    = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "puppy", "dog");
+    let w_dog_puppy    = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "dog", "puppy");
+    let w_orb_ball     = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "orb", "ball");
+    let w_ball_orb     = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "ball", "orb");
+    let w_sparrow_dog  = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "sparrow", "dog");
+    printf("  [Asymmetric IS_A Operator <P_hyper, R_isa * P_hypo> / 248]:\n");
+    printf("    * sparrow -> bird = %.4f  (Reverse bird -> sparrow = %.4f)\n", w_sparrow_bird, w_bird_sparrow);
+    printf("    * kitten  -> cat  = %.4f  (Reverse cat  -> kitten  = %.4f)\n", w_kitten_cat, w_cat_kitten);
+    printf("    * puppy   -> dog  = %.4f  (Reverse dog  -> puppy   = %.4f)\n", w_puppy_dog, w_dog_puppy);
+    printf("    * orb     -> ball = %.4f  (Reverse ball -> orb     = %.4f | Negative sparrow -> dog = %.4f)\n", w_orb_ball, w_ball_orb, w_sparrow_dog);
+
+    let p_kitten_young = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "kitten", "young");
+    let p_puppy_young  = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "puppy", "young");
+    let p_sparrow_sm   = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "sparrow", "small");
+    let p_ball_round   = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "ball", "round");
+    let p_bouncing_fun = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "bouncing", "fun");
+    let p_run_fun      = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "run", "fun");
+    let p_play_fun     = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "play", "fun");
+    let p_bounce_fun   = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "bounce", "fun");
+    let cos_run_play   = geomind_e8_rel_prop_cosine_words("run", "play");
+    printf("  [Property & Activity Valence Operator <P_attr, R_prop * P_concept> / 248]:\n");
+    printf("    * kitten -> young = %.4f | puppy -> young = %.4f | sparrow -> small = %.4f | ball -> round = %.4f\n",
+        p_kitten_young, p_puppy_young, p_sparrow_sm, p_ball_round);
+    printf("    * run    -> fun   = %.4f | play  -> fun   = %.4f | bouncing -> fun  = %.4f | bounce -> fun = %.4f\n",
+        p_run_fun, p_play_fun, p_bouncing_fun, p_bounce_fun);
+    printf("    * Shared Activity Valence Cosine cos(R_prop*run, R_prop*play) = %.4f\n", cos_run_play);
     cartan_flush(0.0);
 
     // Save consolidated checkpoints once at the end of the curriculum
@@ -2845,6 +3499,14 @@ fn geomind_run_english_curriculum(num_layers: float, lr: float) -> float {
     if (g_e8_anchor_count > 0.0) {
         geomind_e8_anchors_save("Projects/geomind/trainingdata/checkpoints/geomind_e8_anchors.bin");
     }
+
+    // Stage 5.6: Export & Self-Verify Spec-Compliant GGUF v3 Open-Weights File
+    let gguf_path = "Projects/geomind/trainingdata/checkpoints/cartan_e8_42L.gguf";
+    printf("--------------------------------------------------------------------------------\n");
+    printf("  GGUF v3 OPEN-WEIGHTS EXPORT & CARTAN MOVING-FRAME PULLBACK (248x248)\n");
+    printf("--------------------------------------------------------------------------------\n");
+    geomind_export_gguf_v3(gguf_path);
+    geomind_verify_gguf_v3(gguf_path);
 
     geomind_visualizer_export_html("manifold_relaxation.html", "4-Rung Concentric Storytelling Curriculum");
     printf("================================================================================\n");

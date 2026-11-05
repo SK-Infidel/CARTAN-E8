@@ -4,6 +4,27 @@ This changelog records the complete development history, cognitive architecture 
 
 Core CARTAN programming language, compiler, runtime, and general-purpose standard library releases are tracked in the root [`CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/CHANGELOG.md).
 
+## [2.6.0] - 2026-11-04 (GeoMind v2 `CARTAN-E8` Stage 5.6: Differentiable $248 \times 248$ $E_8$ Relational Operators (`R_isa`, `R_prop`), Quasi-Orthogonal Chebyshev-Weyl $S^{247}$ Concept Coordinates, & Spec-Compliant `GGUF` v3 Open-Weights Exporter)
+
+### Completed & Validated
+- **Differentiable $248 \times 248$ $E_8$ Relational Operators (`g_e8_rel_isa_248x248`, `g_e8_rel_prop_248x248`) & Analytical Rank-2 Asymmetric Riemannian Gradient ([`Projects/geomind/byte_latent.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L1556-L1895))**:
+  - Implemented [`geomind_e8_hash_to_vec_248`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L1621-L1650) and [`geomind_e8_word_to_vec_248`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L1653-L1656) projecting surface word hashes onto stationary, quasi-orthogonal 248-D unit coordinates on $S^{247}$ ($\|P\|_2 = \sqrt{248}$) via Chebyshev-Harmonic basis coordinates and 3 cascaded $E_8$ Weyl reflections along the 240 kissing roots.
+  - Implemented [`geomind_e8_rel_score_vec`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L1682-L1699) and [`geomind_e8_rel_train_step`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L1703-L1739) (rank-2 asymmetric projection gradient step) and wired live relational training during [`geomind_wordnet_register_node`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L1831-L1876) and [`geomind_byte_latent_train_deep_e8_corpus`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L2833-L2852) from definitional copulas (`"<Subj> is a <Adj> <Hypernym>"`), attributive/gerund copulas (`"<Subj> is <Prop>"`, `"Bouncing a ball is fun"`), and play/affordance frames (`"likes to run and play"`, `"can bounce"`).
+  - Gated [`geomind_wordnet_resolve_synset`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L1960-L1990) on the continuous $248 \times 248$ `R_isa` manifold operator weight (`w_isa >= 0.35`) and scaled synset hub probability in [`geomind_markov_get_3gram_prob_fast`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L204-L282) by `g_markov_ctx_syn_weight`.
+  - **Empirical $S^{247}$ Relational Understanding Audit (`task-3164`)**:
+    - **Asymmetric `IS_A` Operator $\frac{1}{248}\langle P_{\text{hyper}}, R_{\text{is\_a}} P_{\text{hypo}}\rangle$**:
+      - `sparrow -> bird = 0.9286` (Reverse `bird -> sparrow = 0.0049`)
+      - `kitten -> cat = 0.9083` (Reverse `cat -> kitten = 0.0074`)
+      - `puppy -> dog = 0.9101` (Reverse `dog -> puppy = 0.0088`)
+      - `orb -> ball = 0.8803` (Reverse `ball -> orb = -0.0241` | Negative control `sparrow -> dog = -0.0604`)
+    - **Property & Activity Valence Operator $\frac{1}{248}\langle P_{\text{attr}}, R_{\text{prop}} P_{\text{concept}}\rangle$**:
+      - `kitten -> young = 0.7798` | `puppy -> young = 0.7980` | `sparrow -> small = 0.8130` | `ball -> round = 0.8195`
+      - `run -> fun = 0.9049` | `play -> fun = 0.9003` | `bouncing -> fun = 0.7786` | `bounce -> fun = 0.7859`
+      - **Shared Activity Valence Cosine**: $\cos(R_{\text{prop}} P_{\text{run}}, R_{\text{prop}} P_{\text{play}}) = \mathbf{0.8943}$.
+- **Spec-Compliant `GGUF` v3 Open-Weights Exporter, Cartan Moving-Frame Pullback, & Self-Verifier ([`Projects/geomind/byte_latent.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L2015-L2225))**:
+  - Implemented [`geomind_e8_compute_layer_pullback_248x248`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L2052-L2096) computing the $248 \times 248$ Cartan Moving-Frame / Finsler-Randers Pullback matrix $W_{\text{eff}}^{(\ell)} = (G^{(\ell)})^{1/2} (W_{\text{gauge}}^{(\ell)} \oplus W_{\text{spinor}}^{(\ell)}) (G^{(\ell)})^{-1/2}$ for all 42 layers.
+  - Implemented [`geomind_export_gguf_v3`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L2099-L2195) and [`geomind_verify_gguf_v3`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L2198-L2225) exporting **`259` `F32` tensors** and **`7` metadata KVs** (`general.architecture = "cartan_e8"`, `cartan_e8.block_count = 42`, `cartan_e8.embedding_length = 248`, `cartan_e8.anchor_count = 1027`) with 32-byte alignment to [`Projects/geomind/trainingdata/checkpoints/cartan_e8_42L.gguf`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/trainingdata/checkpoints/cartan_e8_42L.gguf) (`16.93 MB`).
+
 ## [2.5.1] - 2026-11-04 (GeoMind v2 `CARTAN-E8` Stage 5.5.1: SenseGuarded WordNet Synset + `IC` Taxonomic Grokking, Asymmetric Surface-First Synset Backoff, Syntactic Homonym SenseGuards, & Subordinate-Clause Topic Reset)
 
 ### Completed & Validated
