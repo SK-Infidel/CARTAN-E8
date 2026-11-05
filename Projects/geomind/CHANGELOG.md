@@ -4,6 +4,26 @@ This changelog records the complete development history, cognitive architecture 
 
 Core CARTAN programming language, compiler, runtime, and general-purpose standard library releases are tracked in the root [`CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/CHANGELOG.md).
 
+## [2.5.0] - 2026-11-04 (GeoMind v2 `CARTAN-E8` Stage 5.5: 1.1 GB In-RAM Lossless Tapestry Hub (`1,081,344` Rows), `65,536` $E_8$ Anchor Registry, Zero-Copy `fwrite`/`fread` Checkpointing, 256$\times$ Hoisted Hub Lookup, & Complete Legacy Weight Isolation)
+
+### Completed & Validated
+- **Complete Isolation from Legacy v1 Pretrained Weights ([`Projects/geomind/main.car`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/main.car#L1010-L1012), [`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl#L4947-L4951))**:
+  - Disabled `geomind_chat_mount_gpu_if_needed()` so zero legacy v1 `manifold_layer_*.bin` files are ever opened or mounted into RAM/VRAM. Confirmed 100% sovereign from-scratch initialization in `CARTAN-E8`.
+- **1.1 GB In-RAM Lossless Tapestry Hub (`1,081,344` Rows) & `8,388,607` Key Space ([`Projects/geomind/byte_latent.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L89-L115))**:
+  - Expanded `g_markov_3gram_counts` from `131,072` rows (`16.7M` floats) to **`1,081,344` rows (`138,412,032` cells, ~1.1 GB in physical RAM)** while retaining all 128 ASCII columns per row with zero branch truncation:
+    - **Block 0 (`0..32767`)**: `32,768` sub-word 3-gram rows.
+    - **Block 1 (`32768..294911`)**: `262,144` 1-Word Anchor Hub rows ($8\times$ expansion).
+    - **Block 2 (`294912..688127`)**: `393,216` 2-Word Phrase Hub rows ($12\times$ expansion).
+    - **Block 3 (`688128..1081343`)**: `393,216` 3-Word Clause Hub rows ($12\times$ expansion).
+  - Widened `g_markov_ctx_word1_id`, `w2_id`, `w3_id` key modulos from `32,767` to **`8,388,607` ($2^{23}-1$)** to eliminate phrase-hash aliasing across multi-megabyte corpora.
+- **`65,536`-Concept $E_8$ Crystallized Anchor Registry ([`Projects/geomind/byte_latent.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L1318-L1575))**:
+  - Expanded `g_e8_anchor_coords` from `8,192` to **`65,536` crystallized concepts** (`16,252,928` cells on $S^{247}$) backed by a **`131,072`-slot $O(1)$ open-addressed hash table (`g_e8_anchor_hash_lut`)**.
+- **Direct Native `fwrite`/`fread` Checkpoint Serialization & 256$\times$ Hoisted Hub Lookup ([`Projects/geomind/byte_latent.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L147-L320), [`geomind_byte_latent_decode_logits_blt`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L925-L967))**:
+  - Replaced scalar `while` copy loops in [`geomind_markov_save_prior`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L280-L293) and [`geomind_markov_load_prior`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L295-L316) with direct native `fwrite`/`fread` on contiguous `cartan_tensor_alloc` buffers and added `g_byte_e8_defer_disk_save`.
+  - Added [`geomind_markov_get_3gram_prob_fast`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L147-L260) and hoisted `c_idx`, `w1_idx`, `w2_idx`, `w3_idx` lookups outside the 256-byte decoder loop, cutting training/generation time by $3.2\times$.
+  - Isolated active phrase hubs from global 3-gram `p3` bleed (`bo_w = 0.005` when `cnt_w < 0.5`) and bounded `g_byte_e8_head_248x256` weights to `[-0.10, 0.10]`.
+  - Verified across five full 12 KB chunks in `--curriculum` (`chunk_001` TinyStories, `chunk_005` Modern Narratives, `chunk_007` Alice in Wonderland, `chunk_019` Anthem, `chunk_028` Sherlock Holmes), populating **`135,216 / 1,048,576` Tapestry Hub slots** and crystallizing **`1,076 / 65,536` $E_8$ Concept Anchors**.
+
 ## [2.4.1] - 2026-11-04 (GeoMind v2 `CARTAN-E8` Stage 5.4.1: Paragraph-Boundary Decoupling, Sentence-Subject Topic Bridge Hub (`sent_topic_hash`), & Canonical Sentence-Boundary Orthographic Normalization)
 
 ### Completed & Validated

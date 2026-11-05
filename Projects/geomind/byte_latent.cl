@@ -29,19 +29,21 @@ fn cartan_char_from_code(code: float) -> string {
 // 256 x 256 transition count matrix (65,536 floats = 256 KB) + 256 row totals
 var g_markov_counts_256x256: ptr = 0.0;
 var g_markov_row_totals_256: ptr = 0.0;
-// 4-Block Hierarchical Tapestry Markov Table (131,072 rows x 128 ASCII next bytes):
-// - Block 0 (0..32767):      Collision-free 32-symbol 3-gram morphology (b3, b2, b1)
-// - Block 1 (32768..65535):  Open-addressed 1-Word Anchor Hub (w_k, b3, b2, b1) for single-word concept pivot bridging
-// - Block 2 (65536..98303):  Open-addressed 2-Word Phrase Hub (w_{k-1}, w_k, b3, b2, b1) for phrase-level recombination
-// - Block 3 (98304..131071): Open-addressed 3-Word Clause Hub (w_{k-2}, w_{k-1}, w_k, b3, b2, b1) for clause disambiguation
+// 4-Block Lossless Hierarchical Tapestry Markov Table (1,081,344 rows x 128 ASCII next bytes = 1,048,576 hub slots):
+// - Block 0 (0..32767,          32,768 rows): Collision-free 32-symbol 3-gram morphology (b3, b2, b1)
+// - Block 1 (32768..294911,    262,144 rows): Open-addressed 1-Word Anchor Hub (w_k, b3, b2, b1)
+// - Block 2 (294912..688127,   393,216 rows): Open-addressed 2-Word Phrase Hub (w_{k-1}, w_k, b3, b2, b1)
+// - Block 3 (688128..1081343,  393,216 rows): Open-addressed 3-Word Clause Hub (w_{k-2}, w_{k-1}, w_k, b3, b2, b1)
 var g_markov_3gram_counts: ptr = 0.0;
 var g_markov_3gram_totals: ptr = 0.0;
 var g_markov_3gram_keys: ptr = 0.0;
 var g_markov_ctx_word1_id: float = 0.0;
 var g_markov_ctx_word2_id: float = 0.0;
 var g_markov_ctx_word3_id: float = 0.0;
+var g_markov_hub_occupied_slots: float = 0.0;
 var g_markov_initialized: float = 0.0;
 var g_byte_e8_skip_disk_autoload: float = 0.0;
+var g_byte_e8_defer_disk_save: float = 0.0;
 
 // Maps any byte (0..255) to a 32-state collision-free orthographic symbol index:
 // 0=' ', 1..26='a'..'z' (case-folded), 27='.', 28=',', 29='\'', 30='!', 31=other
@@ -69,18 +71,18 @@ fn geomind_markov_3gram_ctx_idx(b3: float, b2: float, b1: float) -> float {
     return s3 * 1024.0 + s2 * 32.0 + s1;
 }
 
-fn geomind_markov_hub_row_idx(base_row: float, hub_id: float, c_idx: float, create_slot: float) -> float {
+fn geomind_markov_hub_row_idx(base_row: float, block_rows: float, hub_id: float, c_idx: float, create_slot: float) -> float {
     if (hub_id <= 0.0) { return -1.0; }
-    let pid = math_mod_val(floor(math_abs_val(hub_id)), 32768.0);
+    let pid = math_mod_val(floor(math_abs_val(hub_id)), 8388607.0);
     let k_pid = pid + 1.0;
     let k_tri = c_idx + 1.0;
-    let h0 = math_mod_val(pid * 13331.0 + c_idx * 997.0, 32768.0);
+    let h0 = math_mod_val(pid * 13331.0 + c_idx * 997.0, block_rows);
     if (g_markov_3gram_keys == 0.0) {
         return base_row + h0;
     }
     var probe = 0.0;
     while (probe < 16.0) {
-        let slot = math_mod_val(h0 + probe * 7.0, 32768.0);
+        let slot = math_mod_val(h0 + probe * 7.0, block_rows);
         let row = base_row + slot;
         let cur_pid = cartan_vec_get_f32(g_markov_3gram_keys, row * 2.0);
         let cur_tri = cartan_vec_get_f32(g_markov_3gram_keys, row * 2.0 + 1.0);
@@ -91,6 +93,7 @@ fn geomind_markov_hub_row_idx(base_row: float, hub_id: float, c_idx: float, crea
             if (create_slot == 1.0) {
                 cartan_vec_set_f32(g_markov_3gram_keys, row * 2.0, k_pid);
                 cartan_vec_set_f32(g_markov_3gram_keys, row * 2.0 + 1.0, k_tri);
+                g_markov_hub_occupied_slots = g_markov_hub_occupied_slots + 1.0;
                 return row;
             }
             return -1.0;
@@ -115,25 +118,25 @@ fn geomind_markov_update_3gram(b3: float, b2: float, b1: float, curr_byte: float
     cartan_vec_set_f32(g_markov_3gram_counts, m_idx, old_cnt + 1.0);
     cartan_vec_set_f32(g_markov_3gram_totals, c_idx, old_tot + 1.0);
 
-    // Update Block 1: 1-Word Anchor Hub (32768..65535) — shared across all sentences using this word!
-    let w1_idx = geomind_markov_hub_row_idx(32768.0, g_markov_ctx_word1_id, c_idx, 1.0);
+    // Update Block 1: 1-Word Anchor Hub (32768..294911, 262,144 rows)
+    let w1_idx = geomind_markov_hub_row_idx(32768.0, 262144.0, g_markov_ctx_word1_id, c_idx, 1.0);
     if (w1_idx >= 32768.0) {
         let w1m = w1_idx * 128.0 + cb;
         cartan_vec_set_f32(g_markov_3gram_counts, w1m, cartan_vec_get_f32(g_markov_3gram_counts, w1m) + 1.0);
         cartan_vec_set_f32(g_markov_3gram_totals, w1_idx, cartan_vec_get_f32(g_markov_3gram_totals, w1_idx) + 1.0);
     }
 
-    // Update Block 2: 2-Word Phrase Hub (65536..98303) — shared across all sentences using this 2-word pair!
-    let w2_idx = geomind_markov_hub_row_idx(65536.0, g_markov_ctx_word2_id, c_idx, 1.0);
-    if (w2_idx >= 65536.0) {
+    // Update Block 2: 2-Word Phrase Hub (294912..688127, 393,216 rows)
+    let w2_idx = geomind_markov_hub_row_idx(294912.0, 393216.0, g_markov_ctx_word2_id, c_idx, 1.0);
+    if (w2_idx >= 294912.0) {
         let w2m = w2_idx * 128.0 + cb;
         cartan_vec_set_f32(g_markov_3gram_counts, w2m, cartan_vec_get_f32(g_markov_3gram_counts, w2m) + 1.0);
         cartan_vec_set_f32(g_markov_3gram_totals, w2_idx, cartan_vec_get_f32(g_markov_3gram_totals, w2_idx) + 1.0);
     }
 
-    // Update Block 3: 3-Word Clause Hub (98304..131071) — shared across all clauses using this 3-word window!
-    let w3_idx = geomind_markov_hub_row_idx(98304.0, g_markov_ctx_word3_id, c_idx, 1.0);
-    if (w3_idx >= 98304.0) {
+    // Update Block 3: 3-Word Clause Hub (688128..1081343, 393,216 rows)
+    let w3_idx = geomind_markov_hub_row_idx(688128.0, 393216.0, g_markov_ctx_word3_id, c_idx, 1.0);
+    if (w3_idx >= 688128.0) {
         let w3m = w3_idx * 128.0 + cb;
         cartan_vec_set_f32(g_markov_3gram_counts, w3m, cartan_vec_get_f32(g_markov_3gram_counts, w3m) + 1.0);
         cartan_vec_set_f32(g_markov_3gram_totals, w3_idx, cartan_vec_get_f32(g_markov_3gram_totals, w3_idx) + 1.0);
@@ -141,193 +144,171 @@ fn geomind_markov_update_3gram(b3: float, b2: float, b1: float, curr_byte: float
     return p3;
 }
 
-fn geomind_markov_get_3gram_prob(b3: float, b2: float, b1: float, curr_byte: float) -> float {
-    geomind_markov_init_if_needed();
+fn geomind_markov_get_3gram_prob_fast(
+    b1: float,
+    curr_byte: float,
+    c_idx: float,
+    tot3: float,
+    w1_idx: float,
+    tot_w1: float,
+    w2_idx: float,
+    tot_w2: float,
+    w3_idx: float,
+    tot_w3: float
+) -> float {
     let p1 = geomind_markov_get_prob(b1, curr_byte);
     let cb = math_mod_val(floor(math_abs_val(curr_byte)), 128.0);
-    let c_idx = geomind_markov_3gram_ctx_idx(b3, b2, b1);
     let m_idx = c_idx * 128.0 + cb;
     let cnt3 = cartan_vec_get_f32(g_markov_3gram_counts, m_idx);
-    let tot3 = cartan_vec_get_f32(g_markov_3gram_totals, c_idx);
     var p3 = p1 * 0.05;
     if (tot3 > 0.5 && cnt3 >= 0.5) {
         p3 = (cnt3 + 0.005) / (tot3 + 0.05);
     }
 
-    // Query Block 1: 1-Word Anchor Hub (32768..65535)
+    // Query Block 1: 1-Word Anchor Hub (32768..294911, 262,144 rows)
     var has_w1 = 0.0;
     var p_w1 = 0.0;
-    let w1_idx = geomind_markov_hub_row_idx(32768.0, g_markov_ctx_word1_id, c_idx, 0.0);
-    if (w1_idx >= 32768.0) {
-        let tot_w1 = cartan_vec_get_f32(g_markov_3gram_totals, w1_idx);
-        if (tot_w1 > 0.5) {
-            has_w1 = 1.0;
-            let cnt_w1 = cartan_vec_get_f32(g_markov_3gram_counts, w1_idx * 128.0 + cb);
-            if (cnt3 >= 0.5 && cnt_w1 >= 0.5) {
-                var safe_w1 = cnt_w1;
-                if (safe_w1 > cnt3) { safe_w1 = cnt3; }
-                p_w1 = (safe_w1 + 0.005) / (tot_w1 + 0.05);
+    var hit_w1 = 0.0;
+    if (w1_idx >= 32768.0 && tot_w1 > 0.5) {
+        has_w1 = 1.0;
+        let cnt_w1 = cartan_vec_get_f32(g_markov_3gram_counts, w1_idx * 128.0 + cb);
+        if (cnt3 >= 0.5 && cnt_w1 >= 0.5) {
+            hit_w1 = 1.0;
+            var safe_w1 = cnt_w1;
+            if (safe_w1 > cnt3) { safe_w1 = cnt3; }
+            if (tot_w1 > 32.0) {
+                let s_c1 = sqrt(safe_w1 * sqrt(safe_w1));
+                let s_t1 = sqrt(tot_w1 * sqrt(tot_w1));
+                p_w1 = (s_c1 + 0.005) / (s_t1 + 0.05);
             } else {
-                p_w1 = 0.0005 / (tot_w1 + 0.05);
+                p_w1 = (safe_w1 + 0.005) / (tot_w1 + 0.05);
             }
+        } else {
+            p_w1 = 0.0005 / (tot_w1 + 0.05);
         }
     }
 
-    // Query Block 2: 2-Word Phrase Hub (65536..98303)
+    // Query Block 2: 2-Word Phrase Hub (294912..688127, 393,216 rows)
     var has_w2 = 0.0;
     var p_w2 = 0.0;
-    let w2_idx = geomind_markov_hub_row_idx(65536.0, g_markov_ctx_word2_id, c_idx, 0.0);
-    if (w2_idx >= 65536.0) {
-        let tot_w2 = cartan_vec_get_f32(g_markov_3gram_totals, w2_idx);
-        if (tot_w2 > 0.5) {
-            has_w2 = 1.0;
-            let cnt_w2 = cartan_vec_get_f32(g_markov_3gram_counts, w2_idx * 128.0 + cb);
-            if (cnt3 >= 0.5 && cnt_w2 >= 0.5) {
-                var safe_w2 = cnt_w2;
-                if (safe_w2 > cnt3) { safe_w2 = cnt3; }
-                p_w2 = (safe_w2 + 0.005) / (tot_w2 + 0.05);
+    var hit_w2 = 0.0;
+    if (w2_idx >= 294912.0 && tot_w2 > 0.5) {
+        has_w2 = 1.0;
+        let cnt_w2 = cartan_vec_get_f32(g_markov_3gram_counts, w2_idx * 128.0 + cb);
+        if (cnt3 >= 0.5 && cnt_w2 >= 0.5) {
+            hit_w2 = 1.0;
+            var safe_w2 = cnt_w2;
+            if (safe_w2 > cnt3) { safe_w2 = cnt3; }
+            if (tot_w2 > 32.0) {
+                let s_c2 = sqrt(safe_w2 * sqrt(safe_w2));
+                let s_t2 = sqrt(tot_w2 * sqrt(tot_w2));
+                p_w2 = (s_c2 + 0.005) / (s_t2 + 0.05);
             } else {
-                p_w2 = 0.0005 / (tot_w2 + 0.05);
+                p_w2 = (safe_w2 + 0.005) / (tot_w2 + 0.05);
             }
+        } else {
+            p_w2 = 0.0005 / (tot_w2 + 0.05);
         }
     }
 
-    // Query Block 3: 3-Word Clause Hub (98304..131071)
+    // Query Block 3: 3-Word Clause Hub (688128..1081343, 393,216 rows)
     var has_w3 = 0.0;
     var p_w3 = 0.0;
-    let w3_idx = geomind_markov_hub_row_idx(98304.0, g_markov_ctx_word3_id, c_idx, 0.0);
-    if (w3_idx >= 98304.0) {
-        let tot_w3 = cartan_vec_get_f32(g_markov_3gram_totals, w3_idx);
-        if (tot_w3 > 0.5) {
-            has_w3 = 1.0;
-            let cnt_w3 = cartan_vec_get_f32(g_markov_3gram_counts, w3_idx * 128.0 + cb);
-            if (cnt3 >= 0.5 && cnt_w3 >= 0.5) {
-                var safe_w3 = cnt_w3;
-                if (safe_w3 > cnt3) { safe_w3 = cnt3; }
-                p_w3 = (safe_w3 + 0.005) / (tot_w3 + 0.05);
+    var hit_w3 = 0.0;
+    if (w3_idx >= 688128.0 && tot_w3 > 0.5) {
+        has_w3 = 1.0;
+        let cnt_w3 = cartan_vec_get_f32(g_markov_3gram_counts, w3_idx * 128.0 + cb);
+        if (cnt3 >= 0.5 && cnt_w3 >= 0.5) {
+            hit_w3 = 1.0;
+            var safe_w3 = cnt_w3;
+            if (safe_w3 > cnt3) { safe_w3 = cnt3; }
+            if (tot_w3 > 32.0) {
+                let s_c3 = sqrt(safe_w3 * sqrt(safe_w3));
+                let s_t3 = sqrt(tot_w3 * sqrt(tot_w3));
+                p_w3 = (s_c3 + 0.005) / (s_t3 + 0.05);
             } else {
-                p_w3 = 0.0005 / (tot_w3 + 0.05);
+                p_w3 = (safe_w3 + 0.005) / (tot_w3 + 0.05);
             }
+        } else {
+            p_w3 = 0.0005 / (tot_w3 + 0.05);
         }
     }
 
+    // Prevent global 3-gram p3 from polluting an active phrase hub when the byte never occurred in that hub
+    var bo_w3 = 1.0;
+    if (hit_w3 == 0.0) { bo_w3 = 0.005; }
+    var bo_w2 = 1.0;
+    if (hit_w2 == 0.0) { bo_w2 = 0.005; }
+    var bo_w1 = 1.0;
+    if (hit_w1 == 0.0) { bo_w1 = 0.005; }
+
     if (has_w3 == 1.0 && has_w2 == 1.0 && has_w1 == 1.0) {
-        return 0.68 * p_w3 + 0.18 * p_w2 + 0.08 * p_w1 + 0.04 * p3 + 0.02 * p1;
+        return 0.68 * p_w3 + bo_w3 * (0.18 * p_w2 + 0.08 * p_w1 + 0.04 * p3 + 0.02 * p1);
     }
     if (has_w3 == 1.0) {
-        return 0.85 * p_w3 + 0.10 * p3 + 0.05 * p1;
+        return 0.85 * p_w3 + bo_w3 * (0.10 * p3 + 0.05 * p1);
     }
     if (has_w2 == 1.0 && has_w1 == 1.0) {
-        return 0.72 * p_w2 + 0.20 * p_w1 + 0.06 * p3 + 0.02 * p1;
+        return 0.72 * p_w2 + bo_w2 * (0.20 * p_w1 + 0.06 * p3 + 0.02 * p1);
     }
     if (has_w2 == 1.0) {
-        return 0.88 * p_w2 + 0.08 * p3 + 0.04 * p1;
+        return 0.88 * p_w2 + bo_w2 * (0.08 * p3 + 0.04 * p1);
     }
     if (has_w1 == 1.0) {
-        return 0.88 * p_w1 + 0.08 * p3 + 0.04 * p1;
+        return 0.88 * p_w1 + bo_w1 * (0.08 * p3 + 0.04 * p1);
     }
     return 0.90 * p3 + 0.10 * p1;
+}
+
+fn geomind_markov_get_3gram_prob(b3: float, b2: float, b1: float, curr_byte: float) -> float {
+    geomind_markov_init_if_needed();
+    let c_idx = geomind_markov_3gram_ctx_idx(b3, b2, b1);
+    let tot3 = cartan_vec_get_f32(g_markov_3gram_totals, c_idx);
+    let w1_idx = geomind_markov_hub_row_idx(32768.0, 262144.0, g_markov_ctx_word1_id, c_idx, 0.0);
+    var tot_w1 = 0.0;
+    if (w1_idx >= 32768.0) { tot_w1 = cartan_vec_get_f32(g_markov_3gram_totals, w1_idx); }
+    let w2_idx = geomind_markov_hub_row_idx(294912.0, 393216.0, g_markov_ctx_word2_id, c_idx, 0.0);
+    var tot_w2 = 0.0;
+    if (w2_idx >= 294912.0) { tot_w2 = cartan_vec_get_f32(g_markov_3gram_totals, w2_idx); }
+    let w3_idx = geomind_markov_hub_row_idx(688128.0, 393216.0, g_markov_ctx_word3_id, c_idx, 0.0);
+    var tot_w3 = 0.0;
+    if (w3_idx >= 688128.0) { tot_w3 = cartan_vec_get_f32(g_markov_3gram_totals, w3_idx); }
+    return geomind_markov_get_3gram_prob_fast(b1, curr_byte, c_idx, tot3, w1_idx, tot_w1, w2_idx, tot_w2, w3_idx, tot_w3);
 }
 
 fn geomind_markov_save_prior(path: string) -> float {
     if (path == 0.0 || g_markov_counts_256x256 == 0.0 || g_markov_row_totals_256 == 0.0) { return 0.0; }
     let f = fopen(path, "wb");
     if (f == 0.0) { return 0.0; }
-    let total_elems = 65536.0 + 256.0 + 16777216.0 + 131072.0 + 262144.0;
-    let buf = malloc(total_elems * 8.0);
-    if (buf == 0.0) { fclose(f); return 0.0; }
-    var i = 0.0;
-    while (i < 65536.0) {
-        buf[i] = cartan_vec_get_f32(g_markov_counts_256x256, i);
-        i = i + 1.0;
+    fwrite(g_markov_counts_256x256, 8.0, 65536.0 + 2.0, f);
+    fwrite(g_markov_row_totals_256, 8.0, 256.0 + 2.0, f);
+    if (g_markov_3gram_counts != 0.0) {
+        fwrite(g_markov_3gram_counts, 8.0, 138412032.0 + 2.0, f);
+        fwrite(g_markov_3gram_totals, 8.0, 1081344.0 + 2.0, f);
+        fwrite(g_markov_3gram_keys, 8.0, 2162688.0 + 2.0, f);
     }
-    var r = 0.0;
-    while (r < 256.0) {
-        buf[65536.0 + r] = cartan_vec_get_f32(g_markov_row_totals_256, r);
-        r = r + 1.0;
-    }
-    i = 0.0;
-    while (i < 16777216.0) {
-        buf[65792.0 + i] = cartan_vec_get_f32(g_markov_3gram_counts, i);
-        i = i + 1.0;
-    }
-    r = 0.0;
-    while (r < 131072.0) {
-        buf[16843008.0 + r] = cartan_vec_get_f32(g_markov_3gram_totals, r);
-        r = r + 1.0;
-    }
-    var k = 0.0;
-    while (k < 262144.0) {
-        var kv = 0.0;
-        if (g_markov_3gram_keys != 0.0) {
-            kv = cartan_vec_get_f32(g_markov_3gram_keys, k);
-        }
-        buf[16974080.0 + k] = kv;
-        k = k + 1.0;
-    }
-    fwrite(buf, 8.0, total_elems, f);
     fclose(f);
-    free(buf);
     return 1.0;
 }
 
 fn geomind_markov_load_prior(path: string) -> float {
     if (path == 0.0 || cartan_file_exists(path) == 0.0) { return 0.0; }
-    let base_elems = 65536.0 + 256.0;
-    let full_elems = 65536.0 + 256.0 + 16777216.0 + 131072.0 + 262144.0;
+    let expected_elems = (65536.0 + 2.0) + (256.0 + 2.0) + (138412032.0 + 2.0) + (1081344.0 + 2.0) + (2162688.0 + 2.0);
     let f_sz = cartan_get_binary_file_size(path);
-    if (f_sz < base_elems * 8.0) { return 0.0; }
-    if (g_markov_counts_256x256 == 0.0) {
-        g_markov_counts_256x256 = cartan_tensor_alloc(65536.0);
-    }
-    if (g_markov_row_totals_256 == 0.0) {
-        g_markov_row_totals_256 = cartan_tensor_alloc(256.0);
-    }
-    if (g_markov_3gram_counts == 0.0) {
-        g_markov_3gram_counts = cartan_tensor_alloc(16777216.0);
-    }
-    if (g_markov_3gram_totals == 0.0) {
-        g_markov_3gram_totals = cartan_tensor_alloc(131072.0);
-    }
-    if (g_markov_3gram_keys == 0.0) {
-        g_markov_3gram_keys = cartan_tensor_alloc(262144.0);
-    }
+    if (f_sz < expected_elems * 8.0) { return 0.0; }
+    if (g_markov_counts_256x256 == 0.0) { g_markov_counts_256x256 = cartan_tensor_alloc(65536.0); }
+    if (g_markov_row_totals_256 == 0.0) { g_markov_row_totals_256 = cartan_tensor_alloc(256.0); }
+    if (g_markov_3gram_counts == 0.0) { g_markov_3gram_counts = cartan_tensor_alloc(138412032.0); }
+    if (g_markov_3gram_totals == 0.0) { g_markov_3gram_totals = cartan_tensor_alloc(1081344.0); }
+    if (g_markov_3gram_keys == 0.0) { g_markov_3gram_keys = cartan_tensor_alloc(2162688.0); }
     let f = fopen(path, "rb");
     if (f == 0.0) { return 0.0; }
-    var read_elems = base_elems;
-    if (f_sz >= full_elems * 8.0) { read_elems = full_elems; }
-    let buf = malloc(read_elems * 8.0);
-    if (buf == 0.0) { fclose(f); return 0.0; }
-    fread(buf, 8.0, read_elems, f);
+    fread(g_markov_counts_256x256, 8.0, 65536.0 + 2.0, f);
+    fread(g_markov_row_totals_256, 8.0, 256.0 + 2.0, f);
+    fread(g_markov_3gram_counts, 8.0, 138412032.0 + 2.0, f);
+    fread(g_markov_3gram_totals, 8.0, 1081344.0 + 2.0, f);
+    fread(g_markov_3gram_keys, 8.0, 2162688.0 + 2.0, f);
     fclose(f);
-    var i = 0.0;
-    while (i < 65536.0) {
-        cartan_vec_set_f32(g_markov_counts_256x256, i, buf[i]);
-        i = i + 1.0;
-    }
-    var r = 0.0;
-    while (r < 256.0) {
-        cartan_vec_set_f32(g_markov_row_totals_256, r, buf[65536.0 + r]);
-        r = r + 1.0;
-    }
-    if (read_elems == full_elems) {
-        i = 0.0;
-        while (i < 16777216.0) {
-            cartan_vec_set_f32(g_markov_3gram_counts, i, buf[65792.0 + i]);
-            i = i + 1.0;
-        }
-        r = 0.0;
-        while (r < 131072.0) {
-            cartan_vec_set_f32(g_markov_3gram_totals, r, buf[16843008.0 + r]);
-            r = r + 1.0;
-        }
-        var k = 0.0;
-        while (k < 262144.0) {
-            cartan_vec_set_f32(g_markov_3gram_keys, k, buf[16974080.0 + k]);
-            k = k + 1.0;
-        }
-    }
-    free(buf);
     g_markov_initialized = 1.0;
     return 1.0;
 }
@@ -336,11 +317,18 @@ fn geomind_markov_init_if_needed() -> float {
     if (g_markov_initialized == 1.0 && g_markov_counts_256x256 != 0.0) {
         return 1.0;
     }
+    if (g_markov_counts_256x256 != 0.0) { cartan_vec_free(g_markov_counts_256x256); }
+    if (g_markov_row_totals_256 != 0.0) { cartan_vec_free(g_markov_row_totals_256); }
+    if (g_markov_3gram_counts != 0.0) { cartan_vec_free(g_markov_3gram_counts); }
+    if (g_markov_3gram_totals != 0.0) { cartan_vec_free(g_markov_3gram_totals); }
+    if (g_markov_3gram_keys != 0.0) { cartan_vec_free(g_markov_3gram_keys); }
+
     g_markov_counts_256x256 = cartan_tensor_alloc(65536.0);
     g_markov_row_totals_256 = cartan_tensor_alloc(256.0);
-    g_markov_3gram_counts = cartan_tensor_alloc(16777216.0);
-    g_markov_3gram_totals = cartan_tensor_alloc(131072.0);
-    g_markov_3gram_keys = cartan_tensor_alloc(262144.0);
+    g_markov_3gram_counts = cartan_tensor_alloc(138412032.0);
+    g_markov_3gram_totals = cartan_tensor_alloc(1081344.0);
+    g_markov_3gram_keys = cartan_tensor_alloc(2162688.0);
+    g_markov_hub_occupied_slots = 0.0;
 
     // Initialize with Laplace Dirichlet prior (alpha = 0.02 per cell, row total = 256 * 0.02 = 5.12)
     var idx = 0.0;
@@ -943,23 +931,40 @@ fn geomind_byte_latent_decode_logits_blt(
     out_logits_256: ptr
 ) {
     geomind_byte_latent_init_if_needed();
+    // Hoist the 3-gram and 3-block Tapestry Hub row lookups outside the 256-byte loop (256x fewer hash probes)
+    let c_idx = geomind_markov_3gram_ctx_idx(b3, b2, b1);
+    let tot3 = cartan_vec_get_f32(g_markov_3gram_totals, c_idx);
+    let w1_idx = geomind_markov_hub_row_idx(32768.0, 262144.0, g_markov_ctx_word1_id, c_idx, 0.0);
+    var tot_w1 = 0.0;
+    if (w1_idx >= 32768.0) { tot_w1 = cartan_vec_get_f32(g_markov_3gram_totals, w1_idx); }
+    let w2_idx = geomind_markov_hub_row_idx(294912.0, 393216.0, g_markov_ctx_word2_id, c_idx, 0.0);
+    var tot_w2 = 0.0;
+    if (w2_idx >= 294912.0) { tot_w2 = cartan_vec_get_f32(g_markov_3gram_totals, w2_idx); }
+    let w3_idx = geomind_markov_hub_row_idx(688128.0, 393216.0, g_markov_ctx_word3_id, c_idx, 0.0);
+    var tot_w3 = 0.0;
+    if (w3_idx >= 688128.0) { tot_w3 = cartan_vec_get_f32(g_markov_3gram_totals, w3_idx); }
+
     var c = 0.0;
     while (c < 256.0) {
-        var sum = 0.0;
-        var d = 0.0;
-        while (d < 248.0) {
-            let hl = cartan_vec_get_f32(h_local_248, d);
-            var hp = 0.0;
-            if (h_patch_248 != 0.0) {
-                hp = cartan_vec_get_f32(h_patch_248, d);
+        if ((c >= 32.0 && c <= 126.0) || c == 10.0) {
+            var sum = 0.0;
+            var d = 0.0;
+            while (d < 248.0) {
+                let hl = cartan_vec_get_f32(h_local_248, d);
+                var hp = 0.0;
+                if (h_patch_248 != 0.0) {
+                    hp = cartan_vec_get_f32(h_patch_248, d);
+                }
+                let hv = 0.65 * hl + 0.35 * hp;
+                let wv = cartan_vec_get_f32(g_byte_e8_head_248x256, d * 256.0 + c);
+                sum = sum + hv * wv;
+                d = d + 1.0;
             }
-            let hv = 0.65 * hl + 0.35 * hp;
-            let wv = cartan_vec_get_f32(g_byte_e8_head_248x256, d * 256.0 + c);
-            sum = sum + hv * wv;
-            d = d + 1.0;
+            let m_prob = geomind_markov_get_3gram_prob_fast(b1, c, c_idx, tot3, w1_idx, tot_w1, w2_idx, tot_w2, w3_idx, tot_w3);
+            cartan_vec_set_f32(out_logits_256, c, sum * 0.25 + 3.50 * log(m_prob + 0.00001));
+        } else {
+            cartan_vec_set_f32(out_logits_256, c, -35.0);
         }
-        let m_prob = geomind_markov_get_3gram_prob(b3, b2, b1, c);
-        cartan_vec_set_f32(out_logits_256, c, sum + 2.25 * log(m_prob + 0.00001));
         c = c + 1.0;
     }
 }
@@ -1298,10 +1303,10 @@ fn geomind_byte_latent_generate(prompt: string, gen_len: float) -> string {
 //     achieves low Lagrangian Action S, it crystallizes into a new Anchor Basin on S^{247}!
 
 var g_e8_anchor_count: float = 0.0;
-var g_e8_anchor_coords: ptr = 0.0;     // 8192 * 248 floats (crystallized S^{247} coordinates)
-var g_e8_anchor_masses: ptr = 0.0;     // 8192 floats (maturity/mass in [0, 1])
-var g_e8_anchor_hashes: ptr = 0.0;     // 8192 floats (patch byte-sequence signature)
-var g_e8_anchor_hash_lut: ptr = 0.0;   // 16384-slot O(1) open-addressed hash index -> anchor idx
+var g_e8_anchor_coords: ptr = 0.0;     // 65536 * 248 floats (crystallized S^{247} coordinates)
+var g_e8_anchor_masses: ptr = 0.0;     // 65536 floats (maturity/mass in [0, 1])
+var g_e8_anchor_hashes: ptr = 0.0;     // 65536 floats (patch byte-sequence signature)
+var g_e8_anchor_hash_lut: ptr = 0.0;   // 131072-slot O(1) open-addressed hash index -> anchor idx
 var g_e8_focus_hits: float = 0.0;
 var g_e8_noise_skips: float = 0.0;
 var g_e8_newly_crystallized: float = 0.0;
@@ -1309,18 +1314,18 @@ var g_e8_primer_crystallize_all: float = 0.0; // When 1.0 (Rung 1 Primer), train
 
 fn geomind_e8_anchors_init_if_needed() {
     if (g_e8_anchor_coords != 0.0) { return; }
-    g_e8_anchor_coords = cartan_tensor_alloc(8192.0 * 248.0);
-    g_e8_anchor_masses = cartan_tensor_alloc(8192.0);
-    g_e8_anchor_hashes = cartan_tensor_alloc(8192.0);
-    g_e8_anchor_hash_lut = cartan_tensor_alloc(16384.0);
+    g_e8_anchor_coords = cartan_tensor_alloc(65536.0 * 248.0);
+    g_e8_anchor_masses = cartan_tensor_alloc(65536.0);
+    g_e8_anchor_hashes = cartan_tensor_alloc(65536.0);
+    g_e8_anchor_hash_lut = cartan_tensor_alloc(131072.0);
     var i = 0.0;
-    while (i < 8192.0) {
+    while (i < 65536.0) {
         cartan_vec_set_f32(g_e8_anchor_masses, i, 0.0);
         cartan_vec_set_f32(g_e8_anchor_hashes, i, -1.0);
         i = i + 1.0;
     }
     i = 0.0;
-    while (i < 16384.0) {
+    while (i < 131072.0) {
         cartan_vec_set_f32(g_e8_anchor_hash_lut, i, -1.0);
         i = i + 1.0;
     }
@@ -1329,10 +1334,10 @@ fn geomind_e8_anchors_init_if_needed() {
 
 fn geomind_e8_anchor_lut_insert(patch_hash: float, anchor_idx: float) {
     if (patch_hash <= 0.0 || anchor_idx < 0.0) { return; }
-    let base_slot = math_mod_val(floor(patch_hash * 2654435761.0), 16384.0);
+    let base_slot = math_mod_val(floor(patch_hash * 2654435761.0), 131072.0);
     var probe = 0.0;
     while (probe < 32.0) {
-        let slot = math_mod_val(base_slot + probe, 16384.0);
+        let slot = math_mod_val(base_slot + probe, 131072.0);
         let cur_idx = cartan_vec_get_f32(g_e8_anchor_hash_lut, slot);
         if (cur_idx < 0.0 || cur_idx == anchor_idx) {
             cartan_vec_set_f32(g_e8_anchor_hash_lut, slot, anchor_idx);
@@ -1344,10 +1349,10 @@ fn geomind_e8_anchor_lut_insert(patch_hash: float, anchor_idx: float) {
 
 fn geomind_e8_find_anchor_by_hash(patch_hash: float) -> float {
     if (patch_hash <= 0.0 || g_e8_anchor_count <= 0.0 || g_e8_anchor_hash_lut == 0.0) { return -1.0; }
-    let base_slot = math_mod_val(floor(patch_hash * 2654435761.0), 16384.0);
+    let base_slot = math_mod_val(floor(patch_hash * 2654435761.0), 131072.0);
     var probe = 0.0;
     while (probe < 32.0) {
-        let slot = math_mod_val(base_slot + probe, 16384.0);
+        let slot = math_mod_val(base_slot + probe, 131072.0);
         let cand_idx = cartan_vec_get_f32(g_e8_anchor_hash_lut, slot);
         if (cand_idx < 0.0) {
             return -1.0;
@@ -1367,13 +1372,13 @@ fn geomind_e8_anchors_reset() {
     g_e8_noise_skips = 0.0;
     g_e8_newly_crystallized = 0.0;
     var i = 0.0;
-    while (i < 8192.0) {
+    while (i < 65536.0) {
         cartan_vec_set_f32(g_e8_anchor_masses, i, 0.0);
         cartan_vec_set_f32(g_e8_anchor_hashes, i, -1.0);
         i = i + 1.0;
     }
     i = 0.0;
-    while (i < 16384.0) {
+    while (i < 131072.0) {
         cartan_vec_set_f32(g_e8_anchor_hash_lut, i, -1.0);
         i = i + 1.0;
     }
@@ -1418,7 +1423,7 @@ fn geomind_e8_anchors_load(path: string) -> float {
     fread(hdr, 8.0, 1.0, f);
     var cnt = hdr[0.0];
     free(hdr);
-    if (cnt <= 0.0 || cnt > 8192.0) { fclose(f); return 0.0; }
+    if (cnt <= 0.0 || cnt > 65536.0) { fclose(f); return 0.0; }
     let total_elems = 1.0 + cnt + cnt + cnt * 248.0;
     if (f_sz < total_elems * 8.0) { fclose(f); return 0.0; }
     fclose(f);
@@ -1494,7 +1499,7 @@ fn geomind_e8_query_anchor_resonance(patch_248: ptr, patch_hash: float) -> float
     return best_sim;
 }
 
-// Crystallize or reinforce a 248-D E8 Patch state as an Anchor Basin on S^{247} (up to 8192 concepts)
+// Crystallize or reinforce a 248-D E8 Patch state as an Anchor Basin on S^{247} (up to 65536 concepts)
 fn geomind_e8_crystallize_patch_vec(patch_248: ptr, patch_hash: float, initial_mass: float) -> float {
     geomind_e8_anchors_init_if_needed();
     let exact_m = geomind_e8_find_anchor_by_hash(patch_hash);
@@ -1525,7 +1530,7 @@ fn geomind_e8_crystallize_patch_vec(patch_248: ptr, patch_hash: float, initial_m
         return exact_m;
     }
 
-    if (g_e8_anchor_count >= 8192.0) { return -1.0; }
+    if (g_e8_anchor_count >= 65536.0) { return -1.0; }
     let idx = g_e8_anchor_count;
     let a_off = idx * 248.0;
     var nsq = 0.0;
@@ -1830,8 +1835,8 @@ fn geomind_byte_latent_train_deep_e8_corpus(
                     prev2_patch_hash = 17.0;
                     prev_patch_hash = 17.0;
                     last_patch_hash = bridge_h;
-                    g_markov_ctx_word1_id = math_mod_val(bridge_h, 32767.0) + 1.0;
-                    g_markov_ctx_word2_id = math_mod_val(bridge_h * 257.0 + patch_hash, 32767.0) + 1.0;
+                    g_markov_ctx_word1_id = math_mod_val(bridge_h, 8388607.0) + 1.0;
+                    g_markov_ctx_word2_id = math_mod_val(bridge_h * 257.0 + patch_hash, 8388607.0) + 1.0;
                     g_markov_ctx_word3_id = 0.0;
                     sent_topic_hash = 17.0;
                 } else {
@@ -1839,15 +1844,15 @@ fn geomind_byte_latent_train_deep_e8_corpus(
                     prev2_patch_hash = prev_patch_hash;
                     prev_patch_hash = last_patch_hash;
                     last_patch_hash = patch_hash;
-                    g_markov_ctx_word1_id = math_mod_val(patch_hash, 32767.0) + 1.0;
+                    g_markov_ctx_word1_id = math_mod_val(patch_hash, 8388607.0) + 1.0;
                     if (prev_patch_hash != 17.0) {
-                        g_markov_ctx_word2_id = math_mod_val(prev_patch_hash * 257.0 + patch_hash, 32767.0) + 1.0;
+                        g_markov_ctx_word2_id = math_mod_val(prev_patch_hash * 257.0 + patch_hash, 8388607.0) + 1.0;
                     } else {
                         g_markov_ctx_word2_id = 0.0;
                     }
                     if (prev2_patch_hash != 17.0 && prev_patch_hash != 17.0) {
-                        let h23 = math_mod_val(prev2_patch_hash * 257.0 + prev_patch_hash, 32767.0);
-                        g_markov_ctx_word3_id = math_mod_val(h23 * 257.0 + patch_hash, 32767.0) + 1.0;
+                        let h23 = math_mod_val(prev2_patch_hash * 257.0 + prev_patch_hash, 8388607.0);
+                        g_markov_ctx_word3_id = math_mod_val(h23 * 257.0 + patch_hash, 8388607.0) + 1.0;
                     } else {
                         g_markov_ctx_word3_id = 0.0;
                     }
@@ -1894,8 +1899,8 @@ fn geomind_byte_latent_train_deep_e8_corpus(
                         let w_dc = cartan_vec_get_f32(g_byte_e8_head_248x256, d * 256.0 + c);
                         dh_d = dh_d + w_dc * del_c;
                         var new_w = geom_frs_riemannian_gradient_step(w_dc, h_comb * del_c, b_d, eff_lr * local_lr_scale);
-                        if (new_w > 0.45) { new_w = 0.45; }
-                        else if (new_w < -0.45) { new_w = -0.45; }
+                        if (new_w > 0.10) { new_w = 0.10; }
+                        else if (new_w < -0.10) { new_w = -0.10; }
                         cartan_vec_set_f32(g_byte_e8_head_248x256, d * 256.0 + c, new_w);
                     }
                     c = c + 1.0;
@@ -1971,11 +1976,13 @@ fn geomind_byte_latent_train_deep_e8_corpus(
         ep = ep + 1.0;
     }
 
-    geomind_markov_save_prior("Projects/geomind/trainingdata/checkpoints/geomind_markov_prior.bin");
-    geomind_byte_latent_save_weights("Projects/geomind/trainingdata/checkpoints/geomind_byte_latent_e8.bin");
-    geomind_e8_stack_save("Projects/geomind/trainingdata/checkpoints/geomind_e8_deep_stack.bin");
-    if (g_e8_anchor_count > 0.0) {
-        geomind_e8_anchors_save("Projects/geomind/trainingdata/checkpoints/geomind_e8_anchors.bin");
+    if (g_byte_e8_defer_disk_save == 0.0) {
+        geomind_markov_save_prior("Projects/geomind/trainingdata/checkpoints/geomind_markov_prior.bin");
+        geomind_byte_latent_save_weights("Projects/geomind/trainingdata/checkpoints/geomind_byte_latent_e8.bin");
+        geomind_e8_stack_save("Projects/geomind/trainingdata/checkpoints/geomind_e8_deep_stack.bin");
+        if (g_e8_anchor_count > 0.0) {
+            geomind_e8_anchors_save("Projects/geomind/trainingdata/checkpoints/geomind_e8_anchors.bin");
+        }
     }
 
     cartan_vec_free(h_prev_local);
@@ -2128,23 +2135,23 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
                 prev2_patch_hash = 17.0;
                 prev_patch_hash = 17.0;
                 last_patch_hash = bridge_h1;
-                g_markov_ctx_word1_id = math_mod_val(bridge_h1, 32767.0) + 1.0;
-                g_markov_ctx_word2_id = math_mod_val(bridge_h1 * 257.0 + patch_hash, 32767.0) + 1.0;
+                g_markov_ctx_word1_id = math_mod_val(bridge_h1, 8388607.0) + 1.0;
+                g_markov_ctx_word2_id = math_mod_val(bridge_h1 * 257.0 + patch_hash, 8388607.0) + 1.0;
                 g_markov_ctx_word3_id = 0.0;
                 sent_topic_hash = 17.0;
             } else {
                 prev2_patch_hash = prev_patch_hash;
                 prev_patch_hash = last_patch_hash;
                 last_patch_hash = patch_hash;
-                g_markov_ctx_word1_id = math_mod_val(patch_hash, 32767.0) + 1.0;
+                g_markov_ctx_word1_id = math_mod_val(patch_hash, 8388607.0) + 1.0;
                 if (prev_patch_hash != 17.0) {
-                    g_markov_ctx_word2_id = math_mod_val(prev_patch_hash * 257.0 + patch_hash, 32767.0) + 1.0;
+                    g_markov_ctx_word2_id = math_mod_val(prev_patch_hash * 257.0 + patch_hash, 8388607.0) + 1.0;
                 } else {
                     g_markov_ctx_word2_id = 0.0;
                 }
                 if (prev2_patch_hash != 17.0 && prev_patch_hash != 17.0) {
-                    let h23 = math_mod_val(prev2_patch_hash * 257.0 + prev_patch_hash, 32767.0);
-                    g_markov_ctx_word3_id = math_mod_val(h23 * 257.0 + patch_hash, 32767.0) + 1.0;
+                    let h23 = math_mod_val(prev2_patch_hash * 257.0 + prev_patch_hash, 8388607.0);
+                    g_markov_ctx_word3_id = math_mod_val(h23 * 257.0 + patch_hash, 8388607.0) + 1.0;
                 } else {
                     g_markov_ctx_word3_id = 0.0;
                 }
@@ -2267,23 +2274,23 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
                 prev2_patch_hash = 17.0;
                 prev_patch_hash = 17.0;
                 last_patch_hash = bridge_h2;
-                g_markov_ctx_word1_id = math_mod_val(bridge_h2, 32767.0) + 1.0;
-                g_markov_ctx_word2_id = math_mod_val(bridge_h2 * 257.0 + patch_hash, 32767.0) + 1.0;
+                g_markov_ctx_word1_id = math_mod_val(bridge_h2, 8388607.0) + 1.0;
+                g_markov_ctx_word2_id = math_mod_val(bridge_h2 * 257.0 + patch_hash, 8388607.0) + 1.0;
                 g_markov_ctx_word3_id = 0.0;
                 sent_topic_hash = 17.0;
             } else {
                 prev2_patch_hash = prev_patch_hash;
                 prev_patch_hash = last_patch_hash;
                 last_patch_hash = patch_hash;
-                g_markov_ctx_word1_id = math_mod_val(patch_hash, 32767.0) + 1.0;
+                g_markov_ctx_word1_id = math_mod_val(patch_hash, 8388607.0) + 1.0;
                 if (prev_patch_hash != 17.0) {
-                    g_markov_ctx_word2_id = math_mod_val(prev_patch_hash * 257.0 + patch_hash, 32767.0) + 1.0;
+                    g_markov_ctx_word2_id = math_mod_val(prev_patch_hash * 257.0 + patch_hash, 8388607.0) + 1.0;
                 } else {
                     g_markov_ctx_word2_id = 0.0;
                 }
                 if (prev2_patch_hash != 17.0 && prev_patch_hash != 17.0) {
-                    let h23 = math_mod_val(prev2_patch_hash * 257.0 + prev_patch_hash, 32767.0);
-                    g_markov_ctx_word3_id = math_mod_val(h23 * 257.0 + patch_hash, 32767.0) + 1.0;
+                    let h23 = math_mod_val(prev2_patch_hash * 257.0 + prev_patch_hash, 8388607.0);
+                    g_markov_ctx_word3_id = math_mod_val(h23 * 257.0 + patch_hash, 8388607.0) + 1.0;
                 } else {
                     g_markov_ctx_word3_id = 0.0;
                 }
@@ -2330,6 +2337,7 @@ fn geomind_run_english_curriculum(num_layers: float, lr: float) -> float {
 
     // Start from a clean Anchor Basin registry, Markov Tapestry, and 42-Layer E8 Stack
     g_byte_e8_skip_disk_autoload = 1.0;
+    g_byte_e8_defer_disk_save = 1.0;
     g_markov_initialized = 0.0;
     geomind_markov_init_if_needed();
     g_byte_e8_initialized = 0.0;
@@ -2353,7 +2361,8 @@ fn geomind_run_english_curriculum(num_layers: float, lr: float) -> float {
     g_e8_primer_crystallize_all = 0.0;
     let gen_r1_a = geomind_byte_latent_generate_deep_e8("The ball is", L, 52.0);
     let gen_r1_b = geomind_byte_latent_generate_deep_e8("Water is", L, 52.0);
-    printf("[Rung 1 | Nursery Primer] Action S = %.6f | Crystallized Anchors = %.0f\n", s_rung1, g_e8_anchor_count);
+    printf("[Rung 1 | Nursery Primer] Action S = %.6f | Anchors = %.0f / 65536 | TapestryHubs = %.0f / 1048576\n",
+        s_rung1, g_e8_anchor_count, g_markov_hub_occupied_slots);
     printf("  -> Gen 1: %s\n", gen_r1_a);
     printf("  -> Gen 2: %s\n", gen_r1_b);
     cartan_flush(0.0);
@@ -2371,8 +2380,8 @@ fn geomind_run_english_curriculum(num_layers: float, lr: float) -> float {
     let anchors_before_r2 = g_e8_anchor_count;
     let s_rung2 = geomind_byte_latent_train_deep_e8_corpus(rung2_text, L, 4.0, eff_lr, 1.0);
     let gen_r2 = geomind_byte_latent_generate_deep_e8("When you drop a ball", L, 58.0);
-    printf("[Rung 2 | Concept Triples] Action S = %.6f | Anchors: %.0f -> %.0f | FocusHits = %.0f | NoiseSkipped = %.0f\n",
-        s_rung2, anchors_before_r2, g_e8_anchor_count, g_e8_focus_hits, g_e8_noise_skips);
+    printf("[Rung 2 | Concept Triples] Action S = %.6f | Anchors: %.0f -> %.0f | FocusHits = %.0f | NoiseSkipped = %.0f | Hubs = %.0f\n",
+        s_rung2, anchors_before_r2, g_e8_anchor_count, g_e8_focus_hits, g_e8_noise_skips, g_markov_hub_occupied_slots);
     printf("  -> Gen 3: %s\n", gen_r2);
     cartan_flush(0.0);
 
@@ -2381,13 +2390,9 @@ fn geomind_run_english_curriculum(num_layers: float, lr: float) -> float {
     // ------------------------------------------------------------------------
     let rung3_path = "Projects/geomind/trainingdata/storytelling_chunks/chunk_001_t1_TinyStories_Curated.txt";
     if (cartan_file_exists(rung3_path) == 1.0) {
-        let full_stories = cartan_read_file(rung3_path);
-        let slen = cartan_string_length(full_stories);
-        var slice_len = 4500.0;
-        if (slen < slice_len) { slice_len = slen; }
-        let stories_slice = cartan_string_substring(full_stories, 0.0, slice_len);
+        let stories_slice = cartan_read_file(rung3_path);
 
-        // Pass 1 over TinyStories slice:
+        // Pass 1 over full 12KB TinyStories chunk:
         g_e8_focus_hits = 0.0;
         g_e8_noise_skips = 0.0;
         let anchors_p0 = g_e8_anchor_count;
@@ -2396,7 +2401,7 @@ fn geomind_run_english_curriculum(num_layers: float, lr: float) -> float {
         let p1_skip = g_e8_noise_skips;
         let anchors_p1 = g_e8_anchor_count;
 
-        // Pass 2 over the SAME TinyStories slice (with newly crystallized Pass 1 anchors!):
+        // Pass 2 over the SAME 12KB TinyStories chunk (with newly crystallized Pass 1 anchors!):
         g_e8_focus_hits = 0.0;
         g_e8_noise_skips = 0.0;
         let s_r3_p2 = geomind_byte_latent_train_deep_e8_corpus(stories_slice, L, 2.0, eff_lr * 0.85, 1.0);
@@ -2405,49 +2410,61 @@ fn geomind_run_english_curriculum(num_layers: float, lr: float) -> float {
         let anchors_p2 = g_e8_anchor_count;
 
         let gen_r3 = geomind_byte_latent_generate_deep_e8("Once upon a time", L, 64.0);
-        printf("[Rung 3 | TinyStories Pass 1] Action S = %.6f | Anchors: %.0f -> %.0f | FocusHits = %.0f | NoiseSkipped = %.0f\n",
+        printf("[Rung 3 | TinyStories 12KB Pass 1] Action S = %.6f | Anchors: %.0f -> %.0f | FocusHits = %.0f | NoiseSkipped = %.0f\n",
             s_r3_p1, anchors_p0, anchors_p1, p1_focus, p1_skip);
-        printf("[Rung 3 | TinyStories Pass 2] Action S = %.6f | Anchors: %.0f -> %.0f | FocusHits = %.0f | NoiseSkipped = %.0f\n",
-            s_r3_p2, anchors_p1, anchors_p2, p2_focus, p2_skip);
+        printf("[Rung 3 | TinyStories 12KB Pass 2] Action S = %.6f | Anchors: %.0f -> %.0f | FocusHits = %.0f | NoiseSkipped = %.0f | Hubs = %.0f\n",
+            s_r3_p2, anchors_p1, anchors_p2, p2_focus, p2_skip, g_markov_hub_occupied_slots);
         printf("  -> Gen 4: %s\n", gen_r3);
         cartan_flush(0.0);
     }
 
     // ------------------------------------------------------------------------
-    // RUNG 4: Digestible Storytelling Chunks (Modern Sci-Fi/Mystery + Alice + Anthem)
+    // RUNG 4: Full 12KB Storytelling Chunks (Modern Narratives + Alice + Anthem + Sherlock Holmes)
     // ------------------------------------------------------------------------
     let chunk_modern = "Projects/geomind/trainingdata/storytelling_chunks/chunk_005_t1_GeoMind_Modern_Narratives.txt";
     let chunk_alice = "Projects/geomind/trainingdata/storytelling_chunks/chunk_007_t2_Alice_In_Wonderland.txt";
     let chunk_anthem = "Projects/geomind/trainingdata/storytelling_chunks/chunk_019_t2_Anthem.txt";
+    let chunk_sherlock = "Projects/geomind/trainingdata/storytelling_chunks/chunk_028_t3_Sherlock_Holmes.txt";
     if (cartan_file_exists(chunk_modern) == 1.0 && cartan_file_exists(chunk_alice) == 1.0 && cartan_file_exists(chunk_anthem) == 1.0) {
-        let txt_modern = cartan_string_substring(cartan_read_file(chunk_modern), 0.0, 5000.0);
-        let txt_alice = cartan_string_substring(cartan_read_file(chunk_alice), 0.0, 5000.0);
-        let txt_anthem = cartan_string_substring(cartan_read_file(chunk_anthem), 0.0, 5000.0);
+        let txt_modern = cartan_read_file(chunk_modern);
+        let txt_alice = cartan_read_file(chunk_alice);
+        let txt_anthem = cartan_read_file(chunk_anthem);
 
         g_e8_focus_hits = 0.0;
         g_e8_noise_skips = 0.0;
         let a_pre_mod = g_e8_anchor_count;
         let s_mod = geomind_byte_latent_train_deep_e8_corpus(txt_modern, L, 2.0, eff_lr * 0.80, 1.0);
-        printf("[Rung 4a | Chunk 005 Modern Narratives] Action S = %.6f | Anchors: %.0f -> %.0f | FocusHits = %.0f | NoiseSkipped = %.0f\n",
-            s_mod, a_pre_mod, g_e8_anchor_count, g_e8_focus_hits, g_e8_noise_skips);
+        printf("[Rung 4a | Chunk 005 Modern Narratives (12KB)] Action S = %.6f | Anchors: %.0f -> %.0f | FocusHits = %.0f | NoiseSkipped = %.0f | Hubs = %.0f\n",
+            s_mod, a_pre_mod, g_e8_anchor_count, g_e8_focus_hits, g_e8_noise_skips, g_markov_hub_occupied_slots);
 
         g_e8_focus_hits = 0.0;
         g_e8_noise_skips = 0.0;
         let a_pre_ali = g_e8_anchor_count;
         let s_ali = geomind_byte_latent_train_deep_e8_corpus(txt_alice, L, 2.0, eff_lr * 0.80, 1.0);
-        printf("[Rung 4b | Chunk 007 Alice Wonderland]  Action S = %.6f | Anchors: %.0f -> %.0f | FocusHits = %.0f | NoiseSkipped = %.0f\n",
-            s_ali, a_pre_ali, g_e8_anchor_count, g_e8_focus_hits, g_e8_noise_skips);
+        printf("[Rung 4b | Chunk 007 Alice Wonderland (12KB)]  Action S = %.6f | Anchors: %.0f -> %.0f | FocusHits = %.0f | NoiseSkipped = %.0f | Hubs = %.0f\n",
+            s_ali, a_pre_ali, g_e8_anchor_count, g_e8_focus_hits, g_e8_noise_skips, g_markov_hub_occupied_slots);
 
         g_e8_focus_hits = 0.0;
         g_e8_noise_skips = 0.0;
         let a_pre_ant = g_e8_anchor_count;
         let s_ant = geomind_byte_latent_train_deep_e8_corpus(txt_anthem, L, 2.0, eff_lr * 0.80, 1.0);
-        printf("[Rung 4c | Chunk 019 Anthem]            Action S = %.6f | Anchors: %.0f -> %.0f | FocusHits = %.0f | NoiseSkipped = %.0f\n",
-            s_ant, a_pre_ant, g_e8_anchor_count, g_e8_focus_hits, g_e8_noise_skips);
+        printf("[Rung 4c | Chunk 019 Anthem (12KB)]            Action S = %.6f | Anchors: %.0f -> %.0f | FocusHits = %.0f | NoiseSkipped = %.0f | Hubs = %.0f\n",
+            s_ant, a_pre_ant, g_e8_anchor_count, g_e8_focus_hits, g_e8_noise_skips, g_markov_hub_occupied_slots);
 
-        printf("  -> Gen 5 (Sci-Fi): %s\n", geomind_byte_latent_generate_deep_e8("Commander Vane stood on", L, 60.0));
-        printf("  -> Gen 6 (Alice):  %s\n", geomind_byte_latent_generate_deep_e8("Alice was beginning to", L, 60.0));
-        printf("  -> Gen 7 (Anthem): %s\n", geomind_byte_latent_generate_deep_e8("It is a sin to write", L, 60.0));
+        if (cartan_file_exists(chunk_sherlock) == 1.0) {
+            let txt_sher = cartan_read_file(chunk_sherlock);
+            g_e8_focus_hits = 0.0;
+            g_e8_noise_skips = 0.0;
+            let a_pre_sh = g_e8_anchor_count;
+            let s_sh = geomind_byte_latent_train_deep_e8_corpus(txt_sher, L, 2.0, eff_lr * 0.80, 1.0);
+            printf("[Rung 4d | Chunk 028 Sherlock Holmes (12KB)]   Action S = %.6f | Anchors: %.0f -> %.0f | FocusHits = %.0f | NoiseSkipped = %.0f | Hubs = %.0f\n",
+                s_sh, a_pre_sh, g_e8_anchor_count, g_e8_focus_hits, g_e8_noise_skips, g_markov_hub_occupied_slots);
+        }
+
+        printf("  -> Gen 5 (Sci-Fi):   %s\n", geomind_byte_latent_generate_deep_e8("Commander Vane stood on", L, 60.0));
+        printf("  -> Gen 6 (Alice):    %s\n", geomind_byte_latent_generate_deep_e8("Alice was beginning to", L, 60.0));
+        printf("  -> Gen 7 (Anthem):   %s\n", geomind_byte_latent_generate_deep_e8("It is a sin to write", L, 60.0));
+        printf("  -> Gen 8 (Sherlock): %s\n", geomind_byte_latent_generate_deep_e8("To Sherlock Holmes she", L, 60.0));
         cartan_flush(0.0);
     }
 
@@ -2461,7 +2478,17 @@ fn geomind_run_english_curriculum(num_layers: float, lr: float) -> float {
     printf("  -> Novel 5 ('The dog can bounce'):       %s\n", geomind_byte_latent_generate_deep_e8("The dog can bounce", L, 48.0));
     printf("  -> Novel 6 ('Alice stood on the'):       %s\n", geomind_byte_latent_generate_deep_e8("Alice stood on the", L, 56.0));
     printf("  -> Novel 7 ('Commander Vane found a'):   %s\n", geomind_byte_latent_generate_deep_e8("Commander Vane found a", L, 56.0));
+    printf("  -> Novel 8 ('Sherlock Holmes stood on'): %s\n", geomind_byte_latent_generate_deep_e8("Sherlock Holmes stood on", L, 56.0));
     cartan_flush(0.0);
+
+    // Save consolidated checkpoints once at the end of the curriculum
+    g_byte_e8_defer_disk_save = 0.0;
+    geomind_markov_save_prior("Projects/geomind/trainingdata/checkpoints/geomind_markov_prior.bin");
+    geomind_byte_latent_save_weights("Projects/geomind/trainingdata/checkpoints/geomind_byte_latent_e8.bin");
+    geomind_e8_stack_save("Projects/geomind/trainingdata/checkpoints/geomind_e8_deep_stack.bin");
+    if (g_e8_anchor_count > 0.0) {
+        geomind_e8_anchors_save("Projects/geomind/trainingdata/checkpoints/geomind_e8_anchors.bin");
+    }
 
     geomind_visualizer_export_html("manifold_relaxation.html", "4-Rung Concentric Storytelling Curriculum");
     printf("================================================================================\n");
