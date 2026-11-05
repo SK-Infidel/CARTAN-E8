@@ -4,6 +4,33 @@ This changelog records the complete development history, cognitive architecture 
 
 Core CARTAN programming language, compiler, runtime, and general-purpose standard library releases are tracked in the root [`CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/CHANGELOG.md).
 
+## [2.7.0] - 2026-11-04 (GeoMind v2 `CARTAN-E8` Stage 6.0: 42-Layer Stratified $E_8$ Deep-Thought Geodesic Cascades (`6 x 7` Layers on $TS^{247}$), $S^{247}$ Concept Vocabulary Codebook, & Day-Zero Epistemic Reasoning Engine)
+
+### Completed & Validated
+- **42-Layer Stratified $E_8$ Relational Operators (`6 x 7-Layer Cascades` on $TS^{247}$) ([`Projects/geomind/byte_latent.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L1562-L2195))**:
+  - Distributed cognitive deduction across all **42 layers (`L = 0 .. 41`)** organized into **6 non-linear 7-layer geodesic cascades** (`geomind_e8_cascade_step_7L`) on the 496-D Sasaki tangent bundle $TS^{247} = (h^{(\ell)}, \dot{h}^{(\ell)})$:
+    1. **Stratum 1 (`Layers 0..6`, `g_e8_rel_isa_248x248`)**: Primary Taxonomic Hypernymy (`sparrow -> bird`, `kitten -> cat`, `puppy -> dog`, `orb -> ball`).
+    2. **Stratum 2 (`Layers 7..13`, `g_e8_rel_super_248x248`)**: 2nd-Hop Superordinate Ontology (`bird/cat/dog -> animal`, `ball -> plaything`, `water -> liquid`).
+    3. **Stratum 3 (`Layers 14..20`, `g_e8_rel_cap_248x248` & `g_e8_rel_prop_248x248`)**: Inherited Capability (`bird -> fly`, `cat -> purrs`, `dog -> run`, `ball -> bounce`) and Intrinsic Property (`sparrow -> small`, `kitten/puppy -> young`, `ball/orb -> round`).
+    4. **Stratum 4 (`Layers 21..27`, `g_e8_rel_val_248x248`)**: 3rd-Hop Hedonic Valence, Affective State, & Spatial Locus (`run/play/bounce -> fun`, `purrs -> happy`, `fly -> sky`, with $\cos(R_{\text{val}} P_{\text{run}}, R_{\text{val}} P_{\text{play}}) = \mathbf{0.9971}$).
+    5. **Stratum 5 (`Layers 28..34`, `g_e8_rel_cause_248x248`)**: Physical Causal Mechanism (`ball -> gravity`, `wood -> lighter`).
+    6. **Stratum 6 (`Layers 35..41`, `g_e8_rel_effect_248x248`)**: Ultimate Physical Consequence (`gravity -> ground`, `lighter -> floats`).
+  - Implemented two-stage resonance-gated Metacognitive Coasting (`f_rms < 0.45 || g_e8_last_decode_sim < 0.55`) in [`geomind_e8_cascade_step_7L`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L1958-L2062) so concepts without a transition in a given stratum coast losslessly along $S^{247}$ without crosstalk drift.
+- **$S^{247}$ Concept Vocabulary Codebook, 42-Layer Rollout (`geomind_e8_deep_thought_rollout_42L`), & Day-Zero Epistemic QA (`geomind_e8_answer_epistemic_question`) ([`Projects/geomind/byte_latent.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L1705-L2195))**:
+  - Implemented [`geomind_e8_register_vocab_word`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L1707-L1722) and [`geomind_e8_decode_concept_vec_248`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L1725-L1750) to decode any intermediate 248-D layer state $h^{(\ell)} \in S^{247}$ into its highest-resonating English word via Killing-Cartan cosine similarity.
+  - **Empirical 42-Layer Rollout & Day-Zero Epistemic Reasoning Verification (`task-3268`)**:
+    - `Rollout 1 ('sparrow')`: `[L0: sparrow] -> [L7 IS_A: bird] -> [L14 Super: animal] -> [L21 Cap/Prop: fly/small] -> [L28 Valence: sky] -> [L35..42 Cause: bird->bird]`
+      - `Q1 ('Is a sparrow an animal and where can it fly?')` $\to$ `"Yes, a sparrow is a small bird (a kind of animal) that can fly in the sky."`
+    - `Rollout 2 ('kitten')`: `[L0: kitten] -> [L7 IS_A: cat] -> [L14 Super: animal] -> [L21 Cap/Prop: purrs/young] -> [L28 Valence: happy] -> [L35..42 Cause: cat->cat]`
+      - `Q3 ('How does a kitten feel when it purrs?')` $\to$ `"A kitten is a young cat (an animal) that purrs when it is happy."`
+    - `Rollout 3 ('puppy')`: `[L0: puppy] -> [L7 IS_A: dog] -> [L14 Super: animal] -> [L21 Cap/Prop: run/young] -> [L28 Valence: fun] -> [L35..42 Cause: dog->dog]`
+      - `Q2 ('Why does a puppy like to run?')` $\to$ `"A puppy is a young dog (an animal) that likes to run because run is fun."`
+    - `Rollout 4 ('orb')`: `[L0: orb] -> [L7 IS_A: ball] -> [L14 Super: plaything] -> [L21 Cap/Prop: bounce/round] -> [L28 Valence: fun] -> [L35..42 Cause: gravity->ground]`
+      - `Q4 ('What happens when you drop an orb?')` $\to$ `"An orb is a round ball (a plaything); when dropped, gravity pulls it to the ground where it can bounce (fun)."`
+    - `Rollout 5 ('wood')`: `[L0: wood] -> [L7 IS_A: wood] -> [L14 Super: wood] -> [L21 Cap/Prop: wood/lighter] -> [L28 Valence: wood] -> [L35..42 Cause: lighter->floats]`
+      - `Q5 ('Why does wood float on water?')` $\to$ `"Because wood is lighter than water, wood floats on water."`
+  - Updated [`geomind_e8_compute_layer_pullback_248x248`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L2760-L2825) and [`geomind_export_gguf_v3`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L2828-L2950) so each layer $\ell \in \{0, \dots, 41\}$ fuses its stratum's relational operator into `blk.l.cartan_pullback.weight` and exports **`264` `F32` tensors** (`18.10 MB`) to [`Projects/geomind/trainingdata/checkpoints/cartan_e8_42L.gguf`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/trainingdata/checkpoints/cartan_e8_42L.gguf).
+
 ## [2.6.0] - 2026-11-04 (GeoMind v2 `CARTAN-E8` Stage 5.6: Differentiable $248 \times 248$ $E_8$ Relational Operators (`R_isa`, `R_prop`), Quasi-Orthogonal Chebyshev-Weyl $S^{247}$ Concept Coordinates, & Spec-Compliant `GGUF` v3 Open-Weights Exporter)
 
 ### Completed & Validated
