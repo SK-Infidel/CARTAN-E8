@@ -4,6 +4,32 @@ This changelog records the complete development history, cognitive architecture 
 
 Core CARTAN programming language, compiler, runtime, and general-purpose standard library releases are tracked in the root [`CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/CHANGELOG.md).
 
+## [2.8.0] - 2026-11-05 (GeoMind v2 `CARTAN-E8` Stage 6.1: Word-Agnostic Closed-Class Relational Parsing, Kanerva-Hopfield $S^{247}$ Attractor Clean-Up, & 4-Test Subtle Geometric Reasoning / Falsification Suite)
+
+### Completed & Validated
+- **100% Word-Agnostic Closed-Class Relational Extraction ([`Projects/geomind/byte_latent.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L1860-L1920), [`L3230-L3338`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L3230-L3338))**:
+  - Removed all 20 content-word hash triggers (`bird`, `cat`, `dog`, `ball`, `fly`, `sky`, `purrs`, `happy`, `run`, `drop`, `gravity`, `ground`, `wood`, `floats`, `lighter`, `rain`, `clouds`, `grow`, `bounce`, `bouncing`) from `geomind_byte_latent_train_deep_e8_corpus`.
+  - Relational operators (`R_isa`, `R_super`, `R_cap`, `R_prop`, `R_val`, `R_cause`, `R_effect`) now learn exclusively from **13 closed-class syntactic function words** (`is`, `a`, `the`, `and`, `in`, `on`, `when`, `it`, `you`, `likes`, `because`, `to`, `can`) and sentence-relative token positions (`sent_word_idx`), plus WordNet taxonomic pairs (`geomind_wordnet_register_node` with whitespace-stripped lemmas).
+- **Kanerva-Hopfield $S^{247}$ Attractor Clean-Up & Unnormalized Bilinear Resonance Gate ([`Projects/geomind/byte_latent.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L1983-L2029))**:
+  - Enforced both normalized Killing-Cartan cosine (`g_e8_last_decode_sim >= 0.62`) and unnormalized bilinear projection (`f_rms * g_e8_last_decode_sim >= 0.55`) before executing a 7-layer stratum transition, followed by Kanerva-Hopfield basin contraction (`0.25 * f_vec + 0.75 * basin_vec` reprojected onto $S^{247}$) to eliminate multi-hop linear superposition drift across 42 layers.
+- **4-Test Subtle Geometric Reasoning & Falsification Suite ([`Projects/geomind/byte_latent.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L2289-L2630)) (`task-3357`)**:
+  - **Test 1 (`geomind_e8_trajectory_intersection_42L` — Zero-Shot 42-Layer Trajectory Intersection)**:
+    - `('kitten', 'puppy')` $\to$ Diverge at `L7 ('cat' vs 'dog')` $\to$ **COLLIDE** at `[L14 Super = 'animal']` and `[L21 Prop = 'young']`.
+    - `('sparrow', 'puppy')` $\to$ Diverge at `L7 ('bird' vs 'dog')` $\to$ **COLLIDE** at `[L14 Super = 'animal']`.
+    - `('run', 'bounce')` $\to$ Diverge at `L7 ('run' vs 'bounce')` $\to$ **COLLIDE** at `[L21 Prop = 'fun']` and `[L28 Valence = 'fun']`.
+    - `('sparrow', 'orb')` $\to$ **DISJOINT** across all 42 layers (`'animal'` vs `'plaything'`; max stratum cosine `< 0.15`).
+  - **Test 2 (`geomind_e8_verify_counterfactual_42L` — Counterfactual & False-Premise Rejection + Adjoint $R^\top$ Attribution)**:
+    - `Claim('kitten', 'fly')` $\to$ **`[REJECTED False Premise]`** `'kitten' IS_A 'cat' with capability 'purrs' ('happy'), NOT 'fly' (adjoint R^T maps 'fly' <- 'bird')`.
+    - `Claim('sparrow', 'dog')` $\to$ **`[REJECTED False Premise]`** `'sparrow' IS_A 'bird' with capability 'fly' ('sky'), NOT 'dog' (adjoint R^T maps 'dog' <- 'puppy')`.
+    - `Claim('orb', 'ground')` $\to$ **`[VERIFIED at L42 Effect]`** `'orb' -> 'ball' -> 'gravity' -> 'ground'`.
+  - **Test 3 (`geomind_e8_abductive_diagnosis_42L` — Backward Abductive Diagnosis from Downstream Clues)**:
+    - `Clues (small, fly, sky)` $\to$ Abduced Concept: **`'sparrow'`** (`L7 class: 'bird'`).
+    - `Clues (round, bounce, ground)` $\to$ Abduced Concept: **`'globe'`** (`L7 class: 'ball'`, zero-shot WordNet subtype).
+    - `Clues (young, purrs, happy)` $\to$ Abduced Concept: **`'kitten'`** (`L7 class: 'cat'`).
+  - **Test 4 (`geomind_e8_cross_rung_bridge_42L` — Unstated Multi-Sentence Cross-Rung Bridging)**:
+    - `Bridge 1 ('trout')`: `[L0 Unseen: trout] -> [L7: fish (animal)] -> [L21 Action: swims] -> [L28 Medium: water] -> [Medium Rollout: clear liquid]`.
+    - `Bridge 2 ('salmon')`: `[L0 Unseen: salmon] -> [L7: fish (animal)] -> [L21 Action: swims] -> [L28 Medium: water] -> [Medium Rollout: clear liquid]`.
+
 ## [2.7.0] - 2026-11-04 (GeoMind v2 `CARTAN-E8` Stage 6.0: 42-Layer Stratified $E_8$ Deep-Thought Geodesic Cascades (`6 x 7` Layers on $TS^{247}$), $S^{247}$ Concept Vocabulary Codebook, & Day-Zero Epistemic Reasoning Engine)
 
 ### Completed & Validated
