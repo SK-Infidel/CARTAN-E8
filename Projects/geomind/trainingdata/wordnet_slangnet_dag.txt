@@ -1,0 +1,198 @@
+Path: entity.abstract_entity.cognition.knowledge.science.physics
+Lemmas: physics, physical_science
+Hypernym: entity.abstract_entity.cognition.knowledge.science
+Definition: The branch of science concerned with the nature and properties of matter and energy.
+IC: 14.80
+
+Path: entity.physical_entity.object.natural_object.celestial_body.star
+Lemmas: star, stellar_body, sun
+Hypernym: entity.physical_entity.object.natural_object.celestial_body
+Definition: A luminous sphere of plasma held together by its own gravity, igniting nuclear fusion in its core.
+IC: 14.50
+
+Path: entity.physical_entity.matter.substance.plasma
+Lemmas: plasma, ionized_gas
+Hypernym: entity.physical_entity.matter.substance
+Definition: An ionized state of matter consisting of positive ions and free electrons.
+IC: 15.10
+
+Path: entity.abstract_entity.relation.measure.rate.speed
+Lemmas: speed, velocity, celerity
+Hypernym: entity.abstract_entity.relation.measure.rate
+Definition: The rate at which someone or something moves or operates.
+IC: 13.20
+
+Path: entity.physical_entity.phenomenon.energy.light
+Lemmas: light, electromagnetic_radiation, photon, optics
+Hypernym: entity.physical_entity.phenomenon.energy
+Definition: Electromagnetic radiation detectable by the human eye or physical sensors.
+IC: 14.20
+
+Path: entity.physical_entity.space.vacuum
+Lemmas: vacuum, void, empty_space
+Hypernym: entity.physical_entity.space
+Definition: Space completely devoid of matter.
+IC: 14.60
+
+Path: entity.physical_entity.object.organism.plant
+Lemmas: plant, flora, vegetation
+Hypernym: entity.physical_entity.object.organism
+Definition: A living photosynthetic organism typically possessing cellulose cell walls.
+IC: 12.80
+
+Path: entity.physical_entity.process.biochemical_process.photosynthesis
+Lemmas: photosynthesis, autotrophy
+Hypernym: entity.physical_entity.process.biochemical_process
+Definition: The biochemical process by which green plants synthesize nutrients using sunlight.
+IC: 13.80
+
+Path: entity.physical_entity.object.geological_formation.mountain
+Lemmas: mountain, peak, ridge, tectonic
+Hypernym: entity.physical_entity.object.geological_formation
+Definition: A large natural elevation of the earth's surface formed by tectonic plate collisions.
+IC: 12.40
+
+Path: entity.physical_entity.process.chemical_reaction.maillard_reaction
+Lemmas: maillard, browning, cooking
+Hypernym: entity.physical_entity.process.chemical_reaction
+Definition: A chemical reaction between amino acids and reducing sugars giving browned food savory flavor.
+IC: 14.90
+
+Path: entity.abstract_entity.cognition.knowledge.algorithm.binary_search
+Lemmas: binary, search, algorithm
+Hypernym: entity.abstract_entity.cognition.knowledge.algorithm
+Definition: An efficient search algorithm finding the position of a target key within a sorted array.
+IC: 15.20
+
+Path: entity.physical_entity.object.geological_formation.hydrothermal_vent
+Lemmas: hydrothermal, vent, ocean
+Hypernym: entity.physical_entity.object.geological_formation
+Definition: A geothermal fissure on the seafloor expelling mineral-rich superheated water.
+IC: 15.80
+
+Path: entity.physical_entity.object.artifact.architectural_element.buttress
+Lemmas: buttress, flying_buttress, gothic
+Hypernym: entity.physical_entity.object.artifact.architectural_element
+Definition: An exterior masonry structure projecting from a wall to support or reinforce it.
+IC: 14.10
+
+Path: entity.physical_entity.object.organism.animal.canine.dog
+Lemmas: dog, canine, hound, puppy
+Hypernym: entity.physical_entity.object.organism.animal.canine
+Definition: A domesticated carnivorous mammal with keen senses and loyal behavior.
+IC: 11.20
+
+Path: entity.physical_entity.object.organism.animal.canine.wolf
+Lemmas: wolf, timber_wolf, gray_wolf
+Hypernym: entity.physical_entity.object.organism.animal.canine
+Definition: A wild pack-hunting carnivorous mammal of the canine family.
+IC: 12.10
+
+Path: entity.abstract_entity.communication.language.slang.sus
+Lemmas: sus, suspicious, sketchy, untrustworthy
+Hypernym: entity.abstract_entity.communication.language.slang
+Definition: Giving the impression of being questionable, deceptive, or untrustworthy.
+IC: 12.50
+
+Path: entity.abstract_entity.communication.language.slang.bae
+Lemmas: bae, partner, sweetheart, lover
+Hypernym: entity.abstract_entity.communication.language.slang
+Definition: A term of endearment for a romantic partner, acronym for before anyone else.
+IC: 12.00
+
+Path: entity.abstract_entity.communication.language.slang.cap
+Lemmas: cap, lie, falsehood, fabrication
+Hypernym: entity.abstract_entity.communication.language.slang
+Definition: A falsehood, exaggeration, or untruthful statement in vernacular usage.
+IC: 13.50
+
+Path: entity.physical_entity.object.organism.animal.feline.cat
+Lemmas: cat, kitten, kitty, feline
+Hypernym: entity.physical_entity.object.organism.animal.feline
+Definition: A small domesticated carnivorous mammal with soft fur and retractable claws.
+SenseGuard: noun
+IC: 11.40
+
+Path: entity.physical_entity.object.organism.animal.avian.bird
+Lemmas: bird, sparrow, robin, avian, songbird
+Hypernym: entity.physical_entity.object.organism.animal.avian
+Definition: A warm-blooded feathered vertebrate possessing wings and a beak.
+SenseGuard: noun
+IC: 11.50
+
+Path: entity.physical_entity.object.organism.animal.aquatic.fish
+Lemmas: fish, trout, minnow, salmon
+Hypernym: entity.physical_entity.object.organism.animal.aquatic
+Definition: A limbless cold-blooded vertebrate animal with gills and fins living wholly in water.
+SenseGuard: noun
+IC: 11.30
+
+Path: entity.physical_entity.object.artifact.plaything.ball
+Lemmas: ball, sphere, orb, globe
+Hypernym: entity.physical_entity.object.artifact.plaything
+Definition: A solid or hollow spherical object used in games or physical motion.
+SenseGuard: noun
+IC: 10.80
+
+Path: entity.physical_entity.matter.substance.liquid.water
+Lemmas: water, aqua, brook, stream
+Hypernym: entity.physical_entity.matter.substance.liquid
+Definition: A transparent odorless tasteless liquid forming the world's streams, lakes, oceans, and rain.
+SenseGuard: noun
+IC: 10.60
+
+Path: entity.physical_entity.phenomenon.weather.rain
+Lemmas: rain, rainfall, downpour, drizzle
+Hypernym: entity.physical_entity.phenomenon.weather
+Definition: Moisture condensed from the atmosphere that falls visibly in separate drops.
+SenseGuard: noun
+IC: 11.10
+
+Path: entity.physical_entity.phenomenon.energy.fire
+Lemmas: fire, flame, blaze, campfire
+Hypernym: entity.physical_entity.phenomenon.energy
+Definition: Rapid oxidation of a material in combustion, releasing heat and light.
+SenseGuard: noun
+IC: 11.00
+
+Path: entity.physical_entity.object.organism.plant.tree
+Lemmas: tree, oak, pine, sapling
+Hypernym: entity.physical_entity.object.organism.plant
+Definition: A woody perennial plant having a single main stem or trunk bearing lateral branches.
+SenseGuard: noun
+IC: 10.90
+
+Path: entity.physical_entity.object.artifact.publication.book
+Lemmas: book, tome, storybook, novel
+Hypernym: entity.physical_entity.object.artifact.publication
+Definition: A written or printed work consisting of pages bound in covers.
+SenseGuard: noun
+IC: 10.70
+
+Path: entity.physical_entity.object.artifact.structure.house
+Lemmas: house, cottage, cabin, dwelling
+Hypernym: entity.physical_entity.object.artifact.structure
+Definition: A building for human habitation.
+SenseGuard: noun
+IC: 10.50
+
+Path: entity.physical_entity.object.organism.person.child
+Lemmas: child, kid, toddler, youngster
+Hypernym: entity.physical_entity.object.organism.person
+Definition: A young human being below the age of puberty.
+SenseGuard: noun
+IC: 10.90
+
+Path: entity.physical_entity.object.organism.person.friend
+Lemmas: friend, companion, comrade, pal
+Hypernym: entity.physical_entity.object.organism.person
+Definition: A person with whom one has a bond of mutual affection and trust.
+SenseGuard: noun
+IC: 10.80
+
+Path: entity.physical_entity.phenomenon.force.gravity
+Lemmas: gravity, gravitation
+Hypernym: entity.physical_entity.phenomenon.force
+Definition: The universal physical force of attraction acting between all matter.
+SenseGuard: noun
+IC: 13.90

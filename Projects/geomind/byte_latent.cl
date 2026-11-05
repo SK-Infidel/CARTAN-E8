@@ -40,6 +40,9 @@ var g_markov_3gram_keys: ptr = 0.0;
 var g_markov_ctx_word1_id: float = 0.0;
 var g_markov_ctx_word2_id: float = 0.0;
 var g_markov_ctx_word3_id: float = 0.0;
+var g_markov_ctx_syn1_id: float = 0.0;
+var g_markov_ctx_syn2_id: float = 0.0;
+var g_markov_ctx_syn3_id: float = 0.0;
 var g_markov_hub_occupied_slots: float = 0.0;
 var g_markov_initialized: float = 0.0;
 var g_byte_e8_skip_disk_autoload: float = 0.0;
@@ -67,6 +70,26 @@ fn geomind_markov_3gram_ctx_idx(b3: float, b2: float, b1: float) -> float {
     // transfer across novel sentence endings regardless of the final letter before '.'
     if ((s2 == 27.0 || s2 == 30.0) && s1 == 0.0) {
         s3 = s2;
+    }
+    return s3 * 1024.0 + s2 * 32.0 + s1;
+}
+
+// Canonical 3-gram context index for Word & Synset Hubs (Blocks 1, 2, 3):
+// Because the previous word's identity is already encoded in w1_id / w2_id / w3_id / syn_id,
+// normalizing the previous word's trailing letters across the space boundary (' ') allows
+// WordNet synonyms with different endings ("cat" vs "kitten", "dog" vs "puppy", "ball" vs "orb")
+// to share their post-word transition tables seamlessly.
+fn geomind_markov_hub_ctx_idx(b3: float, b2: float, b1: float) -> float {
+    var s3 = geomind_markov_byte_sym32(b3);
+    var s2 = geomind_markov_byte_sym32(b2);
+    let s1 = geomind_markov_byte_sym32(b1);
+    if ((s2 == 27.0 || s2 == 30.0) && s1 == 0.0) {
+        s3 = s2;
+    } else if (s1 == 0.0 && s2 > 0.0 && s2 < 27.0) {
+        s3 = 0.0;
+        s2 = 0.0;
+    } else if (s2 == 0.0 && s3 > 0.0 && s3 < 27.0) {
+        s3 = 0.0;
     }
     return s3 * 1024.0 + s2 * 32.0 + s1;
 }
@@ -110,6 +133,7 @@ fn geomind_markov_update_3gram(b3: float, b2: float, b1: float, curr_byte: float
     geomind_markov_init_if_needed();
     let cb = math_mod_val(floor(math_abs_val(curr_byte)), 128.0);
     let c_idx = geomind_markov_3gram_ctx_idx(b3, b2, b1);
+    let hub_c_idx = geomind_markov_hub_ctx_idx(b3, b2, b1);
     let m_idx = c_idx * 128.0 + cb;
     let old_cnt = cartan_vec_get_f32(g_markov_3gram_counts, m_idx);
     let old_tot = cartan_vec_get_f32(g_markov_3gram_totals, c_idx);
@@ -118,28 +142,52 @@ fn geomind_markov_update_3gram(b3: float, b2: float, b1: float, curr_byte: float
     cartan_vec_set_f32(g_markov_3gram_counts, m_idx, old_cnt + 1.0);
     cartan_vec_set_f32(g_markov_3gram_totals, c_idx, old_tot + 1.0);
 
-    // Update Block 1: 1-Word Anchor Hub (32768..294911, 262,144 rows)
-    let w1_idx = geomind_markov_hub_row_idx(32768.0, 262144.0, g_markov_ctx_word1_id, c_idx, 1.0);
+    // Update Block 1: 1-Word Anchor Hub + WordNet Synset 1-Word Hub (32768..294911, 262,144 rows)
+    let w1_idx = geomind_markov_hub_row_idx(32768.0, 262144.0, g_markov_ctx_word1_id, hub_c_idx, 1.0);
     if (w1_idx >= 32768.0) {
         let w1m = w1_idx * 128.0 + cb;
         cartan_vec_set_f32(g_markov_3gram_counts, w1m, cartan_vec_get_f32(g_markov_3gram_counts, w1m) + 1.0);
         cartan_vec_set_f32(g_markov_3gram_totals, w1_idx, cartan_vec_get_f32(g_markov_3gram_totals, w1_idx) + 1.0);
     }
+    if (g_markov_ctx_syn1_id > 0.0 && g_markov_ctx_syn1_id != g_markov_ctx_word1_id) {
+        let s1_idx = geomind_markov_hub_row_idx(32768.0, 262144.0, g_markov_ctx_syn1_id, hub_c_idx, 1.0);
+        if (s1_idx >= 32768.0) {
+            let s1m = s1_idx * 128.0 + cb;
+            cartan_vec_set_f32(g_markov_3gram_counts, s1m, cartan_vec_get_f32(g_markov_3gram_counts, s1m) + 1.0);
+            cartan_vec_set_f32(g_markov_3gram_totals, s1_idx, cartan_vec_get_f32(g_markov_3gram_totals, s1_idx) + 1.0);
+        }
+    }
 
-    // Update Block 2: 2-Word Phrase Hub (294912..688127, 393,216 rows)
-    let w2_idx = geomind_markov_hub_row_idx(294912.0, 393216.0, g_markov_ctx_word2_id, c_idx, 1.0);
+    // Update Block 2: 2-Word Phrase Hub + WordNet Synset 2-Word Hub (294912..688127, 393,216 rows)
+    let w2_idx = geomind_markov_hub_row_idx(294912.0, 393216.0, g_markov_ctx_word2_id, hub_c_idx, 1.0);
     if (w2_idx >= 294912.0) {
         let w2m = w2_idx * 128.0 + cb;
         cartan_vec_set_f32(g_markov_3gram_counts, w2m, cartan_vec_get_f32(g_markov_3gram_counts, w2m) + 1.0);
         cartan_vec_set_f32(g_markov_3gram_totals, w2_idx, cartan_vec_get_f32(g_markov_3gram_totals, w2_idx) + 1.0);
     }
+    if (g_markov_ctx_syn2_id > 0.0 && g_markov_ctx_syn2_id != g_markov_ctx_word2_id) {
+        let s2_idx = geomind_markov_hub_row_idx(294912.0, 393216.0, g_markov_ctx_syn2_id, hub_c_idx, 1.0);
+        if (s2_idx >= 294912.0) {
+            let s2m = s2_idx * 128.0 + cb;
+            cartan_vec_set_f32(g_markov_3gram_counts, s2m, cartan_vec_get_f32(g_markov_3gram_counts, s2m) + 1.0);
+            cartan_vec_set_f32(g_markov_3gram_totals, s2_idx, cartan_vec_get_f32(g_markov_3gram_totals, s2_idx) + 1.0);
+        }
+    }
 
-    // Update Block 3: 3-Word Clause Hub (688128..1081343, 393,216 rows)
-    let w3_idx = geomind_markov_hub_row_idx(688128.0, 393216.0, g_markov_ctx_word3_id, c_idx, 1.0);
+    // Update Block 3: 3-Word Clause Hub + WordNet Synset 3-Word Hub (688128..1081343, 393,216 rows)
+    let w3_idx = geomind_markov_hub_row_idx(688128.0, 393216.0, g_markov_ctx_word3_id, hub_c_idx, 1.0);
     if (w3_idx >= 688128.0) {
         let w3m = w3_idx * 128.0 + cb;
         cartan_vec_set_f32(g_markov_3gram_counts, w3m, cartan_vec_get_f32(g_markov_3gram_counts, w3m) + 1.0);
         cartan_vec_set_f32(g_markov_3gram_totals, w3_idx, cartan_vec_get_f32(g_markov_3gram_totals, w3_idx) + 1.0);
+    }
+    if (g_markov_ctx_syn3_id > 0.0 && g_markov_ctx_syn3_id != g_markov_ctx_word3_id) {
+        let s3_idx = geomind_markov_hub_row_idx(688128.0, 393216.0, g_markov_ctx_syn3_id, hub_c_idx, 1.0);
+        if (s3_idx >= 688128.0) {
+            let s3m = s3_idx * 128.0 + cb;
+            cartan_vec_set_f32(g_markov_3gram_counts, s3m, cartan_vec_get_f32(g_markov_3gram_counts, s3m) + 1.0);
+            cartan_vec_set_f32(g_markov_3gram_totals, s3_idx, cartan_vec_get_f32(g_markov_3gram_totals, s3_idx) + 1.0);
+        }
     }
     return p3;
 }
@@ -172,10 +220,9 @@ fn geomind_markov_get_3gram_prob_fast(
     if (w1_idx >= 32768.0 && tot_w1 > 0.5) {
         has_w1 = 1.0;
         let cnt_w1 = cartan_vec_get_f32(g_markov_3gram_counts, w1_idx * 128.0 + cb);
-        if (cnt3 >= 0.5 && cnt_w1 >= 0.5) {
+        if (cnt_w1 >= 0.5) {
             hit_w1 = 1.0;
-            var safe_w1 = cnt_w1;
-            if (safe_w1 > cnt3) { safe_w1 = cnt3; }
+            let safe_w1 = cnt_w1;
             if (tot_w1 > 32.0) {
                 let s_c1 = sqrt(safe_w1 * sqrt(safe_w1));
                 let s_t1 = sqrt(tot_w1 * sqrt(tot_w1));
@@ -195,10 +242,9 @@ fn geomind_markov_get_3gram_prob_fast(
     if (w2_idx >= 294912.0 && tot_w2 > 0.5) {
         has_w2 = 1.0;
         let cnt_w2 = cartan_vec_get_f32(g_markov_3gram_counts, w2_idx * 128.0 + cb);
-        if (cnt3 >= 0.5 && cnt_w2 >= 0.5) {
+        if (cnt_w2 >= 0.5) {
             hit_w2 = 1.0;
-            var safe_w2 = cnt_w2;
-            if (safe_w2 > cnt3) { safe_w2 = cnt3; }
+            let safe_w2 = cnt_w2;
             if (tot_w2 > 32.0) {
                 let s_c2 = sqrt(safe_w2 * sqrt(safe_w2));
                 let s_t2 = sqrt(tot_w2 * sqrt(tot_w2));
@@ -218,10 +264,9 @@ fn geomind_markov_get_3gram_prob_fast(
     if (w3_idx >= 688128.0 && tot_w3 > 0.5) {
         has_w3 = 1.0;
         let cnt_w3 = cartan_vec_get_f32(g_markov_3gram_counts, w3_idx * 128.0 + cb);
-        if (cnt3 >= 0.5 && cnt_w3 >= 0.5) {
+        if (cnt_w3 >= 0.5) {
             hit_w3 = 1.0;
-            var safe_w3 = cnt_w3;
-            if (safe_w3 > cnt3) { safe_w3 = cnt3; }
+            let safe_w3 = cnt_w3;
             if (tot_w3 > 32.0) {
                 let s_c3 = sqrt(safe_w3 * sqrt(safe_w3));
                 let s_t3 = sqrt(tot_w3 * sqrt(tot_w3));
@@ -263,16 +308,29 @@ fn geomind_markov_get_3gram_prob_fast(
 fn geomind_markov_get_3gram_prob(b3: float, b2: float, b1: float, curr_byte: float) -> float {
     geomind_markov_init_if_needed();
     let c_idx = geomind_markov_3gram_ctx_idx(b3, b2, b1);
+    let hub_c_idx = geomind_markov_hub_ctx_idx(b3, b2, b1);
     let tot3 = cartan_vec_get_f32(g_markov_3gram_totals, c_idx);
-    let w1_idx = geomind_markov_hub_row_idx(32768.0, 262144.0, g_markov_ctx_word1_id, c_idx, 0.0);
+    var w1_idx = geomind_markov_hub_row_idx(32768.0, 262144.0, g_markov_ctx_word1_id, hub_c_idx, 0.0);
     var tot_w1 = 0.0;
     if (w1_idx >= 32768.0) { tot_w1 = cartan_vec_get_f32(g_markov_3gram_totals, w1_idx); }
-    let w2_idx = geomind_markov_hub_row_idx(294912.0, 393216.0, g_markov_ctx_word2_id, c_idx, 0.0);
+    if (tot_w1 < 0.5 && g_markov_ctx_syn1_id > 0.0) {
+        let s1_idx = geomind_markov_hub_row_idx(32768.0, 262144.0, g_markov_ctx_syn1_id, hub_c_idx, 0.0);
+        if (s1_idx >= 32768.0) { w1_idx = s1_idx; tot_w1 = cartan_vec_get_f32(g_markov_3gram_totals, s1_idx); }
+    }
+    var w2_idx = geomind_markov_hub_row_idx(294912.0, 393216.0, g_markov_ctx_word2_id, hub_c_idx, 0.0);
     var tot_w2 = 0.0;
     if (w2_idx >= 294912.0) { tot_w2 = cartan_vec_get_f32(g_markov_3gram_totals, w2_idx); }
-    let w3_idx = geomind_markov_hub_row_idx(688128.0, 393216.0, g_markov_ctx_word3_id, c_idx, 0.0);
+    if (tot_w2 < 0.5 && g_markov_ctx_syn2_id > 0.0) {
+        let s2_idx = geomind_markov_hub_row_idx(294912.0, 393216.0, g_markov_ctx_syn2_id, hub_c_idx, 0.0);
+        if (s2_idx >= 294912.0) { w2_idx = s2_idx; tot_w2 = cartan_vec_get_f32(g_markov_3gram_totals, s2_idx); }
+    }
+    var w3_idx = geomind_markov_hub_row_idx(688128.0, 393216.0, g_markov_ctx_word3_id, hub_c_idx, 0.0);
     var tot_w3 = 0.0;
     if (w3_idx >= 688128.0) { tot_w3 = cartan_vec_get_f32(g_markov_3gram_totals, w3_idx); }
+    if (tot_w3 < 0.5 && g_markov_ctx_syn3_id > 0.0) {
+        let s3_idx = geomind_markov_hub_row_idx(688128.0, 393216.0, g_markov_ctx_syn3_id, hub_c_idx, 0.0);
+        if (s3_idx >= 688128.0) { w3_idx = s3_idx; tot_w3 = cartan_vec_get_f32(g_markov_3gram_totals, s3_idx); }
+    }
     return geomind_markov_get_3gram_prob_fast(b1, curr_byte, c_idx, tot3, w1_idx, tot_w1, w2_idx, tot_w2, w3_idx, tot_w3);
 }
 
@@ -933,16 +991,29 @@ fn geomind_byte_latent_decode_logits_blt(
     geomind_byte_latent_init_if_needed();
     // Hoist the 3-gram and 3-block Tapestry Hub row lookups outside the 256-byte loop (256x fewer hash probes)
     let c_idx = geomind_markov_3gram_ctx_idx(b3, b2, b1);
+    let hub_c_idx = geomind_markov_hub_ctx_idx(b3, b2, b1);
     let tot3 = cartan_vec_get_f32(g_markov_3gram_totals, c_idx);
-    let w1_idx = geomind_markov_hub_row_idx(32768.0, 262144.0, g_markov_ctx_word1_id, c_idx, 0.0);
+    var w1_idx = geomind_markov_hub_row_idx(32768.0, 262144.0, g_markov_ctx_word1_id, hub_c_idx, 0.0);
     var tot_w1 = 0.0;
     if (w1_idx >= 32768.0) { tot_w1 = cartan_vec_get_f32(g_markov_3gram_totals, w1_idx); }
-    let w2_idx = geomind_markov_hub_row_idx(294912.0, 393216.0, g_markov_ctx_word2_id, c_idx, 0.0);
+    if (tot_w1 < 0.5 && g_markov_ctx_syn1_id > 0.0) {
+        let s1_idx = geomind_markov_hub_row_idx(32768.0, 262144.0, g_markov_ctx_syn1_id, hub_c_idx, 0.0);
+        if (s1_idx >= 32768.0) { w1_idx = s1_idx; tot_w1 = cartan_vec_get_f32(g_markov_3gram_totals, s1_idx); }
+    }
+    var w2_idx = geomind_markov_hub_row_idx(294912.0, 393216.0, g_markov_ctx_word2_id, hub_c_idx, 0.0);
     var tot_w2 = 0.0;
     if (w2_idx >= 294912.0) { tot_w2 = cartan_vec_get_f32(g_markov_3gram_totals, w2_idx); }
-    let w3_idx = geomind_markov_hub_row_idx(688128.0, 393216.0, g_markov_ctx_word3_id, c_idx, 0.0);
+    if (tot_w2 < 0.5 && g_markov_ctx_syn2_id > 0.0) {
+        let s2_idx = geomind_markov_hub_row_idx(294912.0, 393216.0, g_markov_ctx_syn2_id, hub_c_idx, 0.0);
+        if (s2_idx >= 294912.0) { w2_idx = s2_idx; tot_w2 = cartan_vec_get_f32(g_markov_3gram_totals, s2_idx); }
+    }
+    var w3_idx = geomind_markov_hub_row_idx(688128.0, 393216.0, g_markov_ctx_word3_id, hub_c_idx, 0.0);
     var tot_w3 = 0.0;
     if (w3_idx >= 688128.0) { tot_w3 = cartan_vec_get_f32(g_markov_3gram_totals, w3_idx); }
+    if (tot_w3 < 0.5 && g_markov_ctx_syn3_id > 0.0) {
+        let s3_idx = geomind_markov_hub_row_idx(688128.0, 393216.0, g_markov_ctx_syn3_id, hub_c_idx, 0.0);
+        if (s3_idx >= 688128.0) { w3_idx = s3_idx; tot_w3 = cartan_vec_get_f32(g_markov_3gram_totals, s3_idx); }
+    }
 
     var c = 0.0;
     while (c < 256.0) {
@@ -1475,13 +1546,239 @@ fn geomind_e8_anchor_killing_sim(patch_248: ptr, anchor_idx: float) -> float {
     return dot_g / denom;
 }
 
-// Query maximum resonance R(P_k) in [-1, 1] across crystallized E8 Anchor Basins (O(1) hash fast-path + local Killing probe)
+// ============================================================================
+// WORDNET TAXONOMY + INFORMATION CONTENT (IC) + HOMONYM SENSE-GUARD ENGINE
+// ============================================================================
+// Maps surface word hashes (`patch_hash`) to canonical WordNet Synset IDs (`700000..949999`),
+// calibrated Information Content (`IC`) weights, and syntactic Homonym SenseGuards (`1.0` = noun-only).
+var g_wordnet_initialized: float = 0.0;
+var g_wordnet_lemma_hash: ptr = 0.0;
+var g_wordnet_synset_hash: ptr = 0.0;
+var g_wordnet_ic_weight: ptr = 0.0;
+var g_wordnet_sense_guard: ptr = 0.0;
+var g_wn_verb_to: float = 0.0;
+var g_wn_verb_can: float = 0.0;
+var g_wn_verb_will: float = 0.0;
+var g_wn_verb_not: float = 0.0;
+var g_wn_verb_do: float = 0.0;
+
+var g_ctx_prev2_hash: float = 17.0;
+var g_ctx_prev_hash: float = 17.0;
+var g_ctx_last_hash: float = 17.0;
+var g_ctx_prev2_syn: float = 0.0;
+var g_ctx_prev_syn: float = 0.0;
+var g_ctx_last_syn: float = 0.0;
+var g_ctx_sent_topic_hash: float = 17.0;
+var g_ctx_sent_started_subord: float = 0.0;
+
+fn geomind_word_patch_hash(word: string) -> float {
+    let n = cartan_string_length(word);
+    var h = 17.0;
+    var i = 0.0;
+    while (i < n) {
+        var b = cartan_byte_at(word, i);
+        if (b < 0.0) { b = b + 256.0; }
+        if (b >= 65.0 && b <= 90.0) { b = b + 32.0; }
+        if ((b >= 97.0 && b <= 122.0) || (b >= 48.0 && b <= 57.0)) {
+            h = math_mod_val(h * 131.0 + b, 1000003.0);
+        }
+        i = i + 1.0;
+    }
+    return h;
+}
+
+fn geomind_parse_simple_float(s: string) -> float {
+    let n = cartan_string_length(s);
+    var val = 0.0;
+    var frac = 0.0;
+    var div = 1.0;
+    var in_frac = 0.0;
+    var i = 0.0;
+    while (i < n) {
+        let b = cartan_byte_at(s, i);
+        if (b == 46.0) {
+            in_frac = 1.0;
+        } else if (b >= 48.0 && b <= 57.0) {
+            let dig = b - 48.0;
+            if (in_frac == 0.0) {
+                val = val * 10.0 + dig;
+            } else {
+                div = div * 10.0;
+                frac = frac + dig / div;
+            }
+        }
+        i = i + 1.0;
+    }
+    return val + frac;
+}
+
+fn geomind_wordnet_insert_hash(lh: float, sh: float, ic_val: float, guard: float) {
+    if (lh <= 17.0 || sh <= 0.0) { return; }
+    let h0 = math_mod_val(lh * 13331.0, 4096.0);
+    var probe = 0.0;
+    while (probe < 32.0) {
+        let slot = math_mod_val(h0 + probe * 7.0, 4096.0);
+        let cur_l = cartan_vec_get_f32(g_wordnet_lemma_hash, slot);
+        if (cur_l == 0.0 || cur_l == lh) {
+            cartan_vec_set_f32(g_wordnet_lemma_hash, slot, lh);
+            cartan_vec_set_f32(g_wordnet_synset_hash, slot, sh);
+            cartan_vec_set_f32(g_wordnet_ic_weight, slot, ic_val);
+            cartan_vec_set_f32(g_wordnet_sense_guard, slot, guard);
+            return;
+        }
+        probe = probe + 1.0;
+    }
+}
+
+fn geomind_wordnet_register_node(synset_path: string, lemmas_csv: string, ic_val: float, sense_guard: float) {
+    if (cartan_string_length(synset_path) == 0.0 || cartan_string_length(lemmas_csv) == 0.0) { return; }
+    let sh = 700000.0 + math_mod_val(geomind_word_patch_hash(synset_path), 250000.0);
+    let n = cartan_string_length(lemmas_csv);
+    var lh = 17.0;
+    var i = 0.0;
+    while (i <= n) {
+        var b = 44.0;
+        if (i < n) {
+            b = cartan_byte_at(lemmas_csv, i);
+            if (b < 0.0) { b = b + 256.0; }
+        }
+        if (b == 44.0) {
+            if (lh != 17.0) {
+                geomind_wordnet_insert_hash(lh, sh, ic_val, sense_guard);
+            }
+            lh = 17.0;
+        } else {
+            if (b >= 65.0 && b <= 90.0) { b = b + 32.0; }
+            if ((b >= 97.0 && b <= 122.0) || (b >= 48.0 && b <= 57.0)) {
+                lh = math_mod_val(lh * 131.0 + b, 1000003.0);
+            }
+        }
+        i = i + 1.0;
+    }
+}
+
+fn geomind_wordnet_init_if_needed() {
+    if (g_wordnet_initialized == 1.0) { return; }
+    g_wordnet_lemma_hash = cartan_tensor_alloc(4096.0);
+    g_wordnet_synset_hash = cartan_tensor_alloc(4096.0);
+    g_wordnet_ic_weight = cartan_tensor_alloc(4096.0);
+    g_wordnet_sense_guard = cartan_tensor_alloc(4096.0);
+
+    g_wn_verb_to = geomind_word_patch_hash("to");
+    g_wn_verb_can = geomind_word_patch_hash("can");
+    g_wn_verb_will = geomind_word_patch_hash("will");
+    g_wn_verb_not = geomind_word_patch_hash("not");
+    g_wn_verb_do = geomind_word_patch_hash("do");
+
+    let tax_path = "Projects/geomind/trainingdata/wordnet_taxonomy.txt";
+    if (cartan_file_exists(tax_path) == 1.0) {
+        let content = cartan_read_file(tax_path);
+        if (content != 0.0 && cartan_string_length(content) > 0.0) {
+            let lines = string_split(content, "\n");
+            let num_lines = cartan_tree_len_f(lines);
+            var cur_path = "";
+            var cur_lemmas = "";
+            var cur_ic = 10.0;
+            var cur_guard = 1.0;
+            var i = 0.0;
+            while (i < num_lines) {
+                let raw_l = cartan_tree_get(lines, i);
+                let line = cartan_string_replace(cartan_string_replace(raw_l, "\r", ""), "\n", "");
+                let llen = cartan_string_length(line);
+                if (llen == 0.0) {
+                    if (cartan_string_length(cur_path) > 0.0) {
+                        geomind_wordnet_register_node(cur_path, cur_lemmas, cur_ic, cur_guard);
+                        cur_path = "";
+                        cur_lemmas = "";
+                        cur_ic = 10.0;
+                        cur_guard = 1.0;
+                    }
+                } else if (cartan_string_starts_with(line, "Path: ") != 0.0) {
+                    if (cartan_string_length(cur_path) > 0.0) {
+                        geomind_wordnet_register_node(cur_path, cur_lemmas, cur_ic, cur_guard);
+                        cur_lemmas = "";
+                        cur_ic = 10.0;
+                        cur_guard = 1.0;
+                    }
+                    cur_path = cartan_string_substring(line, 6.0, llen);
+                } else if (cartan_string_starts_with(line, "Lemmas: ") != 0.0) {
+                    cur_lemmas = cartan_string_substring(line, 8.0, llen);
+                } else if (cartan_string_starts_with(line, "SenseGuard: verb") != 0.0) {
+                    cur_guard = 2.0;
+                } else if (cartan_string_starts_with(line, "SenseGuard: noun") != 0.0) {
+                    cur_guard = 1.0;
+                } else if (cartan_string_starts_with(line, "IC: ") != 0.0) {
+                    cur_ic = geomind_parse_simple_float(cartan_string_substring(line, 4.0, llen));
+                }
+                i = i + 1.0;
+            }
+            if (cartan_string_length(cur_path) > 0.0) {
+                geomind_wordnet_register_node(cur_path, cur_lemmas, cur_ic, cur_guard);
+            }
+        }
+    }
+    g_wordnet_initialized = 1.0;
+}
+
+// Resolve `patch_hash` to its canonical WordNet Synset ID (`700000..949999`), gated by syntactic `SenseGuard`
+// so noun-verb homonyms ("book", "fire", "water", "fish", "light", "rain") never activate a noun synset after "to"/"can"/"will".
+fn geomind_wordnet_resolve_synset(patch_hash: float, prev_patch_hash: float) -> float {
+    geomind_wordnet_init_if_needed();
+    if (patch_hash <= 17.0) { return 0.0; }
+    let h0 = math_mod_val(patch_hash * 13331.0, 4096.0);
+    var probe = 0.0;
+    while (probe < 32.0) {
+        let slot = math_mod_val(h0 + probe * 7.0, 4096.0);
+        let cur_l = cartan_vec_get_f32(g_wordnet_lemma_hash, slot);
+        if (cur_l == 0.0) { return 0.0; }
+        if (cur_l == patch_hash) {
+            let guard = cartan_vec_get_f32(g_wordnet_sense_guard, slot);
+            if (guard == 1.0) {
+                if (prev_patch_hash == g_wn_verb_to || prev_patch_hash == g_wn_verb_can ||
+                    prev_patch_hash == g_wn_verb_will || prev_patch_hash == g_wn_verb_not ||
+                    prev_patch_hash == g_wn_verb_do) {
+                    return 0.0;
+                }
+            }
+            return cartan_vec_get_f32(g_wordnet_synset_hash, slot);
+        }
+        probe = probe + 1.0;
+    }
+    return 0.0;
+}
+
+fn geomind_wordnet_get_ic(patch_hash: float) -> float {
+    geomind_wordnet_init_if_needed();
+    if (patch_hash <= 17.0) { return 8.0; }
+    let h0 = math_mod_val(patch_hash * 13331.0, 4096.0);
+    var probe = 0.0;
+    while (probe < 32.0) {
+        let slot = math_mod_val(h0 + probe * 7.0, 4096.0);
+        let cur_l = cartan_vec_get_f32(g_wordnet_lemma_hash, slot);
+        if (cur_l == 0.0) { return 8.0; }
+        if (cur_l == patch_hash) {
+            return cartan_vec_get_f32(g_wordnet_ic_weight, slot);
+        }
+        probe = probe + 1.0;
+    }
+    return 8.0;
+}
+
+// Query maximum resonance R(P_k) in [-1, 1] across crystallized E8 Anchor Basins (O(1) hash + WordNet Synset fast-path + local Killing probe)
 fn geomind_e8_query_anchor_resonance(patch_248: ptr, patch_hash: float) -> float {
     geomind_e8_anchors_init_if_needed();
     if (g_e8_anchor_count <= 0.0) { return 0.0; }
     let exact_idx = geomind_e8_find_anchor_by_hash(patch_hash);
     if (exact_idx >= 0.0) {
         return 1.0;
+    }
+    // Check if the word's WordNet Synset is already a crystallized Anchor Basin on S^{247}
+    let syn_h = geomind_wordnet_resolve_synset(patch_hash, g_ctx_last_hash);
+    if (syn_h > 0.0) {
+        let syn_idx = geomind_e8_find_anchor_by_hash(syn_h);
+        if (syn_idx >= 0.0) {
+            return 0.95;
+        }
     }
     var best_sim = -1.0;
     let start_m = math_mod_val(patch_hash, g_e8_anchor_count);
@@ -1500,7 +1797,7 @@ fn geomind_e8_query_anchor_resonance(patch_248: ptr, patch_hash: float) -> float
 }
 
 // Crystallize or reinforce a 248-D E8 Patch state as an Anchor Basin on S^{247} (up to 65536 concepts)
-fn geomind_e8_crystallize_patch_vec(patch_248: ptr, patch_hash: float, initial_mass: float) -> float {
+fn geomind_e8_crystallize_patch_vec_internal(patch_248: ptr, patch_hash: float, initial_mass: float) -> float {
     geomind_e8_anchors_init_if_needed();
     let exact_m = geomind_e8_find_anchor_by_hash(patch_hash);
     if (exact_m >= 0.0) {
@@ -1557,6 +1854,19 @@ fn geomind_e8_crystallize_patch_vec(patch_248: ptr, patch_hash: float, initial_m
     return idx;
 }
 
+fn geomind_e8_crystallize_patch_vec(patch_248: ptr, patch_hash: float, initial_mass: float) -> float {
+    let ic_w = geomind_wordnet_get_ic(patch_hash);
+    var eff_mass = initial_mass * (ic_w / 10.0);
+    if (eff_mass > 1.0) { eff_mass = 1.0; }
+    let idx = geomind_e8_crystallize_patch_vec_internal(patch_248, patch_hash, eff_mass);
+    // Also crystallize/gravitate the canonical WordNet Synset Basin on S^{247} so synonyms share a geometric attractor
+    let syn_h = geomind_wordnet_resolve_synset(patch_hash, g_ctx_last_hash);
+    if (syn_h > 0.0) {
+        geomind_e8_crystallize_patch_vec_internal(patch_248, syn_h, eff_mass);
+    }
+    return idx;
+}
+
 // Seed a word/phrase (e.g., "ball") directly into the Crystallized Anchor Basin table on S^{247}
 fn geomind_e8_seed_concept_word(word: string) -> float {
     geomind_byte_latent_init_if_needed();
@@ -1610,6 +1920,144 @@ fn geomind_is_glue_word_hash(patch_hash: float, alnum_len: float) -> float {
     if (patch_hash == 291036.0 || patch_hash == 358894.0 || patch_hash == 71766.0  || patch_hash == 974727.0) { return 1.0; } // where, while, after, before
     if (patch_hash == 781562.0 || patch_hash == 278721.0) { return 1.0; } // every, first
     return 0.0;
+}
+
+// Returns 1.0 if `patch_hash` is a subordinate/adverbial clause opener ("when", "while", "after", "before", "once", "if")
+// so that when the opening clause ends at a comma ',', `g_ctx_sent_topic_hash` resets to capture the main-clause subject.
+fn geomind_is_subord_opener_hash(patch_hash: float) -> float {
+    if (patch_hash == 803746.0 || patch_hash == 358894.0 || patch_hash == 71766.0 ||
+        patch_hash == 974727.0 || patch_hash == 921767.0 || patch_hash == 291993.0) {
+        return 1.0;
+    }
+    return 0.0;
+}
+
+fn geomind_markov_reset_patch_context() {
+    g_ctx_prev2_hash = 17.0;
+    g_ctx_prev_hash = 17.0;
+    g_ctx_last_hash = 17.0;
+    g_ctx_prev2_syn = 0.0;
+    g_ctx_prev_syn = 0.0;
+    g_ctx_last_syn = 0.0;
+    g_ctx_sent_topic_hash = 17.0;
+    g_ctx_sent_started_subord = 0.0;
+    g_markov_ctx_word1_id = 0.0;
+    g_markov_ctx_word2_id = 0.0;
+    g_markov_ctx_word3_id = 0.0;
+    g_markov_ctx_syn1_id = 0.0;
+    g_markov_ctx_syn2_id = 0.0;
+    g_markov_ctx_syn3_id = 0.0;
+}
+
+fn geomind_markov_advance_patch_context(
+    patch_hash: float,
+    patch_alnum_len: float,
+    is_para_break: float,
+    patch_sent_end: float,
+    patch_comma_end: float
+) {
+    geomind_wordnet_init_if_needed();
+    if (is_para_break == 1.0) {
+        geomind_markov_reset_patch_context();
+        return;
+    }
+    if (g_ctx_last_hash == 17.0 && geomind_is_subord_opener_hash(patch_hash) == 1.0) {
+        g_ctx_sent_started_subord = 1.0;
+    }
+    if (g_ctx_sent_topic_hash == 17.0 && geomind_is_glue_word_hash(patch_hash, patch_alnum_len) == 0.0) {
+        g_ctx_sent_topic_hash = patch_hash;
+    }
+    // If an opening subordinate clause ("When rain falls,") just ended at a comma ',',
+    // reset g_ctx_sent_topic_hash so it latches onto the main-clause subject ("the cat")!
+    if (patch_comma_end == 1.0 && g_ctx_sent_started_subord == 1.0 && patch_sent_end == 0.0) {
+        g_ctx_sent_topic_hash = 17.0;
+        g_ctx_sent_started_subord = 0.0;
+    }
+
+    let cur_syn = geomind_wordnet_resolve_synset(patch_hash, g_ctx_last_hash);
+
+    if (patch_sent_end == 1.0) {
+        var top_h = g_ctx_sent_topic_hash;
+        if (top_h == 17.0) { top_h = patch_hash; }
+        let bridge_h = math_mod_val(top_h + 500009.0, 1000003.0);
+        let top_syn = geomind_wordnet_resolve_synset(top_h, 17.0);
+
+        g_ctx_prev2_hash = 17.0;
+        g_ctx_prev_hash = 17.0;
+        g_ctx_last_hash = bridge_h;
+        g_ctx_prev2_syn = 0.0;
+        g_ctx_prev_syn = 0.0;
+
+        g_markov_ctx_word1_id = math_mod_val(bridge_h, 8388607.0) + 1.0;
+        g_markov_ctx_word2_id = math_mod_val(bridge_h * 257.0 + patch_hash, 8388607.0) + 1.0;
+        g_markov_ctx_word3_id = 0.0;
+
+        if (top_syn > 0.0) {
+            let syn_bridge_h = math_mod_val(top_syn + 500009.0, 1000003.0);
+            g_ctx_last_syn = syn_bridge_h;
+            var eff_tail = patch_hash;
+            if (cur_syn > 0.0) { eff_tail = cur_syn; }
+            g_markov_ctx_syn1_id = math_mod_val(syn_bridge_h, 8388607.0) + 1.0;
+            g_markov_ctx_syn2_id = math_mod_val(syn_bridge_h * 257.0 + eff_tail, 8388607.0) + 1.0;
+        } else {
+            g_ctx_last_syn = 0.0;
+            g_markov_ctx_syn1_id = 0.0;
+            g_markov_ctx_syn2_id = 0.0;
+        }
+        g_markov_ctx_syn3_id = 0.0;
+        g_ctx_sent_topic_hash = 17.0;
+        g_ctx_sent_started_subord = 0.0;
+    } else {
+        g_ctx_prev2_hash = g_ctx_prev_hash;
+        g_ctx_prev_hash = g_ctx_last_hash;
+        g_ctx_last_hash = patch_hash;
+
+        g_ctx_prev2_syn = g_ctx_prev_syn;
+        g_ctx_prev_syn = g_ctx_last_syn;
+        g_ctx_last_syn = cur_syn;
+
+        g_markov_ctx_word1_id = math_mod_val(patch_hash, 8388607.0) + 1.0;
+        if (g_ctx_prev_hash != 17.0) {
+            g_markov_ctx_word2_id = math_mod_val(g_ctx_prev_hash * 257.0 + patch_hash, 8388607.0) + 1.0;
+        } else {
+            g_markov_ctx_word2_id = 0.0;
+        }
+        if (g_ctx_prev2_hash != 17.0 && g_ctx_prev_hash != 17.0) {
+            let h23 = math_mod_val(g_ctx_prev2_hash * 257.0 + g_ctx_prev_hash, 8388607.0);
+            g_markov_ctx_word3_id = math_mod_val(h23 * 257.0 + patch_hash, 8388607.0) + 1.0;
+        } else {
+            g_markov_ctx_word3_id = 0.0;
+        }
+
+        if (cur_syn > 0.0) {
+            g_markov_ctx_syn1_id = math_mod_val(cur_syn, 8388607.0) + 1.0;
+        } else {
+            g_markov_ctx_syn1_id = 0.0;
+        }
+
+        if (g_ctx_prev_hash != 17.0 && (g_ctx_prev_syn > 0.0 || cur_syn > 0.0)) {
+            var eff_p1 = g_ctx_prev_hash;
+            if (g_ctx_prev_syn > 0.0) { eff_p1 = g_ctx_prev_syn; }
+            var eff_c1 = patch_hash;
+            if (cur_syn > 0.0) { eff_c1 = cur_syn; }
+            g_markov_ctx_syn2_id = math_mod_val(eff_p1 * 257.0 + eff_c1, 8388607.0) + 1.0;
+        } else {
+            g_markov_ctx_syn2_id = 0.0;
+        }
+
+        if (g_ctx_prev2_hash != 17.0 && g_ctx_prev_hash != 17.0 && (g_ctx_prev2_syn > 0.0 || g_ctx_prev_syn > 0.0 || cur_syn > 0.0)) {
+            var eff_p2 = g_ctx_prev2_hash;
+            if (g_ctx_prev2_syn > 0.0) { eff_p2 = g_ctx_prev2_syn; }
+            var eff_p1b = g_ctx_prev_hash;
+            if (g_ctx_prev_syn > 0.0) { eff_p1b = g_ctx_prev_syn; }
+            var eff_c1b = patch_hash;
+            if (cur_syn > 0.0) { eff_c1b = cur_syn; }
+            let sh23 = math_mod_val(eff_p2 * 257.0 + eff_p1b, 8388607.0);
+            g_markov_ctx_syn3_id = math_mod_val(sh23 * 257.0 + eff_c1b, 8388607.0) + 1.0;
+        } else {
+            g_markov_ctx_syn3_id = 0.0;
+        }
+    }
 }
 
 fn geomind_byte_latent_train_deep_e8_corpus(
@@ -1700,17 +2148,12 @@ fn geomind_byte_latent_train_deep_e8_corpus(
         var patch_len = 0.0;
         var patch_alnum_len = 0.0;
         var patch_hash = 17.0;
-        var sent_topic_hash = 17.0;
-        var prev2_patch_hash = 17.0;
-        var prev_patch_hash = 17.0;
-        var last_patch_hash = 17.0;
         var patch_sent_end = 0.0;
+        var patch_comma_end = 0.0;
         var patch_act_sum = 0.0;
         var focus_horizon = 0.0;
         var stack_t_geo = 0.0;
-        g_markov_ctx_word1_id = 0.0;
-        g_markov_ctx_word2_id = 0.0;
-        g_markov_ctx_word3_id = 0.0;
+        geomind_markov_reset_patch_context();
 
         while (step < max_steps) {
             cur_b = cartan_byte_at(corpus, step);
@@ -1726,13 +2169,7 @@ fn geomind_byte_latent_train_deep_e8_corpus(
             if (next_b == 13.0 || next_b == 10.0) { next_b = 32.0; }
             if (cur_b == 32.0 && next_b == 32.0) {
                 if (is_para_break == 1.0) {
-                    prev2_patch_hash = 17.0;
-                    prev_patch_hash = 17.0;
-                    last_patch_hash = 17.0;
-                    sent_topic_hash = 17.0;
-                    g_markov_ctx_word1_id = 0.0;
-                    g_markov_ctx_word2_id = 0.0;
-                    g_markov_ctx_word3_id = 0.0;
+                    geomind_markov_reset_patch_context();
                 }
                 step = step + 1.0;
                 continue;
@@ -1749,6 +2186,9 @@ fn geomind_byte_latent_train_deep_e8_corpus(
             }
             if (cur_b == 46.0 || cur_b == 33.0 || cur_b == 63.0) {
                 patch_sent_end = 1.0;
+            }
+            if (cur_b == 44.0) {
+                patch_comma_end = 1.0;
             }
             patch_len = patch_len + 1.0;
 
@@ -1816,48 +2256,9 @@ fn geomind_byte_latent_train_deep_e8_corpus(
                     patch_steps_taken = patch_steps_taken + 1.0;
                 }
 
-                if (sent_topic_hash == 17.0 && geomind_is_glue_word_hash(patch_hash, patch_alnum_len) == 0.0) {
-                    sent_topic_hash = patch_hash;
-                }
-
-                if (is_para_break == 1.0) {
-                    prev2_patch_hash = 17.0;
-                    prev_patch_hash = 17.0;
-                    last_patch_hash = 17.0;
-                    sent_topic_hash = 17.0;
-                    g_markov_ctx_word1_id = 0.0;
-                    g_markov_ctx_word2_id = 0.0;
-                    g_markov_ctx_word3_id = 0.0;
-                } else if (patch_sent_end == 1.0) {
-                    var top_h = sent_topic_hash;
-                    if (top_h == 17.0) { top_h = patch_hash; }
-                    let bridge_h = math_mod_val(top_h + 500009.0, 1000003.0);
-                    prev2_patch_hash = 17.0;
-                    prev_patch_hash = 17.0;
-                    last_patch_hash = bridge_h;
-                    g_markov_ctx_word1_id = math_mod_val(bridge_h, 8388607.0) + 1.0;
-                    g_markov_ctx_word2_id = math_mod_val(bridge_h * 257.0 + patch_hash, 8388607.0) + 1.0;
-                    g_markov_ctx_word3_id = 0.0;
-                    sent_topic_hash = 17.0;
-                } else {
-                    // Update Local 1-Word Anchor Hub, 2-Word Phrase Hub, & 3-Word Clause Hub IDs (sliding window!)
-                    prev2_patch_hash = prev_patch_hash;
-                    prev_patch_hash = last_patch_hash;
-                    last_patch_hash = patch_hash;
-                    g_markov_ctx_word1_id = math_mod_val(patch_hash, 8388607.0) + 1.0;
-                    if (prev_patch_hash != 17.0) {
-                        g_markov_ctx_word2_id = math_mod_val(prev_patch_hash * 257.0 + patch_hash, 8388607.0) + 1.0;
-                    } else {
-                        g_markov_ctx_word2_id = 0.0;
-                    }
-                    if (prev2_patch_hash != 17.0 && prev_patch_hash != 17.0) {
-                        let h23 = math_mod_val(prev2_patch_hash * 257.0 + prev_patch_hash, 8388607.0);
-                        g_markov_ctx_word3_id = math_mod_val(h23 * 257.0 + patch_hash, 8388607.0) + 1.0;
-                    } else {
-                        g_markov_ctx_word3_id = 0.0;
-                    }
-                }
+                geomind_markov_advance_patch_context(patch_hash, patch_alnum_len, is_para_break, patch_sent_end, patch_comma_end);
                 patch_sent_end = 0.0;
+                patch_comma_end = 0.0;
                 patch_alnum_len = 0.0;
             }
 
@@ -2056,14 +2457,9 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
     var patch_len = 0.0;
     var patch_alnum_len = 0.0;
     var patch_hash = 17.0;
-    var sent_topic_hash = 17.0;
-    var last_patch_hash = 17.0;
-    var prev_patch_hash = 17.0;
-    var prev2_patch_hash = 17.0;
     var patch_sent_end = 0.0;
-    g_markov_ctx_word1_id = 0.0;
-    g_markov_ctx_word2_id = 0.0;
-    g_markov_ctx_word3_id = 0.0;
+    var patch_comma_end = 0.0;
+    geomind_markov_reset_patch_context();
     var patch_steps = 0.0;
     var i = 0.0;
     while (i < plen) {
@@ -2086,6 +2482,9 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
         }
         if (cur_b == 46.0 || cur_b == 33.0 || cur_b == 63.0) {
             patch_sent_end = 1.0;
+        }
+        if (cur_b == 44.0) {
+            patch_comma_end = 1.0;
         }
         patch_len = patch_len + 1.0;
 
@@ -2125,38 +2524,9 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
                 cartan_vec_set_f32(h_patch_accum, d, 0.0);
                 d = d + 1.0;
             }
-            if (sent_topic_hash == 17.0 && geomind_is_glue_word_hash(patch_hash, patch_alnum_len) == 0.0) {
-                sent_topic_hash = patch_hash;
-            }
-            if (patch_sent_end == 1.0) {
-                var top_h1 = sent_topic_hash;
-                if (top_h1 == 17.0) { top_h1 = patch_hash; }
-                let bridge_h1 = math_mod_val(top_h1 + 500009.0, 1000003.0);
-                prev2_patch_hash = 17.0;
-                prev_patch_hash = 17.0;
-                last_patch_hash = bridge_h1;
-                g_markov_ctx_word1_id = math_mod_val(bridge_h1, 8388607.0) + 1.0;
-                g_markov_ctx_word2_id = math_mod_val(bridge_h1 * 257.0 + patch_hash, 8388607.0) + 1.0;
-                g_markov_ctx_word3_id = 0.0;
-                sent_topic_hash = 17.0;
-            } else {
-                prev2_patch_hash = prev_patch_hash;
-                prev_patch_hash = last_patch_hash;
-                last_patch_hash = patch_hash;
-                g_markov_ctx_word1_id = math_mod_val(patch_hash, 8388607.0) + 1.0;
-                if (prev_patch_hash != 17.0) {
-                    g_markov_ctx_word2_id = math_mod_val(prev_patch_hash * 257.0 + patch_hash, 8388607.0) + 1.0;
-                } else {
-                    g_markov_ctx_word2_id = 0.0;
-                }
-                if (prev2_patch_hash != 17.0 && prev_patch_hash != 17.0) {
-                    let h23 = math_mod_val(prev2_patch_hash * 257.0 + prev_patch_hash, 8388607.0);
-                    g_markov_ctx_word3_id = math_mod_val(h23 * 257.0 + patch_hash, 8388607.0) + 1.0;
-                } else {
-                    g_markov_ctx_word3_id = 0.0;
-                }
-            }
+            geomind_markov_advance_patch_context(patch_hash, patch_alnum_len, 0.0, patch_sent_end, patch_comma_end);
             patch_sent_end = 0.0;
+            patch_comma_end = 0.0;
             patch_len = 0.0;
             patch_alnum_len = 0.0;
             patch_hash = 17.0;
@@ -2184,6 +2554,11 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
         c = 32.0;
         while (c <= 126.0) {
             var lv = cartan_vec_get_f32(logits_256, c);
+            // If prompt ends on a complete SenseGuarded WordNet noun without a trailing space (e.g. "...the orb"),
+            // allow clean word termination into a space so the Synset Hub can fire on the next step:
+            if (step == 0.0 && cur_b != 32.0 && c == 32.0 && geomind_wordnet_resolve_synset(patch_hash, g_ctx_last_hash) > 0.0) {
+                lv = lv + 10.0;
+            }
             // Prevent 3 consecutive identical characters (e.g., "fff") and consecutive spaces ("  ")
             if (b2 == cur_b && cur_b == c) { lv = lv - 12.0; }
             if (cur_b == 32.0 && c == 32.0) { lv = lv - 12.0; }
@@ -2226,6 +2601,9 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
         if (cur_b == 46.0 || cur_b == 33.0 || cur_b == 63.0) {
             patch_sent_end = 1.0;
         }
+        if (cur_b == 44.0) {
+            patch_comma_end = 1.0;
+        }
         patch_len = patch_len + 1.0;
 
         let t_geo = geomind_e8_geodesic_kinetic_energy_248(h_prev_local, h_local, g_byte_e8_randers_b_248);
@@ -2264,38 +2642,9 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
                 cartan_vec_set_f32(h_patch_accum, d, 0.0);
                 d = d + 1.0;
             }
-            if (sent_topic_hash == 17.0 && geomind_is_glue_word_hash(patch_hash, patch_alnum_len) == 0.0) {
-                sent_topic_hash = patch_hash;
-            }
-            if (patch_sent_end == 1.0) {
-                var top_h2 = sent_topic_hash;
-                if (top_h2 == 17.0) { top_h2 = patch_hash; }
-                let bridge_h2 = math_mod_val(top_h2 + 500009.0, 1000003.0);
-                prev2_patch_hash = 17.0;
-                prev_patch_hash = 17.0;
-                last_patch_hash = bridge_h2;
-                g_markov_ctx_word1_id = math_mod_val(bridge_h2, 8388607.0) + 1.0;
-                g_markov_ctx_word2_id = math_mod_val(bridge_h2 * 257.0 + patch_hash, 8388607.0) + 1.0;
-                g_markov_ctx_word3_id = 0.0;
-                sent_topic_hash = 17.0;
-            } else {
-                prev2_patch_hash = prev_patch_hash;
-                prev_patch_hash = last_patch_hash;
-                last_patch_hash = patch_hash;
-                g_markov_ctx_word1_id = math_mod_val(patch_hash, 8388607.0) + 1.0;
-                if (prev_patch_hash != 17.0) {
-                    g_markov_ctx_word2_id = math_mod_val(prev_patch_hash * 257.0 + patch_hash, 8388607.0) + 1.0;
-                } else {
-                    g_markov_ctx_word2_id = 0.0;
-                }
-                if (prev2_patch_hash != 17.0 && prev_patch_hash != 17.0) {
-                    let h23 = math_mod_val(prev2_patch_hash * 257.0 + prev_patch_hash, 8388607.0);
-                    g_markov_ctx_word3_id = math_mod_val(h23 * 257.0 + patch_hash, 8388607.0) + 1.0;
-                } else {
-                    g_markov_ctx_word3_id = 0.0;
-                }
-            }
+            geomind_markov_advance_patch_context(patch_hash, patch_alnum_len, 0.0, patch_sent_end, patch_comma_end);
             patch_sent_end = 0.0;
+            patch_comma_end = 0.0;
             patch_len = 0.0;
             patch_alnum_len = 0.0;
             patch_hash = 17.0;
@@ -2479,6 +2828,13 @@ fn geomind_run_english_curriculum(num_layers: float, lr: float) -> float {
     printf("  -> Novel 6 ('Alice stood on the'):       %s\n", geomind_byte_latent_generate_deep_e8("Alice stood on the", L, 56.0));
     printf("  -> Novel 7 ('Commander Vane found a'):   %s\n", geomind_byte_latent_generate_deep_e8("Commander Vane found a", L, 56.0));
     printf("  -> Novel 8 ('Sherlock Holmes stood on'): %s\n", geomind_byte_latent_generate_deep_e8("Sherlock Holmes stood on", L, 56.0));
+    printf("--------------------------------------------------------------------------------\n");
+    printf("  WORDNET + IC TAXONOMIC GROKKING TEST (Zero-Shot Synset Property Inheritance)\n");
+    printf("--------------------------------------------------------------------------------\n");
+    printf("  -> Grok 1 ('The puppy likes to'):        %s\n", geomind_byte_latent_generate_deep_e8("The puppy likes to", L, 48.0));
+    printf("  -> Grok 2 ('A gentle kitten'):           %s\n", geomind_byte_latent_generate_deep_e8("A gentle kitten", L, 48.0));
+    printf("  -> Grok 3 ('A sparrow can'):             %s\n", geomind_byte_latent_generate_deep_e8("A sparrow can", L, 48.0));
+    printf("  -> Grok 4 ('You can bounce the orb'):    %s\n", geomind_byte_latent_generate_deep_e8("You can bounce the orb", L, 48.0));
     cartan_flush(0.0);
 
     // Save consolidated checkpoints once at the end of the curriculum
