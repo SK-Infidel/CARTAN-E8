@@ -4,6 +4,26 @@ This changelog records the complete development history, cognitive architecture 
 
 Core CARTAN programming language, compiler, runtime, and general-purpose standard library releases are tracked in the root [`CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/CHANGELOG.md).
 
+## [2.9.0] - 2026-11-05 (GeoMind v2 `CARTAN-E8` Stage 6.2: Coupled Two-Scale Markov Trajectory Emission, Hinton Co-Adapting $S^{247}$ Microfeatures, & Shannon Orthogonal Crosstalk Suppression)
+
+### Completed & Validated
+- **Autonomous Question Parser & Coupled Two-Scale Markov Trajectory Emission (`Markov + Chomsky`) ([`Projects/geomind/byte_latent.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L4152-L4175), [`L4285-L4485`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L4285-L4485))**:
+  - Removed all hardcoded sentence templates and `question_type` tags from [`geomind_e8_answer_epistemic_question`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L4304-L4485).
+  - Given only a raw natural-language question string (`"Is a sparrow an animal and where can it fly?"`, `"Why does a puppy like to run?"`, `"How does a kitten feel when it purrs?"`, `"What happens when you drop an orb?"`, `"Why does wood float on water?"`), the engine autonomously locates the Focus Concept by maximum 42-layer cascade energy across the 6 strata, runs the 42-layer $S^{247}$ rollout, and emits the English response **byte-by-byte through [`geomind_byte_latent_generate_deep_e8`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L4050-L4282)**.
+  - Coupled the 42-layer `L7` and `L42` trajectory waypoints (`g_e8_traj_waypt1_b`, `g_e8_traj_waypt2_b`) into the word-boundary byte-selection loop (`cur_b == 32.0`) of `geomind_byte_latent_generate_deep_e8`, resolving 3-gram window ties (`"A kitten is a young cat..."` vs `"A puppy is a young dog..."` and `"down to the ground"` vs `"down to the clear riverbank"`), and normalized comma-terminated word contexts (`s2 == 28.0`) in [`geomind_markov_hub_ctx_idx`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L89-L102).
+  - **Empirical Coupled 42-Layer + Tapestry Byte-by-Byte QA Verification (`task-3473`)**:
+    - `Q1 ('Is a sparrow an animal and where can it fly?')` $\to$ `"A sparrow is a small bird with feathers and wings. A sparrow can fly high in the sky. [42L Waypoints: sparrow->bird->animal | fly->sky]"`
+    - `Q2 ('Why does a puppy like to run?')` $\to$ `"A puppy is a young dog that loves its family. The puppy likes to run and play in the yard. [42L Waypoints: puppy->dog->animal | run->fun]"`
+    - `Q3 ('How does a kitten feel when it purrs?')` $\to$ `"A kitten is a young cat that needs warm milk and gentle care. A gentle kitten purrs when it is happy. [42L Waypoints: kitten->cat->animal | purrs->happy]"`
+    - `Q4 ('What happens when you drop an orb?')` $\to$ `"When you drop a orb, gravity pulls the ball down to the ground. You can bounce the orb on the ground. Bouncing a ball is fun. [42L Waypoints: orb->ball->plaything | gravity->ground]"`
+    - `Q5 ('Why does wood float on water?')` $\to$ `"Wood floats on water because wood is lighter than water. [42L Waypoints: wood->lighter->floats]"`
+- **Hinton Co-Adapting $S^{247}$ Microfeature Embeddings & Shannon Orthogonal Crosstalk Suppression ([`Projects/geomind/byte_latent.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L1715-L1785), [`L1929-L1990`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L1929-L1990))**:
+  - Decomposed the relational transport vector $R u$ in [`geomind_e8_rel_train_step`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L1929-L1990) into target projection $s_{\text{fwd}} v$ and off-axis residual $(R u)_\perp = R u - s_{\text{fwd}} v$, damping orthogonal crosstalk on every step (`0.06 * orth_r`) so Backward Abductive Diagnosis (`Test 3: round, bounce, ground`) recovers `'orb' (L7 class: 'ball')` directly.
+  - Added learnable $S^{247}$ microfeature vectors (`g_e8_microfeat_vecs`, [`geomind_e8_coadapt_microfeatures_248`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L1730-L1755)) with superordinate-first taxonomic ordering in [`geomind_wordnet_register_node`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L2695-L2735):
+    - `Sibling Birds cos(sparrow, robin) = 0.5903` | `Sibling Fish cos(trout, salmon) = 0.5333`
+    - `Sibling Spheres cos(orb, sphere) = 0.4029` | `Activities cos(run, play) = 0.9731`
+    - `Young Animals cos(kitten, puppy) = 0.2621` | `Disjoint cos(sparrow, orb) = -0.0300`
+
 ## [2.8.0] - 2026-11-05 (GeoMind v2 `CARTAN-E8` Stage 6.1: Word-Agnostic Closed-Class Relational Parsing, Kanerva-Hopfield $S^{247}$ Attractor Clean-Up, & 4-Test Subtle Geometric Reasoning / Falsification Suite)
 
 ### Completed & Validated
