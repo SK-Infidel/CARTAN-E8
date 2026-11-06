@@ -4,6 +4,23 @@ This changelog records the complete development history, cognitive architecture 
 
 Core CARTAN programming language, compiler, runtime, and general-purpose standard library releases are tracked in the root [`CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/CHANGELOG.md).
 
+## [2.9.2] - 2026-11-05 (GeoMind v2 `CARTAN-E8` Stage 6.4: Layer-0 Sibling Differentiation (`w_prop` Waypoint 3), Persistent Episodic Refractory Memory, & Langevin Geodesic Exploration)
+
+### Completed & Validated
+- **Layer-0 Sibling Concept Differentiation (`g_e8_traj_waypt3_str = w_prop`) & Multi-Path Rung 2 Concept Triples ([`Projects/geomind/trainingdata/e8_concept_triples.txt`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/trainingdata/e8_concept_triples.txt), [`Projects/geomind/byte_latent.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L4191-L4268), [`L4528-L4587`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L4528-L4587))**:
+  - Enriched `e8_concept_triples.txt` with sibling-specific Layer-0 properties and continuations (`robin -> cheerful`, `sphere -> smooth`) alongside shared hypernym capabilities (`bird -> fly`, `ball -> bounce`), achieving `robin -> cheerful = 0.8116` and `sphere -> smooth = 0.8262` via the word-agnostic Frame 1 parser.
+  - Added a 3rd full-word multi-byte trajectory waypoint `g_e8_traj_waypt3_str = w_prop` in `geomind_byte_latent_generate_deep_e8` and `geomind_e8_answer_epistemic_question` so sibling concepts express their own Layer-0 properties rather than replaying identical hypernym sentences:
+    - `Q1 ('sparrow')` $\to$ `"A sparrow is a small bird with feathers and wings. A sparrow can fly high in the sky. [42L Waypoints: sparrow(small)->bird->animal | fly->sky]"`
+    - `Q6 ('robin')` $\to$ `"A robin is a cheerful bird that sings sweet songs in the garden. A robin can fly high above the bramble bushes, searching for shiny berries and  [42L Waypoints: robin(cheerful)->bird->animal | fly->sky]"`
+    - `Q4 ('orb')` $\to$ `"When you drop a orb, gravity pulls the ball down to the ground. You can bounce the orb on the ground. Bouncing a ball is fun. [42L Waypoints: orb(round)->ball->plaything | gravity->ground]"`
+    - `Q7 ('sphere')` $\to$ `"When you drop a sphere, gravity pulls the ball down to the ground. A sphere is a smooth ball that rolls fast across the floor. [42L Waypoints: sphere(smooth)->ball->plaything | gravity->ground]"`
+  - Verified 5-clue Backward Abductive Diagnosis (`geomind_e8_abductive_diagnosis_42L`) uniquely inverting sibling concepts from their Layer-0 properties:
+    - `Clues (small, fly, sky) -> 'sparrow'` vs `Clues (cheerful, fly, sky) -> 'robin'`
+    - `Clues (round, bounce, ground) -> 'orb'` vs `Clues (smooth, bounce, ground) -> 'sphere'`
+- **Rebalanced 248-D E8 Readout (+80%), Persistent Cross-Turn Episodic Refractory Memory, & Langevin Geodesic Exploration ([`Projects/geomind/byte_latent.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L764-L774), [`L1079`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L1079), [`L4250-L4335`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L4250-L4335))**:
+  - Increased the 248-D E8 manifold readout weight in `geomind_byte_latent_decode_logits_blt` from `0.25` to `0.45` (`sum * 0.45 + 3.25 * log(m_prob + 0.00001)`).
+  - Added a persistent 32-slot cross-call episodic refractory buffer (`g_e8_episodic_ref_w1`, `g_e8_episodic_ref_byte`) and Killing-Cartan kinetic-energy-driven Langevin exploration (`g_e8_langevin_phase`, `g_e8_langevin_temp = 0.28`) gated to competing word-boundary candidates (`lv >= max_raw_l - 1.8`), dynamically diversifying narrative branches (`Gen 4: Once upon a time, Ruby the robin met an old turtle...`, `Novel 7: Commander Vane found a bright red ball. It has matched our linguistic frequencies.`) without breaking grammatical syntax.
+
 ## [2.9.1] - 2026-11-05 (GeoMind v2 `CARTAN-E8` Stage 6.3: Hoisted 248-D Readout Fusion, Full-Word Multi-Byte Prefix Steering, & Zero-Shot Sibling Epistemic QA)
 
 ### Completed & Validated
