@@ -764,6 +764,7 @@ fn geomind_visualizer_export_html(out_path: string, title_label: string) -> floa
 var g_byte_e8_emb_256x248: ptr = 0.0;
 var g_byte_e8_head_248x256: ptr = 0.0;
 var g_byte_e8_randers_b_248: ptr = 0.0;
+var g_blt_decode_hv_248: ptr = 0.0;
 var g_byte_e8_initialized: float = 0.0;
 var g_byte_latent_coast_count: float = 0.0;
 
@@ -803,6 +804,7 @@ fn geomind_byte_latent_load_weights(path: string) -> float {
     if (g_byte_e8_emb_256x248 == 0.0) { g_byte_e8_emb_256x248 = cartan_tensor_alloc(63488.0); }
     if (g_byte_e8_head_248x256 == 0.0) { g_byte_e8_head_248x256 = cartan_tensor_alloc(63488.0); }
     if (g_byte_e8_randers_b_248 == 0.0) { g_byte_e8_randers_b_248 = cartan_tensor_alloc(248.0); }
+    if (g_blt_decode_hv_248 == 0.0) { g_blt_decode_hv_248 = cartan_tensor_alloc(248.0); }
     let f = fopen(path, "rb");
     if (f == 0.0) { return 0.0; }
     let buf = malloc(total_elems * 8.0);
@@ -835,6 +837,7 @@ fn geomind_byte_latent_init_if_needed() -> float {
     if (g_byte_e8_emb_256x248 == 0.0) { g_byte_e8_emb_256x248 = cartan_tensor_alloc(63488.0); }
     if (g_byte_e8_head_248x256 == 0.0) { g_byte_e8_head_248x256 = cartan_tensor_alloc(63488.0); }
     if (g_byte_e8_randers_b_248 == 0.0) { g_byte_e8_randers_b_248 = cartan_tensor_alloc(248.0); }
+    if (g_blt_decode_hv_248 == 0.0) { g_blt_decode_hv_248 = cartan_tensor_alloc(248.0); }
 
     // Initialize 256 x 248 Byte-to-E8 table directly from canonical 240 E8 roots + 8D Cartan torus harmonics
     var b = 0.0;
@@ -1022,18 +1025,25 @@ fn geomind_byte_latent_decode_logits_blt(
         if (s3_idx >= 688128.0) { w3_idx = s3_idx; tot_w3 = cartan_vec_get_f32(g_markov_3gram_totals, s3_idx); }
     }
 
+    // Hoist the 248-D Local + Patch state fusion outside the 256-byte readout loop (eliminates 96 x 248 redundant multiply-adds per byte)
+    var d_pre = 0.0;
+    while (d_pre < 248.0) {
+        let hl = cartan_vec_get_f32(h_local_248, d_pre);
+        var hp = 0.0;
+        if (h_patch_248 != 0.0) {
+            hp = cartan_vec_get_f32(h_patch_248, d_pre);
+        }
+        cartan_vec_set_f32(g_blt_decode_hv_248, d_pre, 0.65 * hl + 0.35 * hp);
+        d_pre = d_pre + 1.0;
+    }
+
     var c = 0.0;
     while (c < 256.0) {
         if ((c >= 32.0 && c <= 126.0) || c == 10.0) {
             var sum = 0.0;
             var d = 0.0;
             while (d < 248.0) {
-                let hl = cartan_vec_get_f32(h_local_248, d);
-                var hp = 0.0;
-                if (h_patch_248 != 0.0) {
-                    hp = cartan_vec_get_f32(h_patch_248, d);
-                }
-                let hv = 0.65 * hl + 0.35 * hp;
+                let hv = cartan_vec_get_f32(g_blt_decode_hv_248, d);
                 let wv = cartan_vec_get_f32(g_byte_e8_head_248x256, d * 256.0 + c);
                 sum = sum + hv * wv;
                 d = d + 1.0;
@@ -1595,8 +1605,8 @@ var g_e8_microfeat_vecs: ptr = 0.0;
 var g_e8_vocab_count: float = 0.0;
 var g_e8_last_decode_sim: float = 0.0;
 var g_e8_last_sasaki_vel_norm: float = 0.0;
-var g_e8_traj_waypt1_b: float = 0.0;
-var g_e8_traj_waypt2_b: float = 0.0;
+var g_e8_traj_waypt1_str: string = "";
+var g_e8_traj_waypt2_str: string = "";
 
 var g_wn_verb_to: float = 0.0;
 var g_wn_verb_can: float = 0.0;
@@ -4142,6 +4152,15 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
         i = i + 1.0;
     }
 
+    let wp1_len = cartan_string_length(g_e8_traj_waypt1_str);
+    let wp2_len = cartan_string_length(g_e8_traj_waypt2_str);
+    var wp1_match = 0.0;
+    var wp2_match = 0.0;
+    if (cur_b == 32.0) {
+        if (wp1_len > 0.0) { wp1_match = 1.0; }
+        if (wp2_len > 0.0) { wp2_match = 1.0; }
+    }
+
     var out_str = prompt;
     var step = 0.0;
     let max_grace_len = gen_len + 12.0;
@@ -4150,8 +4169,16 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
             break;
         }
         geomind_byte_latent_decode_logits_blt(h_local, h_top_patch, b3, b2, cur_b, logits_256);
+        var wp1_tgt_b = 0.0;
+        var wp2_tgt_b = 0.0;
+        if (wp1_match == 1.0 && patch_alnum_len < wp1_len) {
+            wp1_tgt_b = cartan_byte_at(g_e8_traj_waypt1_str, patch_alnum_len);
+        }
+        if (wp2_match == 1.0 && patch_alnum_len < wp2_len) {
+            wp2_tgt_b = cartan_byte_at(g_e8_traj_waypt2_str, patch_alnum_len);
+        }
         var max_raw_l = -100000.0;
-        if (cur_b == 32.0 && (g_e8_traj_waypt1_b > 0.0 || g_e8_traj_waypt2_b > 0.0)) {
+        if (wp1_tgt_b > 0.0 || wp2_tgt_b > 0.0) {
             c = 97.0;
             while (c <= 122.0) {
                 let rlv = cartan_vec_get_f32(logits_256, c);
@@ -4166,15 +4193,15 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
         c = 32.0;
         while (c <= 126.0) {
             var lv = cartan_vec_get_f32(logits_256, c);
-            // Coupled 42-Layer Trajectory Waypoint Resonance Steering at word boundaries (`cur_b == 32.0`):
-            // Resolves 3-gram hub ties (e.g. "is a young [cat/dog]" or "down to the [ground/clear]") using L7/L42 S^{247} waypoints
-            if (cur_b == 32.0 && (c == g_e8_traj_waypt1_b || c == g_e8_traj_waypt2_b) && lv >= (max_raw_l - 3.8)) {
+            // Coupled 42-Layer Trajectory Multi-Byte Prefix Steering across all characters of the waypoint word:
+            // Disambiguates both word-initial ties ("is a young [cat/dog]") and shared-prefix ties ("down to the gr[ound/ow]")
+            if ((c == wp1_tgt_b || c == wp2_tgt_b) && lv >= (max_raw_l - 3.8)) {
                 lv = lv + 4.2;
             }
-            // If prompt ends on a complete SenseGuarded WordNet noun without a trailing space (e.g. "...the orb"),
+            // If prompt ends on a complete SenseGuarded WordNet noun without a trailing space (e.g. "...the orb" or "...the sphere"),
             // allow clean word termination into a space so the Synset Hub can fire on the next step:
             if (step == 0.0 && cur_b != 32.0 && c == 32.0 && geomind_wordnet_resolve_synset(patch_hash, g_ctx_last_hash) > 0.0) {
-                lv = lv + 10.0;
+                lv = lv + 45.0;
             }
             // Prevent 3 consecutive identical characters (e.g., "fff") and consecutive spaces ("  ")
             if (b2 == cur_b && cur_b == c) { lv = lv - 12.0; }
@@ -4209,11 +4236,20 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
         cur_b = best_b;
         let is_alnum2 = ((cur_b >= 97.0 && cur_b <= 122.0) || (cur_b >= 65.0 && cur_b <= 90.0) || (cur_b >= 48.0 && cur_b <= 57.0));
         if (is_alnum2) {
+            if (wp1_match == 1.0 && cur_b != wp1_tgt_b) { wp1_match = 0.0; }
+            if (wp2_match == 1.0 && cur_b != wp2_tgt_b) { wp2_match = 0.0; }
             geomind_fold_byte_into_e8_patch(h_patch_accum, cur_b, patch_len);
             var hb2 = cur_b;
             if (hb2 >= 65.0 && hb2 <= 90.0) { hb2 = hb2 + 32.0; }
             patch_hash = math_mod_val(patch_hash * 131.0 + hb2, 1000003.0);
             patch_alnum_len = patch_alnum_len + 1.0;
+        } else {
+            wp1_match = 0.0;
+            wp2_match = 0.0;
+            if (cur_b == 32.0) {
+                if (wp1_len > 0.0) { wp1_match = 1.0; }
+                if (wp2_len > 0.0) { wp2_match = 1.0; }
+            }
         }
         if (cur_b == 46.0 || cur_b == 33.0 || cur_b == 63.0) {
             patch_sent_end = 1.0;
@@ -4438,14 +4474,12 @@ fn geomind_e8_answer_epistemic_question(question_str: string) -> string {
     let w_L42 = geomind_e8_decode_concept_vec_248(h_L42);
 
     // Emit natural English sentences byte-by-byte through the Surface 3-Gram Tapestry Generator (`geomind_byte_latent_generate_deep_e8`)
-    // steered by the active 42-Layer S^{247} Trajectory Waypoints (zero sentence templates)
-    g_e8_traj_waypt1_b = 0.0;
-    g_e8_traj_waypt2_b = 0.0;
-    if (cartan_string_length(w_L7) > 0.0) {
-        g_e8_traj_waypt1_b = cartan_byte_at(w_L7, 0.0);
-    }
-    if (cartan_string_length(w_L42) > 0.0) {
-        g_e8_traj_waypt2_b = cartan_byte_at(w_L42, 0.0);
+    // steered by the active 42-Layer S^{247} Trajectory Waypoints (full-word multi-byte prefix steering, zero sentence templates)
+    g_e8_traj_waypt1_str = w_L7;
+    if (r42 > 0.0) {
+        g_e8_traj_waypt2_str = w_L42;
+    } else {
+        g_e8_traj_waypt2_str = w_L28;
     }
     var ans = "";
     if (q_has_is == 1.0 || q_has_where == 1.0) {
@@ -4475,8 +4509,8 @@ fn geomind_e8_answer_epistemic_question(question_str: string) -> string {
         let s2 = geomind_truncate_sentences(geomind_byte_latent_generate_deep_e8(cartan_string_concat("The ", cartan_string_concat(subj_word, " likes to")), 42.0, 44.0), 1.0);
         ans = cartan_string_concat(s1, cartan_string_concat(" ", cartan_string_concat(s2, cartan_string_concat(" [42L Waypoints: ", cartan_string_concat(subj_word, cartan_string_concat("->", cartan_string_concat(w_L7, cartan_string_concat("->", cartan_string_concat(w_L14, cartan_string_concat(" | ", cartan_string_concat(w_L21, cartan_string_concat("->", cartan_string_concat(w_L28, "]")))))))))))));
     }
-    g_e8_traj_waypt1_b = 0.0;
-    g_e8_traj_waypt2_b = 0.0;
+    g_e8_traj_waypt1_str = "";
+    g_e8_traj_waypt2_str = "";
 
     cartan_vec_free(h_L0);
     cartan_vec_free(h_L7);
@@ -4712,6 +4746,10 @@ fn geomind_run_english_curriculum(num_layers: float, lr: float) -> float {
     printf("     A4: %s\n", geomind_e8_answer_epistemic_question("What happens when you drop an orb?"));
     printf("  -> Q5 ('Why does wood float on water?'):\n");
     printf("     A5: %s\n", geomind_e8_answer_epistemic_question("Why does wood float on water?"));
+    printf("  -> Q6 [Zero-Shot Sibling ('robin' not in Rung 1/2)] ('Is a robin an animal and where can it fly?'):\n");
+    printf("     A6: %s\n", geomind_e8_answer_epistemic_question("Is a robin an animal and where can it fly?"));
+    printf("  -> Q7 [Zero-Shot Sibling ('sphere' not in Rung 1/2)] ('What happens when you drop a sphere?'):\n");
+    printf("     A7: %s\n", geomind_e8_answer_epistemic_question("What happens when you drop a sphere?"));
     printf("--------------------------------------------------------------------------------\n");
     printf("  STAGE 6.1 SUBTLE GEOMETRIC REASONING & FALSIFICATION SUITE (Zero Word Rules)\n");
     printf("--------------------------------------------------------------------------------\n");

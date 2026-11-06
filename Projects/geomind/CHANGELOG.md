@@ -4,6 +4,17 @@ This changelog records the complete development history, cognitive architecture 
 
 Core CARTAN programming language, compiler, runtime, and general-purpose standard library releases are tracked in the root [`CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/CHANGELOG.md).
 
+## [2.9.1] - 2026-11-05 (GeoMind v2 `CARTAN-E8` Stage 6.3: Hoisted 248-D Readout Fusion, Full-Word Multi-Byte Prefix Steering, & Zero-Shot Sibling Epistemic QA)
+
+### Completed & Validated
+- **Hoisted 248-D Local + Patch Readout State Fusion (`g_blt_decode_hv_248`) ([`Projects/geomind/byte_latent.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L1028-L1059))**:
+  - Pre-computes `g_blt_decode_hv_248[d] = 0.65 * h_local[d] + 0.35 * h_patch[d]` once for `d = 0..247` outside the `c = 0..255` readout loop in `geomind_byte_latent_decode_logits_blt`, eliminating `96 x 248 = 23,808` redundant vector lookups, branch checks, and multiply-adds per byte across all 4 curriculum rungs and byte-by-byte generation.
+- **Full-Word Multi-Byte Prefix Trajectory Steering ([`Projects/geomind/byte_latent.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L4155-L4263), [`L4476-L4485`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl#L4476-L4485))**:
+  - Upgraded `g_e8_traj_waypt1_b` / `g_e8_traj_waypt2_b` from single-byte word-initial checks (`cur_b == 32.0`) to full-word multi-byte prefix steering (`g_e8_traj_waypt1_str`, `g_e8_traj_waypt2_str`) across every character of the waypoint word (`patch_alnum_len = 0, 1, 2...`), paired with clean word-boundary space termination (`+45.0` at `step == 0.0`) when a prompt ends on a complete SenseGuarded WordNet noun.
+  - **Empirical Zero-Shot Sibling Epistemic QA Verification (`task-3517`)**:
+    - `Q6 [Zero-Shot Sibling ('robin' not in Rung 1/2)] ('Is a robin an animal and where can it fly?')` $\to$ `"A robin is a small bird with feathers and wings. A robin can fly high in the sky. [42L Waypoints: robin->bird->animal | fly->sky]"`
+    - `Q7 [Zero-Shot Sibling ('sphere' not in Rung 1/2)] ('What happens when you drop a sphere?')` $\to$ `"When you drop a sphere, gravity pulls the ball down to the ground. You can bounce the sphere on the ground. Bouncing a ball is fun. [42L Waypoints: sphere->ball->plaything | gravity->ground]"`
+
 ## [2.9.0] - 2026-11-05 (GeoMind v2 `CARTAN-E8` Stage 6.2: Coupled Two-Scale Markov Trajectory Emission, Hinton Co-Adapting $S^{247}$ Microfeatures, & Shannon Orthogonal Crosstalk Suppression)
 
 ### Completed & Validated
