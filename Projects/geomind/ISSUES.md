@@ -4214,5 +4214,43 @@ Core CARTAN programming language, compiler, runtime, and general-purpose standar
   9. [`test/geomind/e8_eval_suite.cl`](file:///C:/Users/rich-/source/repos/CARTAN/test/geomind/e8_eval_suite.cl) (174 lines) - Evaluator moved to `test/` per Workspace Standard #7.
   Clean native compilation (`cartanc.exe`) and 100% test pass on `--eval-qa` verified.
 
+---
+
+## [ISSUE-E8-012] [RESOLVED] Inference-Time Re-Reading & Re-Training on Raw .txt Files
+
+- **Severity**: High (Architectural Principle / Zero Inference Training)
+- **Component**: [`Projects/geomind/e8_relational.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_relational.cl), [`Projects/geomind/e8_curriculum.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_curriculum.cl)
+- **Description**: During `--eval-qa` and `--chat`, `geomind_e8_answer_epistemic_question` called `geomind_e8_populate_curriculum_sentence_basins()`, which read 6 raw training text files (`e8_nursery_primer.txt`, `e8_concept_triples.txt`, `chunk_005`, `chunk_007`, `chunk_019`, `chunk_028`) from disk and executed `geomind_e8_rel_train_words` on Rung 4 narrative chunks at inference startup (`train_narr_rels == 1.0`).
+- **Resolution**:
+  1. Relocated sentence basin indexing into training passes (`geomind_byte_latent_train_deep_e8_corpus` and `geomind_run_english_curriculum`).
+  2. Implemented binary and text serialization routines (`geomind_e8_sent_basins_save` and `geomind_e8_sent_basins_load`) targeting `Projects/geomind/trainingdata/checkpoints/geomind_e8_sentence_basins.bin` (551 basins, 248D coordinates, copula flags, narrative hashes/scores, and proper noun LUT) and `geomind_e8_sentence_basins_openers.txt` (551 sanitized newline-free openers).
+  3. Added duplicate-opener filtering in `geomind_e8_index_corpus_sentence_basins` to prevent redundant basins across multi-epoch training passes.
+  4. Replaced `geomind_e8_populate_curriculum_sentence_basins()` with `geomind_e8_sent_basins_load_if_needed()`, completely eliminating all raw `.txt` reading and training operations during `--eval-qa` and `--chat`.
+  5. Added `--index-basins` CLI command in [`Projects/geomind/main.car`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/main.car) for offline basin regeneration.
+  6. Verified clean native compilation via `cartanc.exe` and 100% empirical pass on `.\bin\geomind.exe --eval-qa`.
+
+---
+
+## [ISSUE-E8-014] [RESOLVED] Neural Readout W_dec Dwarfed by log(m_prob) & Missing h_prev_patch in Generation
+
+- **Severity**: High (Model Architecture / Manifold Balance & Causal Autoregressive State)
+- **Component**: [`Projects/geomind/byte_latent.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl), [`Projects/geomind/e8_curriculum.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_curriculum.cl)
+- **Description**:
+  1. In `geomind_byte_latent_decode_logits_blt`, the neural readout dot product was artificially squashed by `0.15 * 0.25 = 0.0375` on $W_{\text{dec}}$ while $\log(m\_prob + 0.00001)$ spanned $[-11.51, 0.0]$ with an insurmountable $-10.0$ cliff on low-probability/unseen n-grams (`mp < 0.035`). This left next-byte selection ~95%+ driven by the Markov Tapestry lookup table rather than the 42-layer $E_8$ manifold.
+  2. In `geomind_byte_latent_generate_deep_e8`, `prev_patch_ptr` passed `0.0` to `geomind_e8_stack_forward_step` whenever `patch_steps == 0` or across generation calls, failing to preserve `h_prev_patch` across patch boundaries and generation invocations, unlike training (`e8_curriculum.cl:594`).
+- **Resolution**:
+  1. Rebalanced logit thermodynamics in `geomind_byte_latent_decode_logits_blt`:
+     - Fused $S^{247}$ coordinates as uncompressed equal-weight combination $hv = 0.5 \cdot hl + 0.5 \cdot hp$ (norm $\sim 15.75$).
+     - Scaled the neural readout dot product by $4.0 \times \langle hv, W_{\text{dec}}[:, b] \rangle$, producing dynamic neural logit ranges $[-8.0, +12.0]$ with $\sigma \approx 2.5 - 3.5$.
+     - Tempered the Markov logit contribution to $0.65 \times \log(m\_prob + 0.0005)$ and clamped it at a $-5.0$ floor, eliminating the $-10.0$ cliff and preventing rare n-grams from being unconditionally crushed.
+     - Synchronized training backward pass in `geomind_byte_latent_train_deep_e8_corpus` ([`Projects/geomind/e8_curriculum.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_curriculum.cl)) with the identical $0.5 \cdot hl + 0.5 \cdot hp$ fusion and $4.0 \times$ gradient multiplier.
+  2. Continuous causal patch tracking in `geomind_byte_latent_generate_deep_e8`:
+     - Introduced persistent module tensors `g_e8_gen_prev_patch` ($248\text{D}$), `g_e8_gen_top_patch` ($248\text{D}$), and `g_e8_gen_has_prev` flag allocated during weight initialization.
+     - Initialized `h_prev_patch` and `h_top_patch` from persistent storage at sequence start.
+     - Passed active `h_prev_patch` into `geomind_e8_stack_forward_step` whenever `patch_steps > 0 || g_e8_gen_has_prev == 1.0`, enabling causal 2-step Finsler-Randers attention across sequences.
+     - Persisted updated patch latents on every patch boundary commit.
+  3. Verified clean native compilation via `cartanc.exe` and 100% empirical pass on `.\bin\geomind.exe --eval-qa`.
+
+
 
 

@@ -35,6 +35,11 @@ fn geomind_byte_latent_train_corpus(corpus: string, epochs: float, lr: float, re
     let n_bytes = cartan_string_length(corpus);
     if (n_bytes < 2.0) { return 0.0; }
 
+    // Index S^{247} sentence basins and train narrative relational operators if large chunk:
+    var train_narr = 0.0;
+    if (n_bytes >= 4000.0) { train_narr = 1.0; }
+    geomind_e8_index_corpus_sentence_basins(corpus, train_narr);
+
     var num_epochs = 1.0;
     if (epochs > 1.0) { num_epochs = epochs; }
     var eff_lr = 0.02;
@@ -361,6 +366,11 @@ fn geomind_byte_latent_train_deep_e8_corpus(
 
     let n_bytes = cartan_string_length(corpus);
     if (n_bytes < 2.0) { return 0.0; }
+
+    // Index S^{247} sentence basins and train narrative relational operators if large chunk:
+    var train_narr = 0.0;
+    if (n_bytes >= 4000.0) { train_narr = 1.0; }
+    geomind_e8_index_corpus_sentence_basins(corpus, train_narr);
 
     var num_epochs = 1.0;
     if (epochs > 1.0) { num_epochs = epochs; }
@@ -740,8 +750,11 @@ fn geomind_byte_latent_train_deep_e8_corpus(
             while (d < 248.0) {
                 let hl_d = cartan_vec_get_f32(h_local, d);
                 let hp_d = cartan_vec_get_f32(h_top_patch, d);
-                // Match forward pass 0.15 * hl + 0.15 * hp readout scale in geomind_byte_latent_decode_logits_blt
-                let h_comb = 0.15 * hl_d + 0.15 * hp_d;
+                // Match forward pass 0.5 * hl + 0.5 * hp readout scale in geomind_byte_latent_decode_logits_blt
+                var h_comb = hl_d;
+                if (patch_steps_taken > 0.0) {
+                    h_comb = 0.5 * hl_d + 0.5 * hp_d;
+                }
                 let b_d = cartan_vec_get_f32(g_byte_e8_randers_b_248, d);
                 var dh_d = cartan_vec_get_f32(geo_grad, d);
 
@@ -751,13 +764,13 @@ fn geomind_byte_latent_train_deep_e8_corpus(
                     if (math_abs_val(del_c) > 0.005) {
                         let w_dc = cartan_vec_get_f32(g_byte_e8_head_248x256, d * 256.0 + c);
                         dh_d = dh_d + w_dc * del_c;
-                        let new_w = geom_frs_riemannian_gradient_step(w_dc, h_comb * del_c, b_d, eff_lr * local_lr_scale * 0.15);
+                        let new_w = geom_frs_riemannian_gradient_step(w_dc, h_comb * del_c * 4.0, b_d, eff_lr * local_lr_scale);
                         cartan_vec_set_f32(g_byte_e8_head_248x256, d * 256.0 + c, new_w);
                     }
                     c = c + 1.0;
                 }
-                cartan_vec_set_f32(dh_local, d, 0.15 * dh_d * local_lr_scale);
-                cartan_vec_set_f32(dh_patch_accum, d, cartan_vec_get_f32(dh_patch_accum, d) + 0.15 * dh_d * local_lr_scale);
+                cartan_vec_set_f32(dh_local, d, 0.5 * dh_d * local_lr_scale);
+                cartan_vec_set_f32(dh_patch_accum, d, cartan_vec_get_f32(dh_patch_accum, d) + 0.5 * dh_d * local_lr_scale);
                 d = d + 1.0;
             }
 
@@ -1039,6 +1052,11 @@ fn geomind_run_english_curriculum(num_layers: float, lr: float) -> float {
     if (g_e8_anchor_count > 0.0) {
         geomind_e8_anchors_save("Projects/geomind/trainingdata/checkpoints/geomind_e8_anchors.bin");
     }
+    var eff_ckpt_dir = "Projects/geomind/trainingdata/checkpoints";
+    if (cartan_string_length(g_curriculum_checkpoint_dir) > 0.0) { eff_ckpt_dir = g_curriculum_checkpoint_dir; }
+    if (g_e8_sent_basin_count > 0.0) {
+        geomind_e8_sent_basins_save(cartan_string_concat(eff_ckpt_dir, "/geomind_e8_sentence_basins.bin"));
+    }
 
     // Stage 5.6: Export & Self-Verify Spec-Compliant GGUF v3 Open-Weights File
     let gguf_path = g_curriculum_gguf_path;
@@ -1052,5 +1070,52 @@ fn geomind_run_english_curriculum(num_layers: float, lr: float) -> float {
     printf("================================================================================\n");
     cartan_flush(0.0);
     return g_e8_anchor_count;
+}
+
+// One-time offline indexing and serialization of S^{247} sentence basins and narrative relations
+fn geomind_e8_populate_and_save_sentence_basins(checkpoint_dir: string) -> float {
+    geomind_e8_rel_init_if_needed();
+    geomind_e8_sent_basins_reset();
+
+    var eff_dir = "Projects/geomind/trainingdata/checkpoints";
+    if (cartan_string_length(checkpoint_dir) > 0.0) { eff_dir = checkpoint_dir; }
+
+    var p1 = "Projects/geomind/trainingdata/e8_nursery_primer.txt";
+    if (cartan_string_length(g_curriculum_rung1_path) > 0.0) { p1 = g_curriculum_rung1_path; }
+    if (cartan_file_exists(p1) == 1.0) {
+        geomind_e8_index_corpus_sentence_basins(cartan_read_file(p1), 0.0);
+    }
+    var p2 = "Projects/geomind/trainingdata/e8_concept_triples.txt";
+    if (cartan_string_length(g_curriculum_rung2_path) > 0.0) { p2 = g_curriculum_rung2_path; }
+    if (cartan_file_exists(p2) == 1.0) {
+        geomind_e8_index_corpus_sentence_basins(cartan_read_file(p2), 0.0);
+    }
+    var c_mod = "Projects/geomind/trainingdata/storytelling_chunks/chunk_005_t1_GeoMind_Modern_Narratives.txt";
+    if (cartan_string_length(g_curriculum_chunk_modern_path) > 0.0) { c_mod = g_curriculum_chunk_modern_path; }
+    if (cartan_file_exists(c_mod) == 1.0) {
+        geomind_e8_index_corpus_sentence_basins(cartan_read_file(c_mod), 1.0);
+    }
+    var c_ali = "Projects/geomind/trainingdata/storytelling_chunks/chunk_007_t2_Alice_In_Wonderland.txt";
+    if (cartan_string_length(g_curriculum_chunk_alice_path) > 0.0) { c_ali = g_curriculum_chunk_alice_path; }
+    if (cartan_file_exists(c_ali) == 1.0) {
+        geomind_e8_index_corpus_sentence_basins(cartan_read_file(c_ali), 1.0);
+    }
+    var c_ant = "Projects/geomind/trainingdata/storytelling_chunks/chunk_019_t2_Anthem.txt";
+    if (cartan_string_length(g_curriculum_chunk_anthem_path) > 0.0) { c_ant = g_curriculum_chunk_anthem_path; }
+    if (cartan_file_exists(c_ant) == 1.0) {
+        geomind_e8_index_corpus_sentence_basins(cartan_read_file(c_ant), 1.0);
+    }
+    var c_sh = "Projects/geomind/trainingdata/storytelling_chunks/chunk_028_t3_Sherlock_Holmes.txt";
+    if (cartan_string_length(g_curriculum_chunk_sherlock_path) > 0.0) { c_sh = g_curriculum_chunk_sherlock_path; }
+    if (cartan_file_exists(c_sh) == 1.0) {
+        geomind_e8_index_corpus_sentence_basins(cartan_read_file(c_sh), 1.0);
+    }
+
+    let bin_path = cartan_string_concat(eff_dir, "/geomind_e8_sentence_basins.bin");
+    geomind_e8_sent_basins_save(bin_path);
+    let rel_path = cartan_string_concat(eff_dir, "/geomind_e8_rel_tensors.bin");
+    geomind_e8_rel_save(rel_path);
+    printf("[Sentence Basins] Indexed and saved %.0f basins to %s\n", g_e8_sent_basin_count, bin_path);
+    return g_e8_sent_basin_count;
 }
 

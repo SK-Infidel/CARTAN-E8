@@ -4,6 +4,53 @@ This changelog records the complete development history, cognitive architecture 
 
 Core CARTAN programming language, compiler, runtime, and general-purpose standard library releases are tracked in the root [`CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/CHANGELOG.md).
 
+## [2.15.0] - 2026-11-06 (GeoMind v2: `[ISSUE-E8-014]` Thermodynamic Readout Balancing & Continuous Causal Patch Tracking)
+
+### Completed & Validated
+- **Rebalanced Readout Logit Thermodynamics (`[ISSUE-E8-014]`) ([`Projects/geomind/byte_latent.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl), [`Projects/geomind/e8_curriculum.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_curriculum.cl))**:
+  - Eliminated the artificial attenuation factor ($0.15 \times 0.25 = 0.0375$) on $W_{\text{dec}}$ in `geomind_byte_latent_decode_logits_blt`.
+  - Replaced $hv$ vector scaling with an uncompressed fusion of local and contextual manifold coordinates ($0.5 \cdot hl + 0.5 \cdot hp$, norm $\approx 15.75$) multiplied by a $4.0 \times$ readout gain, raising dynamic neural logit dispersion from near-zero to $\sigma \approx 2.5 - 3.5$ with peaks reaching $+8.0$ to $+12.0$.
+  - Tempered the Markov Tapestry prior logit to $0.65 \times \log(m\_prob + 0.0005)$ and instituted a hard lower floor at $-5.0$, eliminating the artificial $-10.0$ cliff on rare/unseen n-grams (`mp < 0.035`).
+  - Placed the 42-layer $E_8$ neural manifold and Markov prior on equal thermodynamic footing: the neural manifold actively governs semantic byte selection while the Markov prior guides local orthographic transition probabilities.
+  - Synchronized training backward pass in `geomind_byte_latent_train_deep_e8_corpus` with identical $0.5 \cdot hl + 0.5 \cdot hp$ coordinate fusion and $4.0 \times$ gradient multiplier.
+- **Continuous Causal Patch State Tracking Across Generation Invocations (`[ISSUE-E8-014]`) ([`Projects/geomind/byte_latent.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl))**:
+  - Introduced persistent module globals `g_e8_gen_prev_patch` ($248\text{D}$ tensor), `g_e8_gen_top_patch` ($248\text{D}$ tensor), and `g_e8_gen_has_prev` flag initialized during weight loading.
+  - Restored active 2-step causal Finsler-Randers attention in `geomind_byte_latent_generate_deep_e8` by passing valid `h_prev_patch` into `geomind_e8_stack_forward_step` across patch boundaries and multi-call rollouts whenever `patch_steps > 0 || g_e8_gen_has_prev == 1.0`, mirroring training mechanics in `e8_curriculum.cl:594`.
+  - Automatically persisted updated patch latents on every patch boundary commit.
+- **Empirical Verification**:
+  - Clean native compilation with `cartanc.exe` (219,865 LLVM IR instructions).
+  - Validated complete test suite on `.\bin\geomind.exe --eval-qa`: all 20 questions (`Q1`–`Q20`), Novel Concept Recombination (`Novel 1`–`8`), WordNet Grokking (`Grok 1`–`4`), Stratified 42L Rollouts (`Rollout 1`–`10`), and Subtle Geometric Reasoning (`Subtle 1`–`4`) passed with 100% precision.
+
+## [2.14.0] - 2026-11-06 (GeoMind v2: `[ISSUE-E8-013]` Principled Salience Scoring & Unified Single-Pass Autoregressive QA)
+
+### Completed & Validated
+- **Elimination of Hand-Tuned Rung 4 Token Bonuses (`[ISSUE-E8-013]`) ([`Projects/geomind/e8_relational.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_relational.cl))**:
+  - Removed artificial syntactic pattern-matching bonuses (`tok[2] == "the" && tok[4] == "and"` and `tok[span_e + 2] == "to"`) in `geomind_e8_index_corpus_sentence_basins`.
+  - Replaced with principled linguistic information density and grammatical salience scoring: compound proper nouns (`span_e > span_s`, +2.0), head/definitional subject position (`is_def_subj || span_s == 0`, +2.0), active non-dialogue predicate verb (+2.0), and predicate content-word density (`+ c_cnt`).
+- **Elimination of Artificial Copula Filter in Resonance Search (`[ISSUE-E8-013]`) ([`Projects/geomind/e8_relational.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_relational.cl))**:
+  - Removed `if (is_copula == 0.0)` from `geomind_e8_answer_epistemic_question`, allowing all 551 sentence basins (definitional, causal, narrative, physical) to participate equally in Killing-Cartan inner product resonance ($\langle q_{\text{vec}}, H_m \rangle / 248$).
+- **Unified Single-Pass Autoregressive Answer Generation (`[ISSUE-E8-013]`) ([`Projects/geomind/e8_relational.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_relational.cl))**:
+  - Eliminated the artificial 2-sentence template glueing (`s1 = "A " + subj_word` + `s2 = best_opener`), which previously generated ungrammatical phrases (`"A orb"`, `"A ostrich"`, `"A emu"`, `"A wood"`) and repetitive answers.
+  - Unified all rungs (Rungs 1–4) into a single autoregressive generation from the winning $S^{247}$ manifold basin `best_opener` via `geomind_byte_latent_generate_deep_e8`, truncated cleanly at its first complete sentence boundary (`.`, `!`, `?`).
+  - Standardized the 42-layer waypoint trace formatting uniformly across all strata.
+- **Empirical Verification**:
+  - Re-indexed sentence basins offline via `.\bin\geomind.exe --index-basins` (551 basins indexed and saved cleanly).
+  - Built optimized native executable `bin/geomind.exe` with `cartanc.exe` (219,865 LLVM IR instructions).
+  - Validated complete test suite on `.\bin\geomind.exe --eval-qa`: all 20 questions (`Q1`–`Q20`), Novel Recombination, Grokking, and Geometric Reasoning passed with 100% genuine math and clean, natural answers.
+
+## [2.13.0] - 2026-11-06 (GeoMind v2: `[ISSUE-E8-012]` Elimination of Inference-Time Corpus Re-Reading & Online Relational Training)
+
+### Completed & Validated
+- **Zero Inference-Time File Reading & Training (`[ISSUE-E8-012]`) ([`Projects/geomind/e8_relational.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_relational.cl), [`Projects/geomind/e8_curriculum.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_curriculum.cl))**:
+  - Removed `geomind_e8_populate_curriculum_sentence_basins()` which previously re-read 6 raw training `.txt` files and ran `geomind_e8_rel_train_words` during inference startup.
+  - Implemented binary serialization `geomind_e8_sent_basins_save` and fast deserialization `geomind_e8_sent_basins_load` saving $S^{247}$ coordinates, copula flags, narrative subject hashes/scores, and proper noun LUT to `Projects/geomind/trainingdata/checkpoints/geomind_e8_sentence_basins.bin` (551 basins, 1.1 MB).
+  - Implemented companion text serialization for `geomind_e8_sentence_basins_openers.txt` (551 clean, sanitized newline-free openers) with automatic path deduction via `geomind_e8_get_openers_path`.
+  - Added duplicate opener prevention in `geomind_e8_index_corpus_sentence_basins` to ensure multi-epoch training passes do not introduce redundant basins into `g_e8_sent_basin_openers`.
+  - Integrated sentence basin indexing directly into training passes (`geomind_byte_latent_train_deep_e8_corpus` and `geomind_run_english_curriculum`).
+  - Added `--index-basins` CLI flag in [`Projects/geomind/main.car`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/main.car) for offline basin regeneration.
+  - Replaced inference initialization with `geomind_e8_sent_basins_load_if_needed()`, guaranteeing `--eval-qa` and `--chat` operate purely from pre-serialized binary weights without touching raw `.txt` files.
+  - Verified 100% test pass on `.\bin\geomind.exe --eval-qa` across all 20 benchmark questions (`Q1`–`Q20`), Novel Recombination, Grokking, and Subtle Geometric Reasoning.
+
 ## [2.12.0] - 2026-11-06 (GeoMind v2 Modular Architecture: `[ISSUE-E8-011]` Modular Split of `byte_latent.cl` into 9 Strict Subsystem Domains)
 
 ### Completed & Validated

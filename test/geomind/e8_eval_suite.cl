@@ -23,6 +23,7 @@ fn geomind_run_epistemic_eval_suite(num_layers: float) -> float {
     geomind_wordnet_init_if_needed();
     geomind_e8_rel_init_if_needed();
     geomind_e8_anchors_init_if_needed();
+    geomind_e8_sent_basins_load_if_needed();
 
     printf("--------------------------------------------------------------------------------\n");
     printf("  NOVEL CONCEPT RECOMBINATION TEST (Unseen Prefixes Bridging Shared Word Hubs)\n");

@@ -1395,7 +1395,8 @@ fn geomind_e8_index_corpus_sentence_basins(corpus: string, train_narr_rels: floa
                     }
                     let op_start = cartan_vec_get_f32(s_w_starts, 0.0);
                     let op_end = cartan_vec_get_f32(s_w_ends, k_open);
-                    let opener_str = cartan_string_substring(corpus, op_start, op_end);
+                    let raw_opener = cartan_string_substring(corpus, op_start, op_end);
+                    let opener_str = cartan_string_replace(cartan_string_replace(raw_opener, "\r", " "), "\n", " ");
 
                     // Build 248-D S^{247} Sentence Superposition Vector H_m from unique content words
                     d = 0.0;
@@ -1440,17 +1441,28 @@ fn geomind_e8_index_corpus_sentence_basins(corpus: string, train_narr_rels: floa
                     cartan_vec_free(uniq_h);
 
                     if (n_uniq > 0.0) {
-                        let norm_sc = 1.0 / exp(0.35 * log(n_uniq));
-                        let m_idx = g_e8_sent_basin_count;
-                        let m_base = m_idx * 248.0;
-                        d = 0.0;
-                        while (d < 248.0) {
-                            cartan_vec_set_f32(g_e8_sent_basin_vecs, m_base + d, cartan_vec_get_f32(h_sent, d) * norm_sc);
-                            d = d + 1.0;
+                        var already_indexed = 0.0;
+                        var oi = 0.0;
+                        while (oi < g_e8_sent_basin_count) {
+                            if (cartan_string_eq(cartan_tree_get(g_e8_sent_basin_openers, oi), opener_str) == 1.0) {
+                                already_indexed = 1.0;
+                                break;
+                            }
+                            oi = oi + 1.0;
                         }
-                        cartan_vec_set_f32(g_e8_sent_basin_is_copula, m_idx, is_cop);
-                        cartan_tree_push(g_e8_sent_basin_openers, opener_str);
-                        g_e8_sent_basin_count = g_e8_sent_basin_count + 1.0;
+                        if (already_indexed == 0.0 && g_e8_sent_basin_count < 2048.0) {
+                            let norm_sc = 1.0 / exp(0.35 * log(n_uniq));
+                            let m_idx = g_e8_sent_basin_count;
+                            let m_base = m_idx * 248.0;
+                            d = 0.0;
+                            while (d < 248.0) {
+                                cartan_vec_set_f32(g_e8_sent_basin_vecs, m_base + d, cartan_vec_get_f32(h_sent, d) * norm_sc);
+                                d = d + 1.0;
+                            }
+                            cartan_vec_set_f32(g_e8_sent_basin_is_copula, m_idx, is_cop);
+                            cartan_tree_push(g_e8_sent_basin_openers, opener_str);
+                            g_e8_sent_basin_count = g_e8_sent_basin_count + 1.0;
+                        }
                     }
 
                     // Autonomous Rung 4 Narrative Subject & Predicate Relational Training
@@ -1527,22 +1539,15 @@ fn geomind_e8_index_corpus_sentence_basins(corpus: string, train_narr_rels: floa
 
                             if (c_cnt >= 2.0) {
                                 var narr_score = 1.0;
-                                if (span_e > span_s) { narr_score = narr_score + 3.0; }
-                                if (is_def_subj == 1.0) { narr_score = narr_score + 4.0; }
+                                if (span_e > span_s) { narr_score = narr_score + 2.0; }
+                                if (is_def_subj == 1.0 || span_s == 0.0) { narr_score = narr_score + 2.0; }
                                 let nxt_w = cartan_tree_get(s_low_toks, span_e + 1.0);
                                 if (cartan_string_length(nxt_w) >= 4.0 && geomind_e8_is_qa_stopword(nxt_w) == 0.0 &&
                                     cartan_string_eq(nxt_w, "said") == 0.0 && cartan_string_eq(nxt_w, "asked") == 0.0 &&
                                     cartan_string_eq(nxt_w, "thought") == 0.0 && cartan_string_eq(nxt_w, "replied") == 0.0) {
-                                    narr_score = narr_score + 3.0;
+                                    narr_score = narr_score + 2.0;
                                 }
-                                if ((span_e + 3.0) < n_stoks && cartan_string_eq(cartan_tree_get(s_low_toks, span_e + 2.0), "to") == 1.0) {
-                                    narr_score = narr_score + 4.0;
-                                }
-                                if (span_e == 0.0 && (span_e + 5.0) < n_stoks &&
-                                    cartan_string_eq(cartan_tree_get(s_low_toks, 2.0), "the") == 1.0 &&
-                                    cartan_string_eq(cartan_tree_get(s_low_toks, 4.0), "and") == 1.0) {
-                                    narr_score = narr_score + 5.0;
-                                }
+                                narr_score = narr_score + c_cnt;
 
                                 if (narr_score >= 4.0 && geomind_e8_narr_subj_check_update(u_hash, narr_score) == 1.0) {
                                     var prop_t = c0;
@@ -1582,36 +1587,158 @@ fn geomind_e8_index_corpus_sentence_basins(corpus: string, train_narr_rels: floa
     cartan_vec_free(h_sent);
 }
 
-fn geomind_e8_populate_curriculum_sentence_basins() {
-    geomind_e8_sent_basins_init_if_needed();
-    if (g_e8_sent_basins_indexed == 1.0 && g_e8_sent_basin_count > 0.0) { return; }
-    geomind_e8_sent_basins_reset();
+fn geomind_e8_get_openers_path(bin_path: string) -> string {
+    let p_len = cartan_string_length(bin_path);
+    if (p_len > 4.0) {
+        let suffix = cartan_string_substring(bin_path, p_len - 4.0, p_len);
+        if (cartan_string_eq(suffix, ".bin") == 1.0) {
+            let stem = cartan_string_substring(bin_path, 0.0, p_len - 4.0);
+            return cartan_string_concat(stem, "_openers.txt");
+        }
+    }
+    return cartan_string_concat(bin_path, "_openers.txt");
+}
 
-    let p1 = "Projects/geomind/trainingdata/e8_nursery_primer.txt";
-    if (cartan_file_exists(p1) == 1.0) {
-        geomind_e8_index_corpus_sentence_basins(cartan_read_file(p1), 0.0);
+fn geomind_e8_sent_basins_save(path: string) -> float {
+    geomind_e8_sent_basins_init_if_needed();
+    if (path == 0.0 || g_e8_sent_basin_count <= 0.0) { return 0.0; }
+    let f = fopen(path, "wb");
+    if (f == 0.0) { return 0.0; }
+    let cnt = g_e8_sent_basin_count;
+    let total_elems = 1.0 + cnt + cnt * 248.0 + 256.0 + 256.0 + 512.0;
+    let buf = malloc(total_elems * 8.0);
+    if (buf == 0.0) { fclose(f); return 0.0; }
+
+    buf[0.0] = cnt;
+    var i = 0.0;
+    while (i < cnt) {
+        buf[1.0 + i] = cartan_vec_get_f32(g_e8_sent_basin_is_copula, i);
+        i = i + 1.0;
     }
-    let p2 = "Projects/geomind/trainingdata/e8_concept_triples.txt";
-    if (cartan_file_exists(p2) == 1.0) {
-        geomind_e8_index_corpus_sentence_basins(cartan_read_file(p2), 0.0);
+    i = 0.0;
+    let coord_base = 1.0 + cnt;
+    while (i < cnt * 248.0) {
+        buf[coord_base + i] = cartan_vec_get_f32(g_e8_sent_basin_vecs, i);
+        i = i + 1.0;
     }
-    let c_mod = "Projects/geomind/trainingdata/storytelling_chunks/chunk_005_t1_GeoMind_Modern_Narratives.txt";
-    if (cartan_file_exists(c_mod) == 1.0) {
-        geomind_e8_index_corpus_sentence_basins(cartan_read_file(c_mod), 1.0);
+    i = 0.0;
+    let narr_h_base = coord_base + cnt * 248.0;
+    while (i < 256.0) {
+        buf[narr_h_base + i] = cartan_vec_get_f32(g_e8_narr_subj_hashes, i);
+        i = i + 1.0;
     }
-    let c_ali = "Projects/geomind/trainingdata/storytelling_chunks/chunk_007_t2_Alice_In_Wonderland.txt";
-    if (cartan_file_exists(c_ali) == 1.0) {
-        geomind_e8_index_corpus_sentence_basins(cartan_read_file(c_ali), 1.0);
+    i = 0.0;
+    let narr_sc_base = narr_h_base + 256.0;
+    while (i < 256.0) {
+        buf[narr_sc_base + i] = cartan_vec_get_f32(g_e8_narr_subj_scores, i);
+        i = i + 1.0;
     }
-    let c_ant = "Projects/geomind/trainingdata/storytelling_chunks/chunk_019_t2_Anthem.txt";
-    if (cartan_file_exists(c_ant) == 1.0) {
-        geomind_e8_index_corpus_sentence_basins(cartan_read_file(c_ant), 1.0);
+    i = 0.0;
+    let prop_base = narr_sc_base + 256.0;
+    while (i < 512.0) {
+        buf[prop_base + i] = cartan_vec_get_f32(g_e8_proper_noun_lut, i);
+        i = i + 1.0;
     }
-    let c_sh = "Projects/geomind/trainingdata/storytelling_chunks/chunk_028_t3_Sherlock_Holmes.txt";
-    if (cartan_file_exists(c_sh) == 1.0) {
-        geomind_e8_index_corpus_sentence_basins(cartan_read_file(c_sh), 1.0);
+    fwrite(buf, 8.0, total_elems, f);
+    fclose(f);
+    free(buf);
+
+    let op_path = geomind_e8_get_openers_path(path);
+    let of = fopen(op_path, "wb");
+    if (of != 0.0) {
+        var oi = 0.0;
+        while (oi < cnt) {
+            let op_str = cartan_tree_get(g_e8_sent_basin_openers, oi);
+            let op_clean = cartan_string_replace(cartan_string_replace(op_str, "\r", " "), "\n", " ");
+            let op_line = cartan_string_concat(op_clean, "\n");
+            fwrite(op_line, 1.0, cartan_string_length(op_line), of);
+            oi = oi + 1.0;
+        }
+        fclose(of);
+    }
+    return 1.0;
+}
+
+fn geomind_e8_sent_basins_load(path: string) -> float {
+    geomind_e8_sent_basins_init_if_needed();
+    if (path == 0.0 || cartan_file_exists(path) == 0.0) { return 0.0; }
+    let f_sz = cartan_get_binary_file_size(path);
+    if (f_sz < 16.0) { return 0.0; }
+    let f = fopen(path, "rb");
+    if (f == 0.0) { return 0.0; }
+    let hdr = malloc(8.0);
+    fread(hdr, 8.0, 1.0, f);
+    let cnt = hdr[0.0];
+    free(hdr);
+    if (cnt <= 0.0 || cnt > 2048.0) { fclose(f); return 0.0; }
+    let total_elems = 1.0 + cnt + cnt * 248.0 + 256.0 + 256.0 + 512.0;
+    if (f_sz < total_elems * 8.0) { fclose(f); return 0.0; }
+    fclose(f);
+
+    let f2 = fopen(path, "rb");
+    if (f2 == 0.0) { return 0.0; }
+    let buf = malloc(total_elems * 8.0);
+    if (buf == 0.0) { fclose(f2); return 0.0; }
+    fread(buf, 8.0, total_elems, f2);
+    fclose(f2);
+
+    geomind_e8_sent_basins_reset();
+    g_e8_sent_basin_count = cnt;
+    var i = 0.0;
+    while (i < cnt) {
+        cartan_vec_set_f32(g_e8_sent_basin_is_copula, i, buf[1.0 + i]);
+        i = i + 1.0;
+    }
+    i = 0.0;
+    let coord_base = 1.0 + cnt;
+    while (i < cnt * 248.0) {
+        cartan_vec_set_f32(g_e8_sent_basin_vecs, i, buf[coord_base + i]);
+        i = i + 1.0;
+    }
+    i = 0.0;
+    let narr_h_base = coord_base + cnt * 248.0;
+    while (i < 256.0) {
+        cartan_vec_set_f32(g_e8_narr_subj_hashes, i, buf[narr_h_base + i]);
+        i = i + 1.0;
+    }
+    i = 0.0;
+    let narr_sc_base = narr_h_base + 256.0;
+    while (i < 256.0) {
+        cartan_vec_set_f32(g_e8_narr_subj_scores, i, buf[narr_sc_base + i]);
+        i = i + 1.0;
+    }
+    i = 0.0;
+    let prop_base = narr_sc_base + 256.0;
+    while (i < 512.0) {
+        cartan_vec_set_f32(g_e8_proper_noun_lut, i, buf[prop_base + i]);
+        i = i + 1.0;
+    }
+    free(buf);
+
+    let op_path = geomind_e8_get_openers_path(path);
+    if (cartan_file_exists(op_path) == 1.0) {
+        let op_txt = cartan_read_file(op_path);
+        let op_lines = string_split(op_txt, "\n");
+        let n_lines = cartan_tree_len_f(op_lines);
+        g_e8_sent_basin_openers = cartan_tree_create();
+        var oi = 0.0;
+        while (oi < n_lines && oi < cnt) {
+            let lop = cartan_string_replace(cartan_tree_get(op_lines, oi), "\r", "");
+            cartan_tree_push(g_e8_sent_basin_openers, lop);
+            oi = oi + 1.0;
+        }
     }
     g_e8_sent_basins_indexed = 1.0;
+    return g_e8_sent_basin_count;
+}
+
+fn geomind_e8_sent_basins_load_if_needed() {
+    geomind_e8_sent_basins_init_if_needed();
+    if (g_e8_sent_basins_indexed == 1.0 && g_e8_sent_basin_count > 0.0) { return; }
+    let default_path = "Projects/geomind/trainingdata/checkpoints/geomind_e8_sentence_basins.bin";
+    if (cartan_file_exists(default_path) == 1.0) {
+        geomind_e8_sent_basins_load(default_path);
+    }
 }
 
 // Helper: fold a word (and any registered morphological stem variants in `g_e8_vocab_words`) into `q_vec_248`
@@ -1653,7 +1780,7 @@ fn geomind_e8_fold_query_word_248(word_low: string, weight: float, q_vec_248: pt
 //    `geomind_byte_latent_generate_deep_e8` from the winning basin's opener (even when the queried entity appears mid-sentence).
 fn geomind_e8_answer_epistemic_question(question_str: string) -> string {
     geomind_wordnet_init_if_needed();
-    geomind_e8_populate_curriculum_sentence_basins();
+    geomind_e8_sent_basins_load_if_needed();
     // Reset cross-turn episodic refractory ring buffer so independent QA queries do not suppress canonical edges:
     if (g_e8_episodic_ref_w1 != 0.0) {
         var er_clr = 0.0;
@@ -1841,43 +1968,50 @@ fn geomind_e8_answer_epistemic_question(question_str: string) -> string {
     var best_opener = cartan_string_concat("The ", subj_word);
     var m = 0.0;
     while (m < g_e8_sent_basin_count) {
-        if (cartan_vec_get_f32(g_e8_sent_basin_is_copula, m) == 0.0) {
-            let m_base = m * 248.0;
-            var dot_m = 0.0;
-            d = 0.0;
-            while (d < 248.0) {
-                dot_m = dot_m + cartan_vec_get_f32(q_vec_248, d) * cartan_vec_get_f32(g_e8_sent_basin_vecs, m_base + d);
-                d = d + 1.0;
-            }
-            let sim_m = dot_m / 248.0;
-            if (sim_m > best_basin_sim) {
-                best_basin_sim = sim_m;
-                best_opener = cartan_tree_get(g_e8_sent_basin_openers, m);
-            }
+        let m_base = m * 248.0;
+        var dot_m = 0.0;
+        d = 0.0;
+        while (d < 248.0) {
+            dot_m = dot_m + cartan_vec_get_f32(q_vec_248, d) * cartan_vec_get_f32(g_e8_sent_basin_vecs, m_base + d);
+            d = d + 1.0;
+        }
+        let sim_m = dot_m / 248.0;
+        if (sim_m > best_basin_sim) {
+            best_basin_sim = sim_m;
+            best_opener = cartan_tree_get(g_e8_sent_basin_openers, m);
         }
         m = m + 1.0;
     }
 
-    var ans = "";
+    let gen_raw = geomind_byte_latent_generate_deep_e8(best_opener, 42.0, 240.0);
+    let s_ans = geomind_truncate_sentences(gen_raw, 1.0);
+
     let subj_tag = cartan_string_concat(subj_word, cartan_string_concat("(", cartan_string_concat(w_prop, ")")));
-    if (r7 == 0.0 && r14 == 0.0) {
-        let s1 = geomind_truncate_sentences(geomind_byte_latent_generate_deep_e8(best_opener, 42.0, 240.0), 1.0);
-        var narr_tag = cartan_string_concat(w_L21, cartan_string_concat("->", w_L28));
-        if (r35 > 0.0 || r42 > 0.0) {
-            narr_tag = cartan_string_concat(narr_tag, cartan_string_concat(" | ", cartan_string_concat(w_L35, cartan_string_concat("->", w_L42))));
-        }
-        ans = cartan_string_concat(s1, cartan_string_concat(" [42L Waypoints: ", cartan_string_concat(subj_tag, cartan_string_concat("->", cartan_string_concat(narr_tag, "]")))));
-    } else {
-        // Sentence 1: Lower-Stratum Taxonomic & Property Rollout (L0 -> L7 -> L14 + L21_prop)
-        let s1 = geomind_truncate_sentences(geomind_byte_latent_generate_deep_e8(cartan_string_concat("A ", subj_word), 42.0, 96.0), 1.0);
-        // Sentence 2: Upper-Stratum Capability, Affordance, Contextual Physics, or Causal Rollout from S^{247} Sentence Basin
-        let s2 = geomind_truncate_sentences(geomind_byte_latent_generate_deep_e8(best_opener, 42.0, 96.0), 1.0);
-        var upper_tag = cartan_string_concat(w_L21, cartan_string_concat("->", w_L28));
-        if (r42 > 0.0) {
-            upper_tag = cartan_string_concat(upper_tag, cartan_string_concat(" | ", cartan_string_concat(w_L35, cartan_string_concat("->", w_L42))));
-        }
-        ans = cartan_string_concat(s1, cartan_string_concat(" ", cartan_string_concat(s2, cartan_string_concat(" [42L Waypoints: ", cartan_string_concat(subj_tag, cartan_string_concat("->", cartan_string_concat(w_L7, cartan_string_concat("->", cartan_string_concat(w_L14, cartan_string_concat(" | ", cartan_string_concat(upper_tag, "]")))))))))));
+    var wp_tag = subj_tag;
+    if (r7 > 0.0) {
+        wp_tag = cartan_string_concat(wp_tag, cartan_string_concat("->", w_L7));
     }
+    if (r14 > 0.0) {
+        wp_tag = cartan_string_concat(wp_tag, cartan_string_concat("->", w_L14));
+    }
+    var upper_tag = "";
+    if (r21 > 0.0 && r28 > 0.0) {
+        upper_tag = cartan_string_concat(w_L21, cartan_string_concat("->", w_L28));
+    }
+    if (r35 > 0.0 || r42 > 0.0) {
+        if (cartan_string_length(upper_tag) > 0.0) {
+            upper_tag = cartan_string_concat(upper_tag, " | ");
+        }
+        upper_tag = cartan_string_concat(upper_tag, cartan_string_concat(w_L35, cartan_string_concat("->", w_L42)));
+    }
+    if (cartan_string_length(upper_tag) > 0.0) {
+        if (r7 > 0.0 || r14 > 0.0) {
+            wp_tag = cartan_string_concat(wp_tag, cartan_string_concat(" | ", upper_tag));
+        } else {
+            wp_tag = cartan_string_concat(wp_tag, cartan_string_concat("->", upper_tag));
+        }
+    }
+    let ans = cartan_string_concat(s_ans, cartan_string_concat(" [42L Waypoints: ", cartan_string_concat(wp_tag, "]")));
 
     cartan_vec_free(q_hashes);
     cartan_vec_free(q_is_cap);

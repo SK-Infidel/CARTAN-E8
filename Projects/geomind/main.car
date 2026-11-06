@@ -68,6 +68,9 @@ fn print_help_dialogue() -> float {
     printf("  --sleep         Run Autonomous Metacognitive Sleep memory consolidation\n");
     printf("  --train-webgpu  Run pure native CARTAN WebGPU Causal Training Engine\n");
     printf("  --byte-latent   Run 248-D E8 Tokenizer-Free Byte-Latent + Markov-Lagrangian Engine (-target <file>, -prompt <text>, --visualize)\n");
+    printf("  --curriculum    Run 4-Rung Concentric English Storytelling Curriculum (-layers <N>, -lr <float>)\n");
+    printf("  --eval-qa       Run 21-Question Epistemic & Subtle Geometric Evaluation Suite (-layers <N>)\n");
+    printf("  --index-basins  Pre-index and serialize S^{247} sentence basins and relational operators into checkpoints/\n");
     printf("  --crawl <url>   Run Autonomous Domain-Bounded Recursive Web Crawler (--recurse, --max-depth <N>, -epochs <N>, --visualize)\n");
     printf("  --extract-alignment-vector Extract 5-rank orthonormal alignment subspace {u_syc, u_per, u_ref, u_disc, u_care} with C_en orthogonalization\n");
     printf("  --help, -h      Display this help dialogue and exit\n\n");
@@ -185,6 +188,7 @@ fn is_explicit_non_chat_mode(flag: string) -> float {
     if (cartan_string_eq(flag, "--byte-latent") == 1.0 || cartan_string_eq(flag, "-byte-latent") == 1.0) { return 1.0; }
     if (cartan_string_eq(flag, "--curriculum") == 1.0 || cartan_string_eq(flag, "-curriculum") == 1.0) { return 1.0; }
     if (cartan_string_eq(flag, "--eval-qa") == 1.0 || cartan_string_eq(flag, "-eval-qa") == 1.0) { return 1.0; }
+    if (cartan_string_eq(flag, "--index-basins") == 1.0 || cartan_string_eq(flag, "-index-basins") == 1.0) { return 1.0; }
     if (cartan_string_eq(flag, "--crawl") == 1.0 || cartan_string_eq(flag, "-crawl") == 1.0) { return 1.0; }
     return 0.0;
 }
@@ -1560,6 +1564,11 @@ fn main() -> float {
         if (cartan_string_eq(flag, "--eval-qa") == 1.0 || cartan_string_eq(flag, "-eval-qa") == 1.0) {
             let layers = get_cli_param_float("-layers", arg_count, 42.0);
             geomind_run_epistemic_eval_suite(layers);
+            cartan_flush(0.0);
+            return 0.0;
+        }
+        if (cartan_string_eq(flag, "--index-basins") == 1.0 || cartan_string_eq(flag, "-index-basins") == 1.0) {
+            geomind_e8_populate_and_save_sentence_basins(g_curriculum_checkpoint_dir);
             cartan_flush(0.0);
             return 0.0;
         }

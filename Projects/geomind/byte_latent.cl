@@ -39,6 +39,9 @@ var g_e8_langevin_phase: float = 0.0;
 var g_e8_langevin_temp: float = 0.28;
 var g_byte_e8_initialized: float = 0.0;
 var g_byte_latent_coast_count: float = 0.0;
+var g_e8_gen_prev_patch: ptr = 0.0;
+var g_e8_gen_top_patch: ptr = 0.0;
+var g_e8_gen_has_prev: float = 0.0;
 
 
 // ============================================================================
@@ -89,6 +92,8 @@ fn geomind_byte_latent_load_weights(path: string) -> float {
     if (g_byte_e8_head_248x256 == 0.0) { g_byte_e8_head_248x256 = cartan_tensor_alloc(63488.0); }
     if (g_byte_e8_randers_b_248 == 0.0) { g_byte_e8_randers_b_248 = cartan_tensor_alloc(248.0); }
     if (g_blt_decode_hv_248 == 0.0) { g_blt_decode_hv_248 = cartan_tensor_alloc(248.0); }
+    if (g_e8_gen_prev_patch == 0.0) { g_e8_gen_prev_patch = cartan_tensor_alloc(248.0); }
+    if (g_e8_gen_top_patch == 0.0) { g_e8_gen_top_patch = cartan_tensor_alloc(248.0); }
     if (g_e8_episodic_ref_w1 == 0.0) {
         g_e8_episodic_ref_w1 = cartan_tensor_alloc(32.0);
         g_e8_episodic_ref_byte = cartan_tensor_alloc(32.0);
@@ -133,6 +138,8 @@ fn geomind_byte_latent_init_if_needed() -> float {
     if (g_byte_e8_head_248x256 == 0.0) { g_byte_e8_head_248x256 = cartan_tensor_alloc(63488.0); }
     if (g_byte_e8_randers_b_248 == 0.0) { g_byte_e8_randers_b_248 = cartan_tensor_alloc(248.0); }
     if (g_blt_decode_hv_248 == 0.0) { g_blt_decode_hv_248 = cartan_tensor_alloc(248.0); }
+    if (g_e8_gen_prev_patch == 0.0) { g_e8_gen_prev_patch = cartan_tensor_alloc(248.0); }
+    if (g_e8_gen_top_patch == 0.0) { g_e8_gen_top_patch = cartan_tensor_alloc(248.0); }
     if (g_e8_episodic_ref_w1 == 0.0) {
         g_e8_episodic_ref_w1 = cartan_tensor_alloc(32.0);
         g_e8_episodic_ref_byte = cartan_tensor_alloc(32.0);
@@ -378,7 +385,7 @@ fn geomind_byte_latent_decode_logits_blt(
     }
 
     // Hoist the 248-D Local + Patch state fusion outside the 256-byte readout loop (eliminates 96 x 248 redundant multiply-adds per byte)
-    // Scale by 0.15 so S^{247}(\sqrt{248}) states produce unit-scale E8 readout dot products matching log(m_prob) at a true 1:1 ratio:
+    // S^{247}(\sqrt{248}) states produce natural unsuppressed E8 readout dot products matching log(m_prob) on equal thermodynamic footing:
     var d_pre = 0.0;
     while (d_pre < 248.0) {
         let hl = cartan_vec_get_f32(h_local_248, d_pre);
@@ -386,7 +393,11 @@ fn geomind_byte_latent_decode_logits_blt(
         if (h_patch_248 != 0.0) {
             hp = cartan_vec_get_f32(h_patch_248, d_pre);
         }
-        cartan_vec_set_f32(g_blt_decode_hv_248, d_pre, 0.15 * hl + 0.15 * hp);
+        var hv_val = hl;
+        if (h_patch_248 != 0.0) {
+            hv_val = 0.5 * hl + 0.5 * hp;
+        }
+        cartan_vec_set_f32(g_blt_decode_hv_248, d_pre, hv_val);
         d_pre = d_pre + 1.0;
     }
 
@@ -402,7 +413,9 @@ fn geomind_byte_latent_decode_logits_blt(
                 d = d + 1.0;
             }
             let m_prob = geomind_markov_get_3gram_prob_fast(b1, c, c_idx, tot3, w1_idx, tot_w1, w2_idx, tot_w2, w3_idx, tot_w3);
-            cartan_vec_set_f32(out_logits_256, c, sum * 1.00 + 1.00 * log(m_prob + 0.00001));
+            var m_logit = 0.65 * log(m_prob + 0.0005);
+            if (m_logit < -5.0) { m_logit = -5.0; }
+            cartan_vec_set_f32(out_logits_256, c, sum * 4.0 + m_logit);
         } else {
             cartan_vec_set_f32(out_logits_256, c, -35.0);
         }
@@ -441,6 +454,14 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
         cartan_vec_push_f32(emb_vec, 0.0);
         cartan_vec_push_f32(vel_vec, 0.0);
         d = d + 1.0;
+    }
+    if (g_e8_gen_has_prev == 1.0) {
+        d = 0.0;
+        while (d < 248.0) {
+            cartan_vec_set_f32(h_prev_patch, d, cartan_vec_get_f32(g_e8_gen_prev_patch, d));
+            cartan_vec_set_f32(h_top_patch, d, cartan_vec_get_f32(g_e8_gen_top_patch, d));
+            d = d + 1.0;
+        }
     }
     var c = 0.0;
     while (c < 256.0) {
@@ -525,11 +546,15 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
                 d = d + 1.0;
             }
             var prev_patch_ptr: ptr = 0.0;
-            if (patch_steps > 0.0) { prev_patch_ptr = h_prev_patch; }
+            if (patch_steps > 0.0 || g_e8_gen_has_prev == 1.0) { prev_patch_ptr = h_prev_patch; }
             let mv = geomind_markov_get_prob(b2, cur_b);
             geomind_e8_stack_forward_step(h_patch_accum, prev_patch_ptr, mv, 0.85, h_top_patch);
+            patch_steps = patch_steps + 1.0;
+            g_e8_gen_has_prev = 1.0;
             d = 0.0;
             while (d < 248.0) {
+                cartan_vec_set_f32(g_e8_gen_prev_patch, d, cartan_vec_get_f32(h_prev_patch, d));
+                cartan_vec_set_f32(g_e8_gen_top_patch, d, cartan_vec_get_f32(h_top_patch, d));
                 cartan_vec_set_f32(h_patch_accum, d, 0.0);
                 d = d + 1.0;
             }
@@ -699,12 +724,15 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
                 d = d + 1.0;
             }
             var prev_patch_ptr2: ptr = 0.0;
-            if (patch_steps > 0.0) { prev_patch_ptr2 = h_prev_patch; }
+            if (patch_steps > 0.0 || g_e8_gen_has_prev == 1.0) { prev_patch_ptr2 = h_prev_patch; }
             let mv_step = geomind_markov_get_prob(b2, cur_b);
             geomind_e8_stack_forward_step(h_patch_accum, prev_patch_ptr2, mv_step, 0.85, h_top_patch);
             patch_steps = patch_steps + 1.0;
+            g_e8_gen_has_prev = 1.0;
             d = 0.0;
             while (d < 248.0) {
+                cartan_vec_set_f32(g_e8_gen_prev_patch, d, cartan_vec_get_f32(h_prev_patch, d));
+                cartan_vec_set_f32(g_e8_gen_top_patch, d, cartan_vec_get_f32(h_top_patch, d));
                 cartan_vec_set_f32(h_patch_accum, d, 0.0);
                 d = d + 1.0;
             }
