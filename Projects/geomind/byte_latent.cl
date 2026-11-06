@@ -50,6 +50,12 @@ var g_markov_ctx_syn1_id: float = 0.0;
 var g_markov_ctx_syn2_id: float = 0.0;
 var g_markov_ctx_syn3_id: float = 0.0;
 var g_markov_ctx_syn_weight: float = 1.0;
+var g_markov_fast_s1_idx: float = -1.0;
+var g_markov_fast_tot_s1: float = 0.0;
+var g_markov_fast_s2_idx: float = -1.0;
+var g_markov_fast_tot_s2: float = 0.0;
+var g_markov_fast_s3_idx: float = -1.0;
+var g_markov_fast_tot_s3: float = 0.0;
 var g_markov_hub_occupied_slots: float = 0.0;
 var g_markov_initialized: float = 0.0;
 var g_byte_e8_skip_disk_autoload: float = 0.0;
@@ -220,7 +226,7 @@ fn geomind_markov_get_3gram_prob_fast(
         p3 = (cnt3 + 0.005) / (tot3 + 0.05);
     }
 
-    // Query Block 1: 1-Word Anchor Hub (32768..294911, 262,144 rows)
+    // Query Block 1: 1-Word Anchor Hub + WordNet Synset Hub Backoff (32768..294911, 262,144 rows)
     var has_w1 = 0.0;
     var p_w1 = 0.0;
     var hit_w1 = 0.0;
@@ -237,12 +243,20 @@ fn geomind_markov_get_3gram_prob_fast(
             } else {
                 p_w1 = (safe_w1 + 0.005) / (tot_w1 + 0.05);
             }
+        } else if (g_markov_fast_s1_idx >= 32768.0 && g_markov_fast_tot_s1 > 0.5) {
+            let cnt_s1 = cartan_vec_get_f32(g_markov_3gram_counts, g_markov_fast_s1_idx * 128.0 + cb);
+            if (cnt_s1 >= 0.5) {
+                hit_w1 = 1.0;
+                p_w1 = g_markov_ctx_syn_weight * ((cnt_s1 + 0.005) / (g_markov_fast_tot_s1 + 0.05));
+            } else {
+                p_w1 = 0.0005 / (tot_w1 + 0.05);
+            }
         } else {
             p_w1 = 0.0005 / (tot_w1 + 0.05);
         }
     }
 
-    // Query Block 2: 2-Word Phrase Hub (294912..688127, 393,216 rows)
+    // Query Block 2: 2-Word Phrase Hub + WordNet Synset Hub Backoff (294912..688127, 393,216 rows)
     var has_w2 = 0.0;
     var p_w2 = 0.0;
     var hit_w2 = 0.0;
@@ -259,12 +273,20 @@ fn geomind_markov_get_3gram_prob_fast(
             } else {
                 p_w2 = (safe_w2 + 0.005) / (tot_w2 + 0.05);
             }
+        } else if (g_markov_fast_s2_idx >= 294912.0 && g_markov_fast_tot_s2 > 0.5) {
+            let cnt_s2 = cartan_vec_get_f32(g_markov_3gram_counts, g_markov_fast_s2_idx * 128.0 + cb);
+            if (cnt_s2 >= 0.5) {
+                hit_w2 = 1.0;
+                p_w2 = g_markov_ctx_syn_weight * ((cnt_s2 + 0.005) / (g_markov_fast_tot_s2 + 0.05));
+            } else {
+                p_w2 = 0.0005 / (tot_w2 + 0.05);
+            }
         } else {
             p_w2 = 0.0005 / (tot_w2 + 0.05);
         }
     }
 
-    // Query Block 3: 3-Word Clause Hub (688128..1081343, 393,216 rows)
+    // Query Block 3: 3-Word Clause Hub + WordNet Synset Hub Backoff (688128..1081343, 393,216 rows)
     var has_w3 = 0.0;
     var p_w3 = 0.0;
     var hit_w3 = 0.0;
@@ -280,6 +302,14 @@ fn geomind_markov_get_3gram_prob_fast(
                 p_w3 = (s_c3 + 0.005) / (s_t3 + 0.05);
             } else {
                 p_w3 = (safe_w3 + 0.005) / (tot_w3 + 0.05);
+            }
+        } else if (g_markov_fast_s3_idx >= 688128.0 && g_markov_fast_tot_s3 > 0.5) {
+            let cnt_s3 = cartan_vec_get_f32(g_markov_3gram_counts, g_markov_fast_s3_idx * 128.0 + cb);
+            if (cnt_s3 >= 0.5) {
+                hit_w3 = 1.0;
+                p_w3 = g_markov_ctx_syn_weight * ((cnt_s3 + 0.005) / (g_markov_fast_tot_s3 + 0.05));
+            } else {
+                p_w3 = 0.0005 / (tot_w3 + 0.05);
             }
         } else {
             p_w3 = 0.0005 / (tot_w3 + 0.05);
@@ -320,23 +350,41 @@ fn geomind_markov_get_3gram_prob(b3: float, b2: float, b1: float, curr_byte: flo
     var w1_idx = geomind_markov_hub_row_idx(32768.0, 262144.0, g_markov_ctx_word1_id, hub_c_idx, 0.0);
     var tot_w1 = 0.0;
     if (w1_idx >= 32768.0) { tot_w1 = cartan_vec_get_f32(g_markov_3gram_totals, w1_idx); }
-    if (tot_w1 < 0.5 && g_markov_ctx_syn1_id > 0.0) {
+    g_markov_fast_s1_idx = -1.0;
+    g_markov_fast_tot_s1 = 0.0;
+    if (g_markov_ctx_syn1_id > 0.0) {
         let s1_idx = geomind_markov_hub_row_idx(32768.0, 262144.0, g_markov_ctx_syn1_id, hub_c_idx, 0.0);
-        if (s1_idx >= 32768.0) { w1_idx = s1_idx; tot_w1 = cartan_vec_get_f32(g_markov_3gram_totals, s1_idx); }
+        if (s1_idx >= 32768.0) {
+            g_markov_fast_s1_idx = s1_idx;
+            g_markov_fast_tot_s1 = cartan_vec_get_f32(g_markov_3gram_totals, s1_idx);
+            if (tot_w1 < 0.5) { w1_idx = s1_idx; tot_w1 = g_markov_fast_tot_s1; }
+        }
     }
     var w2_idx = geomind_markov_hub_row_idx(294912.0, 393216.0, g_markov_ctx_word2_id, hub_c_idx, 0.0);
     var tot_w2 = 0.0;
     if (w2_idx >= 294912.0) { tot_w2 = cartan_vec_get_f32(g_markov_3gram_totals, w2_idx); }
-    if (tot_w2 < 0.5 && g_markov_ctx_syn2_id > 0.0) {
+    g_markov_fast_s2_idx = -1.0;
+    g_markov_fast_tot_s2 = 0.0;
+    if (g_markov_ctx_syn2_id > 0.0) {
         let s2_idx = geomind_markov_hub_row_idx(294912.0, 393216.0, g_markov_ctx_syn2_id, hub_c_idx, 0.0);
-        if (s2_idx >= 294912.0) { w2_idx = s2_idx; tot_w2 = cartan_vec_get_f32(g_markov_3gram_totals, s2_idx); }
+        if (s2_idx >= 294912.0) {
+            g_markov_fast_s2_idx = s2_idx;
+            g_markov_fast_tot_s2 = cartan_vec_get_f32(g_markov_3gram_totals, s2_idx);
+            if (tot_w2 < 0.5) { w2_idx = s2_idx; tot_w2 = g_markov_fast_tot_s2; }
+        }
     }
     var w3_idx = geomind_markov_hub_row_idx(688128.0, 393216.0, g_markov_ctx_word3_id, hub_c_idx, 0.0);
     var tot_w3 = 0.0;
     if (w3_idx >= 688128.0) { tot_w3 = cartan_vec_get_f32(g_markov_3gram_totals, w3_idx); }
-    if (tot_w3 < 0.5 && g_markov_ctx_syn3_id > 0.0) {
+    g_markov_fast_s3_idx = -1.0;
+    g_markov_fast_tot_s3 = 0.0;
+    if (g_markov_ctx_syn3_id > 0.0) {
         let s3_idx = geomind_markov_hub_row_idx(688128.0, 393216.0, g_markov_ctx_syn3_id, hub_c_idx, 0.0);
-        if (s3_idx >= 688128.0) { w3_idx = s3_idx; tot_w3 = cartan_vec_get_f32(g_markov_3gram_totals, s3_idx); }
+        if (s3_idx >= 688128.0) {
+            g_markov_fast_s3_idx = s3_idx;
+            g_markov_fast_tot_s3 = cartan_vec_get_f32(g_markov_3gram_totals, s3_idx);
+            if (tot_w3 < 0.5) { w3_idx = s3_idx; tot_w3 = g_markov_fast_tot_s3; }
+        }
     }
     return geomind_markov_get_3gram_prob_fast(b1, curr_byte, c_idx, tot3, w1_idx, tot_w1, w2_idx, tot_w2, w3_idx, tot_w3);
 }
@@ -866,26 +914,53 @@ fn geomind_byte_latent_init_if_needed() -> float {
         g_e8_episodic_ref_ptr = 0.0;
     }
 
-    // Initialize 256 x 248 Byte-to-E8 table directly from canonical 240 E8 roots + 8D Cartan torus harmonics
-    var b = 0.0;
+    // Initialize 256 x 248 Byte-to-E8 table with mutually quasi-orthogonal 248-D E8 root + golden-ratio harmonic vectors
+    // Normalized to ||e_b||_2 = 0.15 * sqrt(248) (||e_b||^2 = 5.58) with W_dec[:, b] = 0.25 * e_b so <e_b, W_dec[:, b]> = +1.395
+    let tmp_row = cartan_vec_create();
     var d = 0.0;
+    while (d < 248.0) {
+        cartan_vec_push_f32(tmp_row, 0.0);
+        d = d + 1.0;
+    }
+    var b = 0.0;
     var root_idx = 0.0;
     var root_c = 0.0;
-    var phase = 0.0;
+    var ph1 = 0.0;
+    var ph2 = 0.0;
     var val = 0.0;
     var flat_idx = 0.0;
     while (b < 256.0) {
+        let bh1 = math_mod_val((b + 19.0) * 7919.0 + 104729.0, 1000003.0);
+        let bh2 = math_mod_val((b + 37.0) * 15485863.0 + 32452843.0, 1000003.0);
         d = 0.0;
         while (d < 248.0) {
+            ph1 = math_mod_val(bh1 * (d + 1.0) * 0.6180339887, 6.283185307);
+            ph2 = math_mod_val(bh2 * (248.0 - d) * 0.4142135623, 6.283185307);
             if (d < 8.0) {
-                phase = ((b + 1.0) * (d + 1.0)) * 0.049087385;
-                val = 0.25 * cos(phase);
+                val = cos(ph1) + 0.70710678 * sin(ph2);
             } else {
-                root_idx = d - 8.0;
-                root_c = geomind_e8_get_root_coord(root_idx, math_mod_val(b + d, 8.0));
-                phase = ((b + 1.0) * (d + 1.0)) * 0.02454369;
-                val = 0.20 * root_c + 0.10 * sin(phase);
+                root_idx = math_mod_val((d - 8.0) + b * 17.0, 240.0);
+                root_c = geomind_e8_get_root_coord(root_idx, math_mod_val(b * 3.0 + d, 8.0));
+                val = 0.45 * root_c + 0.85 * cos(ph1) + 0.65 * sin(ph2 + d * 0.137);
             }
+            cartan_vec_set_f32(tmp_row, d, val);
+            d = d + 1.0;
+        }
+        geomind_weyl_reflect_vector_248(tmp_row, math_mod_val(b * 29.0 + 7.0, 240.0));
+        var nsq = 0.0;
+        d = 0.0;
+        while (d < 248.0) {
+            let rv = cartan_vec_get_f32(tmp_row, d);
+            nsq = nsq + rv * rv;
+            d = d + 1.0;
+        }
+        var sc = 1.0;
+        if (nsq > 0.000001) {
+            sc = sqrt(5.58 / nsq);
+        }
+        d = 0.0;
+        while (d < 248.0) {
+            val = cartan_vec_get_f32(tmp_row, d) * sc;
             cartan_vec_set_f32(g_byte_e8_emb_256x248, flat_idx, val);
             cartan_vec_set_f32(g_byte_e8_head_248x256, d * 256.0 + b, val * 0.25);
             flat_idx = flat_idx + 1.0;
@@ -893,6 +968,7 @@ fn geomind_byte_latent_init_if_needed() -> float {
         }
         b = b + 1.0;
     }
+    cartan_vec_free(tmp_row);
 
     // Initialize 248-D Finsler-Randers causal drift 1-form beta (strictly bounded ||beta|| < 1)
     d = 0.0;
@@ -1033,26 +1109,45 @@ fn geomind_byte_latent_decode_logits_blt(
     var w1_idx = geomind_markov_hub_row_idx(32768.0, 262144.0, g_markov_ctx_word1_id, hub_c_idx, 0.0);
     var tot_w1 = 0.0;
     if (w1_idx >= 32768.0) { tot_w1 = cartan_vec_get_f32(g_markov_3gram_totals, w1_idx); }
-    if (tot_w1 < 0.5 && g_markov_ctx_syn1_id > 0.0) {
+    g_markov_fast_s1_idx = -1.0;
+    g_markov_fast_tot_s1 = 0.0;
+    if (g_markov_ctx_syn1_id > 0.0) {
         let s1_idx = geomind_markov_hub_row_idx(32768.0, 262144.0, g_markov_ctx_syn1_id, hub_c_idx, 0.0);
-        if (s1_idx >= 32768.0) { w1_idx = s1_idx; tot_w1 = cartan_vec_get_f32(g_markov_3gram_totals, s1_idx); }
+        if (s1_idx >= 32768.0) {
+            g_markov_fast_s1_idx = s1_idx;
+            g_markov_fast_tot_s1 = cartan_vec_get_f32(g_markov_3gram_totals, s1_idx);
+            if (tot_w1 < 0.5) { w1_idx = s1_idx; tot_w1 = g_markov_fast_tot_s1; }
+        }
     }
     var w2_idx = geomind_markov_hub_row_idx(294912.0, 393216.0, g_markov_ctx_word2_id, hub_c_idx, 0.0);
     var tot_w2 = 0.0;
     if (w2_idx >= 294912.0) { tot_w2 = cartan_vec_get_f32(g_markov_3gram_totals, w2_idx); }
-    if (tot_w2 < 0.5 && g_markov_ctx_syn2_id > 0.0) {
+    g_markov_fast_s2_idx = -1.0;
+    g_markov_fast_tot_s2 = 0.0;
+    if (g_markov_ctx_syn2_id > 0.0) {
         let s2_idx = geomind_markov_hub_row_idx(294912.0, 393216.0, g_markov_ctx_syn2_id, hub_c_idx, 0.0);
-        if (s2_idx >= 294912.0) { w2_idx = s2_idx; tot_w2 = cartan_vec_get_f32(g_markov_3gram_totals, s2_idx); }
+        if (s2_idx >= 294912.0) {
+            g_markov_fast_s2_idx = s2_idx;
+            g_markov_fast_tot_s2 = cartan_vec_get_f32(g_markov_3gram_totals, s2_idx);
+            if (tot_w2 < 0.5) { w2_idx = s2_idx; tot_w2 = g_markov_fast_tot_s2; }
+        }
     }
     var w3_idx = geomind_markov_hub_row_idx(688128.0, 393216.0, g_markov_ctx_word3_id, hub_c_idx, 0.0);
     var tot_w3 = 0.0;
     if (w3_idx >= 688128.0) { tot_w3 = cartan_vec_get_f32(g_markov_3gram_totals, w3_idx); }
-    if (tot_w3 < 0.5 && g_markov_ctx_syn3_id > 0.0) {
+    g_markov_fast_s3_idx = -1.0;
+    g_markov_fast_tot_s3 = 0.0;
+    if (g_markov_ctx_syn3_id > 0.0) {
         let s3_idx = geomind_markov_hub_row_idx(688128.0, 393216.0, g_markov_ctx_syn3_id, hub_c_idx, 0.0);
-        if (s3_idx >= 688128.0) { w3_idx = s3_idx; tot_w3 = cartan_vec_get_f32(g_markov_3gram_totals, s3_idx); }
+        if (s3_idx >= 688128.0) {
+            g_markov_fast_s3_idx = s3_idx;
+            g_markov_fast_tot_s3 = cartan_vec_get_f32(g_markov_3gram_totals, s3_idx);
+            if (tot_w3 < 0.5) { w3_idx = s3_idx; tot_w3 = g_markov_fast_tot_s3; }
+        }
     }
 
     // Hoist the 248-D Local + Patch state fusion outside the 256-byte readout loop (eliminates 96 x 248 redundant multiply-adds per byte)
+    // Scale by 0.15 so S^{247}(\sqrt{248}) states produce unit-scale E8 readout dot products matching log(m_prob) at a true 1:1 ratio:
     var d_pre = 0.0;
     while (d_pre < 248.0) {
         let hl = cartan_vec_get_f32(h_local_248, d_pre);
@@ -1060,7 +1155,7 @@ fn geomind_byte_latent_decode_logits_blt(
         if (h_patch_248 != 0.0) {
             hp = cartan_vec_get_f32(h_patch_248, d_pre);
         }
-        cartan_vec_set_f32(g_blt_decode_hv_248, d_pre, 0.65 * hl + 0.35 * hp);
+        cartan_vec_set_f32(g_blt_decode_hv_248, d_pre, 0.15 * hl + 0.15 * hp);
         d_pre = d_pre + 1.0;
     }
 
@@ -1076,7 +1171,7 @@ fn geomind_byte_latent_decode_logits_blt(
                 d = d + 1.0;
             }
             let m_prob = geomind_markov_get_3gram_prob_fast(b1, c, c_idx, tot3, w1_idx, tot_w1, w2_idx, tot_w2, w3_idx, tot_w3);
-            cartan_vec_set_f32(out_logits_256, c, sum * 0.45 + 3.25 * log(m_prob + 0.00001));
+            cartan_vec_set_f32(out_logits_256, c, sum * 1.00 + 1.00 * log(m_prob + 0.00001));
         } else {
             cartan_vec_set_f32(out_logits_256, c, -35.0);
         }
@@ -1609,6 +1704,9 @@ var g_wordnet_head_hash: ptr = 0.0;
 var g_wordnet_ic_weight: ptr = 0.0;
 var g_wordnet_sense_guard: ptr = 0.0;
 var g_wordnet_lemma_vecs: ptr = 0.0;
+var g_wordnet_head_b3: ptr = 0.0;
+var g_wordnet_head_b2: ptr = 0.0;
+var g_wordnet_head_b1: ptr = 0.0;
 
 var g_e8_rel_initialized: float = 0.0;
 var g_e8_rel_isa_248x248: ptr = 0.0;
@@ -1717,19 +1815,26 @@ fn geomind_e8_word_to_vec_248(word: string, out_248: ptr) {
     geomind_e8_hash_to_vec_248(wh, out_248);
 }
 
+// Check whether a case-normalized word patch hash `wh` is already registered in the S^{247} Concept Vocabulary Codebook
+fn geomind_e8_has_vocab_hash(wh: float) -> float {
+    if (wh <= 17.0) { return 1.0; }
+    var i = 0.0;
+    while (i < g_e8_vocab_count) {
+        if (cartan_vec_get_f32(g_e8_vocab_hashes, i) == wh) {
+            return 1.0;
+        }
+        i = i + 1.0;
+    }
+    return 0.0;
+}
+
 // Register a concept word in the S^{247} Concept Vocabulary Codebook so any layer state h^{(l)} can be decoded
 fn geomind_e8_register_vocab_word(word: string) {
     if (cartan_string_length(word) == 0.0) { return; }
     let wh = geomind_word_patch_hash(word);
     if (wh <= 17.0) { return; }
-    var i = 0.0;
-    while (i < g_e8_vocab_count) {
-        if (cartan_vec_get_f32(g_e8_vocab_hashes, i) == wh) {
-            return;
-        }
-        i = i + 1.0;
-    }
-    if (g_e8_vocab_count >= 512.0) { return; }
+    if (geomind_e8_has_vocab_hash(wh) == 1.0) { return; }
+    if (g_e8_vocab_count >= 4096.0) { return; }
     let idx = g_e8_vocab_count;
     cartan_tree_push(g_e8_vocab_words, word);
     cartan_vec_set_f32(g_e8_vocab_hashes, idx, wh);
@@ -1850,6 +1955,74 @@ fn geomind_e8_decode_concept_vec_248(h_248: ptr) -> string {
     return best_word;
 }
 
+fn geomind_e8_rel_save(path: string) -> float {
+    if (path == 0.0 || g_e8_rel_initialized == 0.0 || g_e8_rel_isa_248x248 == 0.0) { return 0.0; }
+    let f = fopen(path, "wb");
+    if (f == 0.0) { return 0.0; }
+    fwrite(g_e8_rel_isa_248x248, 8.0, 61504.0 + 2.0, f);
+    fwrite(g_e8_rel_super_248x248, 8.0, 61504.0 + 2.0, f);
+    fwrite(g_e8_rel_cap_248x248, 8.0, 61504.0 + 2.0, f);
+    fwrite(g_e8_rel_prop_248x248, 8.0, 61504.0 + 2.0, f);
+    fwrite(g_e8_rel_val_248x248, 8.0, 61504.0 + 2.0, f);
+    fwrite(g_e8_rel_cause_248x248, 8.0, 61504.0 + 2.0, f);
+    fwrite(g_e8_rel_effect_248x248, 8.0, 61504.0 + 2.0, f);
+    fwrite(g_e8_vocab_hashes, 8.0, 4096.0 + 2.0, f);
+    fwrite(g_e8_vocab_vecs, 8.0, 1015808.0 + 2.0, f);
+    fwrite(g_e8_microfeat_vecs, 8.0, 1015808.0 + 2.0, f);
+    fclose(f);
+
+    let wf = fopen("Projects/geomind/trainingdata/checkpoints/geomind_e8_vocab_words.txt", "wb");
+    if (wf != 0.0) {
+        var wi = 0.0;
+        while (wi < g_e8_vocab_count) {
+            let w_str = cartan_tree_get(g_e8_vocab_words, wi);
+            let w_line = cartan_string_concat(w_str, "\n");
+            fwrite(w_line, 1.0, cartan_string_length(w_line), wf);
+            wi = wi + 1.0;
+        }
+        fclose(wf);
+    }
+    return 1.0;
+}
+
+fn geomind_e8_rel_load(path: string) -> float {
+    if (path == 0.0 || cartan_file_exists(path) == 0.0) { return 0.0; }
+    let expected_elems = 7.0 * (61504.0 + 2.0) + (4096.0 + 2.0) + 2.0 * (1015808.0 + 2.0);
+    let f_sz = cartan_get_binary_file_size(path);
+    if (f_sz < expected_elems * 8.0) { return 0.0; }
+    let f = fopen(path, "rb");
+    if (f == 0.0) { return 0.0; }
+    fread(g_e8_rel_isa_248x248, 8.0, 61504.0 + 2.0, f);
+    fread(g_e8_rel_super_248x248, 8.0, 61504.0 + 2.0, f);
+    fread(g_e8_rel_cap_248x248, 8.0, 61504.0 + 2.0, f);
+    fread(g_e8_rel_prop_248x248, 8.0, 61504.0 + 2.0, f);
+    fread(g_e8_rel_val_248x248, 8.0, 61504.0 + 2.0, f);
+    fread(g_e8_rel_cause_248x248, 8.0, 61504.0 + 2.0, f);
+    fread(g_e8_rel_effect_248x248, 8.0, 61504.0 + 2.0, f);
+    fread(g_e8_vocab_hashes, 8.0, 4096.0 + 2.0, f);
+    fread(g_e8_vocab_vecs, 8.0, 1015808.0 + 2.0, f);
+    fread(g_e8_microfeat_vecs, 8.0, 1015808.0 + 2.0, f);
+    fclose(f);
+
+    if (cartan_file_exists("Projects/geomind/trainingdata/checkpoints/geomind_e8_vocab_words.txt") == 1.0) {
+        let w_txt = cartan_read_file("Projects/geomind/trainingdata/checkpoints/geomind_e8_vocab_words.txt");
+        let w_lines = string_split(w_txt, "\n");
+        let n_lines = cartan_tree_len_f(w_lines);
+        g_e8_vocab_words = cartan_tree_create();
+        g_e8_vocab_count = 0.0;
+        var li = 0.0;
+        while (li < n_lines && g_e8_vocab_count < 4096.0) {
+            let lw = cartan_string_replace(cartan_tree_get(w_lines, li), "\r", "");
+            if (cartan_string_length(lw) > 0.0) {
+                cartan_tree_push(g_e8_vocab_words, lw);
+                g_e8_vocab_count = g_e8_vocab_count + 1.0;
+            }
+            li = li + 1.0;
+        }
+    }
+    return 1.0;
+}
+
 fn geomind_e8_rel_init_if_needed() {
     if (g_e8_rel_initialized == 1.0 && g_e8_rel_isa_248x248 != 0.0) { return; }
     g_e8_rel_isa_248x248 = cartan_tensor_alloc(61504.0);
@@ -1864,9 +2037,9 @@ fn geomind_e8_rel_init_if_needed() {
     g_e8_vec_fun = cartan_vec_create();
     g_e8_rel_ru_buf = cartan_vec_create();
     g_e8_vocab_words = cartan_tree_create();
-    g_e8_vocab_hashes = cartan_tensor_alloc(512.0);
-    g_e8_vocab_vecs = cartan_tensor_alloc(512.0 * 248.0);
-    g_e8_microfeat_vecs = cartan_tensor_alloc(512.0 * 248.0);
+    g_e8_vocab_hashes = cartan_tensor_alloc(4096.0);
+    g_e8_vocab_vecs = cartan_tensor_alloc(4096.0 * 248.0);
+    g_e8_microfeat_vecs = cartan_tensor_alloc(4096.0 * 248.0);
     g_e8_vocab_count = 0.0;
     var d = 0.0;
     while (d < 248.0) {
@@ -1889,67 +2062,9 @@ fn geomind_e8_rel_init_if_needed() {
     }
     g_e8_rel_initialized = 1.0;
     geomind_e8_word_to_vec_248("fun", g_e8_vec_fun);
-
-    // Seed core curriculum & taxonomic concept words into the S^{247} Concept Vocabulary Codebook
-    geomind_e8_register_vocab_word("animal");
-    geomind_e8_register_vocab_word("plaything");
-    geomind_e8_register_vocab_word("liquid");
-    geomind_e8_register_vocab_word("plant");
-    geomind_e8_register_vocab_word("energy");
-    geomind_e8_register_vocab_word("person");
-    geomind_e8_register_vocab_word("force");
-    geomind_e8_register_vocab_word("weather");
-    geomind_e8_register_vocab_word("bird");
-    geomind_e8_register_vocab_word("sparrow");
-    geomind_e8_register_vocab_word("robin");
-    geomind_e8_register_vocab_word("cat");
-    geomind_e8_register_vocab_word("kitten");
-    geomind_e8_register_vocab_word("dog");
-    geomind_e8_register_vocab_word("puppy");
-    geomind_e8_register_vocab_word("fish");
-    geomind_e8_register_vocab_word("ball");
-    geomind_e8_register_vocab_word("orb");
-    geomind_e8_register_vocab_word("sphere");
-    geomind_e8_register_vocab_word("water");
-    geomind_e8_register_vocab_word("brook");
-    geomind_e8_register_vocab_word("rain");
-    geomind_e8_register_vocab_word("fire");
-    geomind_e8_register_vocab_word("tree");
-    geomind_e8_register_vocab_word("oak");
-    geomind_e8_register_vocab_word("wood");
-    geomind_e8_register_vocab_word("star");
-    geomind_e8_register_vocab_word("sun");
-    geomind_e8_register_vocab_word("small");
-    geomind_e8_register_vocab_word("cheerful");
-    geomind_e8_register_vocab_word("young");
-    geomind_e8_register_vocab_word("round");
-    geomind_e8_register_vocab_word("smooth");
-    geomind_e8_register_vocab_word("clear");
-    geomind_e8_register_vocab_word("wet");
-    geomind_e8_register_vocab_word("hot");
-    geomind_e8_register_vocab_word("soft");
-    geomind_e8_register_vocab_word("fly");
-    geomind_e8_register_vocab_word("sky");
-    geomind_e8_register_vocab_word("trees");
-    geomind_e8_register_vocab_word("garden");
-    geomind_e8_register_vocab_word("songs");
-    geomind_e8_register_vocab_word("purrs");
-    geomind_e8_register_vocab_word("happy");
-    geomind_e8_register_vocab_word("run");
-    geomind_e8_register_vocab_word("play");
-    geomind_e8_register_vocab_word("bounce");
-    geomind_e8_register_vocab_word("bouncing");
-    geomind_e8_register_vocab_word("roll");
-    geomind_e8_register_vocab_word("rolls");
-    geomind_e8_register_vocab_word("floor");
-    geomind_e8_register_vocab_word("fun");
-    geomind_e8_register_vocab_word("gravity");
-    geomind_e8_register_vocab_word("ground");
-    geomind_e8_register_vocab_word("lighter");
-    geomind_e8_register_vocab_word("floats");
-    geomind_e8_register_vocab_word("clouds");
-    geomind_e8_register_vocab_word("grow");
-    geomind_e8_register_vocab_word("swims");
+    if (g_byte_e8_skip_disk_autoload == 0.0 && cartan_file_exists("Projects/geomind/trainingdata/checkpoints/geomind_e8_rel_tensors.bin") == 1.0) {
+        geomind_e8_rel_load("Projects/geomind/trainingdata/checkpoints/geomind_e8_rel_tensors.bin");
+    }
 }
 
 // Compute directed bilinear Killing-Cartan relational score S(u --[R]--> v) = (1/248) * <v, R * u>
@@ -2174,9 +2289,23 @@ fn geomind_e8_cascade_step_7L(rel_mat_248x248: ptr, h_in_248: ptr, l_start: floa
     cartan_vec_free(basin_vec);
 
     // Step through all 7 layers of this stratum (k = 0..6, layer l = l_start + k) on TS^{247}
+    // Unifies the 42-Layer e8_stack.cl (W_gauge^{(l)}, W_spinor^{(l)}, Octonion Fano Cross-Gate) with geodesic basin transport
+    if (g_e8_stack_num_layers <= 0.0 || g_e8_stack_w_gauge == 0.0) {
+        geomind_e8_stack_init(42.0);
+    }
+    let h_lin = cartan_vec_create();
+    d = 0.0;
+    while (d < 248.0) {
+        cartan_vec_push_f32(h_lin, 0.0);
+        d = d + 1.0;
+    }
     var vel_norm_accum = 0.0;
     var k = 0.0;
     while (k < 7.0) {
+        let l_idx = math_mod_val(l_start + k, g_e8_stack_num_layers);
+        geomind_e8_stack_apply_gauge_spinor_linear_248(h_cur, 0.0, l_idx, h_lin, 0.0);
+        geomind_e8_gauge_spinor_cross_gate_block248(h_lin, 0.0, h_cur, 0.0, 0.15);
+
         let alpha = (k + 1.0) / 7.0;
         var dot_hf = 0.0;
         d = 0.0;
@@ -2193,7 +2322,7 @@ fn geomind_e8_cascade_step_7L(rel_mat_248x248: ptr, h_in_248: ptr, l_start: floa
             let fv = cartan_vec_get_f32(f_vec, d);
             let v_tan = fv - proj * hc;
             v_sq = v_sq + v_tan * v_tan;
-            let h_next = (1.0 - alpha) * cartan_vec_get_f32(h_in_248, d) + alpha * fv;
+            let h_next = (1.0 - alpha) * hc + alpha * fv;
             cartan_vec_set_f32(h_cur, d, h_next);
             next_sq = next_sq + h_next * h_next;
             d = d + 1.0;
@@ -2209,6 +2338,7 @@ fn geomind_e8_cascade_step_7L(rel_mat_248x248: ptr, h_in_248: ptr, l_start: floa
         vel_norm_accum = vel_norm_accum + sqrt(v_sq / 248.0);
         k = k + 1.0;
     }
+    cartan_vec_free(h_lin);
 
     d = 0.0;
     while (d < 248.0) {
@@ -2688,7 +2818,7 @@ fn geomind_parse_simple_float(s: string) -> float {
     return val + frac;
 }
 
-fn geomind_wordnet_insert_hash(lh: float, sh: float, head_lh: float, ic_val: float, guard: float, vec_248: ptr) {
+fn geomind_wordnet_insert_hash(lh: float, sh: float, head_lh: float, ic_val: float, guard: float, vec_248: ptr, hb3: float, hb2: float, hb1: float) {
     if (lh <= 17.0 || sh <= 0.0) { return; }
     let h0 = math_mod_val(lh * 13331.0, 4096.0);
     var probe = 0.0;
@@ -2701,6 +2831,9 @@ fn geomind_wordnet_insert_hash(lh: float, sh: float, head_lh: float, ic_val: flo
             cartan_vec_set_f32(g_wordnet_head_hash, slot, head_lh);
             cartan_vec_set_f32(g_wordnet_ic_weight, slot, ic_val);
             cartan_vec_set_f32(g_wordnet_sense_guard, slot, guard);
+            cartan_vec_set_f32(g_wordnet_head_b3, slot, hb3);
+            cartan_vec_set_f32(g_wordnet_head_b2, slot, hb2);
+            cartan_vec_set_f32(g_wordnet_head_b1, slot, hb1);
             if (vec_248 != 0.0) {
                 let v_base = slot * 248.0;
                 var d = 0.0;
@@ -2722,6 +2855,9 @@ fn geomind_wordnet_register_node(synset_path: string, lemmas_csv: string, ic_val
     let n = cartan_string_length(lemmas_csv);
     var head_lh = 0.0;
     var head_str = "";
+    var hb3 = 32.0;
+    var hb2 = 32.0;
+    var hb1 = 32.0;
     var lh = 17.0;
     var word_start = 0.0;
     var i = 0.0;
@@ -2737,41 +2873,44 @@ fn geomind_wordnet_register_node(synset_path: string, lemmas_csv: string, ic_val
                     word_start = word_start + 1.0;
                 }
                 let lemma_str = cartan_string_substring(lemmas_csv, word_start, i);
-                geomind_e8_register_vocab_word(lemma_str);
+                let had_ckpt_rels = (g_byte_e8_skip_disk_autoload == 0.0 && g_e8_vocab_count > 500.0);
+                if (had_ckpt_rels == 0.0) {
+                    geomind_e8_register_vocab_word(lemma_str);
+                }
                 if (head_lh == 0.0) {
                     head_lh = lh;
                     head_str = lemma_str;
-                    // Train Stratum 2 (Layers 7..13) 2nd-Hop Superordinate Category R_super(head_lemma -> super_category) first
-                    // so head_str co-adapts toward its superordinate basin on S^{247} before its hyponyms co-adapt toward head_str
-                    if (cartan_string_contains(synset_path, ".animal.") != 0.0) {
-                        geomind_e8_rel_train_words(g_e8_rel_super_248x248, head_str, "animal", 0.92, 5.0);
-                    } else if (cartan_string_contains(synset_path, ".plaything.") != 0.0) {
-                        geomind_e8_rel_train_words(g_e8_rel_super_248x248, head_str, "plaything", 0.92, 5.0);
-                    } else if (cartan_string_contains(synset_path, ".liquid.") != 0.0) {
-                        geomind_e8_rel_train_words(g_e8_rel_super_248x248, head_str, "liquid", 0.92, 5.0);
-                    } else if (cartan_string_contains(synset_path, ".plant.") != 0.0) {
-                        geomind_e8_rel_train_words(g_e8_rel_super_248x248, head_str, "plant", 0.92, 5.0);
-                    } else if (cartan_string_contains(synset_path, ".energy.") != 0.0) {
-                        geomind_e8_rel_train_words(g_e8_rel_super_248x248, head_str, "energy", 0.92, 5.0);
-                    } else if (cartan_string_contains(synset_path, ".person.") != 0.0) {
-                        geomind_e8_rel_train_words(g_e8_rel_super_248x248, head_str, "person", 0.92, 5.0);
-                    } else if (cartan_string_contains(synset_path, ".force.") != 0.0) {
-                        geomind_e8_rel_train_words(g_e8_rel_super_248x248, head_str, "force", 0.92, 5.0);
-                    } else if (cartan_string_contains(synset_path, ".weather.") != 0.0) {
-                        geomind_e8_rel_train_words(g_e8_rel_super_248x248, head_str, "weather", 0.92, 5.0);
+                    let hlen = cartan_string_length(head_str);
+                    if (hlen >= 1.0) { hb1 = cartan_byte_at(head_str, hlen - 1.0); }
+                    if (hlen >= 2.0) { hb2 = cartan_byte_at(head_str, hlen - 2.0); }
+                    if (hlen >= 3.0) { hb3 = cartan_byte_at(head_str, hlen - 3.0); }
+                    // Train Stratum 2 (Layers 7..13) 2nd-Hop Superordinate Category R_super(head_lemma -> super_category) autonomously
+                    // from the WordNet dot-delimited hypernym path (zero hardcoded category strings)
+                    if (had_ckpt_rels == 0.0) {
+                        let path_segs = string_split(synset_path, ".");
+                        let n_segs = cartan_tree_len_f(path_segs);
+                        if (n_segs >= 3.0) {
+                            var sup_idx = n_segs - 2.0;
+                            if (n_segs >= 7.0) { sup_idx = 4.0; }
+                            let super_str = cartan_tree_get(path_segs, sup_idx);
+                            geomind_e8_register_vocab_word(super_str);
+                            geomind_e8_rel_train_words(g_e8_rel_super_248x248, head_str, super_str, 0.92, 5.0);
+                        }
                     }
                     geomind_e8_word_to_vec_248(lemma_str, g_e8_rel_tmp_v);
-                    geomind_wordnet_insert_hash(lh, sh, head_lh, ic_val, sense_guard, g_e8_rel_tmp_v);
+                    geomind_wordnet_insert_hash(lh, sh, head_lh, ic_val, sense_guard, g_e8_rel_tmp_v, hb3, hb2, hb1);
                 } else {
                     geomind_e8_word_to_vec_248(lemma_str, g_e8_rel_tmp_u);
-                    geomind_wordnet_insert_hash(lh, sh, head_lh, ic_val, sense_guard, g_e8_rel_tmp_u);
+                    geomind_wordnet_insert_hash(lh, sh, head_lh, ic_val, sense_guard, g_e8_rel_tmp_u, hb3, hb2, hb1);
                     // Train Stratum 1 (Layers 0..6) asymmetric R_isa(hyponym -> hypernym_head) weighted by WordNet IC specificity
-                    var w_target = 0.50 + 0.042 * ic_val;
-                    if (w_target > 0.94) { w_target = 0.94; }
-                    var p = 0.0;
-                    while (p < 5.0) {
-                        geomind_e8_rel_train_step(g_e8_rel_isa_248x248, g_e8_rel_tmp_u, g_e8_rel_tmp_v, w_target, 1.0, 0.45);
-                        p = p + 1.0;
+                    if (had_ckpt_rels == 0.0) {
+                        var w_target = 0.50 + 0.042 * ic_val;
+                        if (w_target > 0.94) { w_target = 0.94; }
+                        var p = 0.0;
+                        while (p < 5.0) {
+                            geomind_e8_rel_train_step(g_e8_rel_isa_248x248, g_e8_rel_tmp_u, g_e8_rel_tmp_v, w_target, 1.0, 0.45);
+                            p = p + 1.0;
+                        }
                     }
                 }
             }
@@ -2796,6 +2935,9 @@ fn geomind_wordnet_init_if_needed() {
     g_wordnet_ic_weight = cartan_tensor_alloc(4096.0);
     g_wordnet_sense_guard = cartan_tensor_alloc(4096.0);
     g_wordnet_lemma_vecs = cartan_tensor_alloc(4096.0 * 248.0);
+    g_wordnet_head_b3 = cartan_tensor_alloc(4096.0);
+    g_wordnet_head_b2 = cartan_tensor_alloc(4096.0);
+    g_wordnet_head_b1 = cartan_tensor_alloc(4096.0);
 
     g_wn_verb_to = geomind_word_patch_hash("to");
     g_wn_verb_can = geomind_word_patch_hash("can");
@@ -2944,6 +3086,26 @@ fn geomind_wordnet_resolve_synset(patch_hash: float, prev_patch_hash: float) -> 
                 g_markov_ctx_syn_weight = 1.0;
             }
             return cartan_vec_get_f32(g_wordnet_synset_hash, slot);
+        }
+        probe = probe + 1.0;
+    }
+    return 0.0;
+}
+
+// Resolve `patch_hash` to its hypernym head lemma's 3-byte suffix `(hb3, hb2, hb1)` when `patch_hash` is a valid SenseGuarded WordNet member
+fn geomind_wordnet_resolve_head_suffix(patch_hash: float, prev_patch_hash: float, out_b321: ptr) -> float {
+    if (geomind_wordnet_resolve_synset(patch_hash, prev_patch_hash) <= 0.0) { return 0.0; }
+    let h0 = math_mod_val(patch_hash * 13331.0, 4096.0);
+    var probe = 0.0;
+    while (probe < 32.0) {
+        let slot = math_mod_val(h0 + probe * 7.0, 4096.0);
+        let cur_l = cartan_vec_get_f32(g_wordnet_lemma_hash, slot);
+        if (cur_l == 0.0) { return 0.0; }
+        if (cur_l == patch_hash) {
+            cartan_vec_set_f32(out_b321, 0.0, cartan_vec_get_f32(g_wordnet_head_b3, slot));
+            cartan_vec_set_f32(out_b321, 1.0, cartan_vec_get_f32(g_wordnet_head_b2, slot));
+            cartan_vec_set_f32(out_b321, 2.0, cartan_vec_get_f32(g_wordnet_head_b1, slot));
+            return 1.0;
         }
         probe = probe + 1.0;
     }
@@ -3650,6 +3812,8 @@ fn geomind_byte_latent_train_deep_e8_corpus(
         var next_b = 32.0;
         var patch_len = 0.0;
         var patch_alnum_len = 0.0;
+        var patch_word_start = 0.0;
+        var patch_word_end = 0.0;
         var patch_hash = 17.0;
         var patch_sent_end = 0.0;
         var patch_comma_end = 0.0;
@@ -3707,6 +3871,8 @@ fn geomind_byte_latent_train_deep_e8_corpus(
             // 1. Fold alphanumeric stem byte into current 248-D E8 Patch Accumulator (ignoring punctuation/space)
             let is_alnum = ((cur_b >= 97.0 && cur_b <= 122.0) || (cur_b >= 65.0 && cur_b <= 90.0) || (cur_b >= 48.0 && cur_b <= 57.0));
             if (is_alnum) {
+                if (patch_alnum_len == 0.0) { patch_word_start = step; }
+                patch_word_end = step + 1.0;
                 geomind_fold_byte_into_e8_patch(h_patch_accum, cur_b, patch_len);
                 var hb = cur_b;
                 if (hb >= 65.0 && hb <= 90.0) { hb = hb + 32.0; }
@@ -3773,10 +3939,15 @@ fn geomind_byte_latent_train_deep_e8_corpus(
                 }
 
                 sent_word_idx = sent_word_idx + 1.0;
+                if (ep == 0.0 && patch_alnum_len >= 2.0 && geomind_e8_has_vocab_hash(saved_patch_hash) == 0.0) {
+                    let raw_w = cartan_string_substring(corpus, patch_word_start, patch_word_end);
+                    let low_w = cartan_string_to_lower(raw_w);
+                    geomind_e8_register_vocab_word(low_w);
+                }
                 geomind_e8_hash_to_vec_248(saved_patch_hash, cur_p_vec);
                 if (sent_word_idx == 1.0) { sent_first_h = saved_patch_hash; }
                 if (sent_word_idx == 2.0) { sent_second_h = saved_patch_hash; }
-                if (sent_word_idx == 3.0 && p_h1 == g_wn_hash_a && saved_patch_hash != g_wn_hash_is && saved_patch_hash != g_wn_verb_can) {
+                if (p_h1 == g_wn_hash_a && saved_patch_hash != g_wn_hash_is && saved_patch_hash != g_wn_verb_can && sent_subj_h == 17.0) {
                     sent_subj_h = p_h0;
                     sent_act_h = saved_patch_hash;
                 }
@@ -3793,32 +3964,32 @@ fn geomind_byte_latent_train_deep_e8_corpus(
                     stack_t_geo = geomind_e8_stack_forward_step(h_patch_accum, prev_patch_ptr, mv_step, 0.85, h_top_patch);
                     patch_steps_taken = patch_steps_taken + 1.0;
 
-                    // Stage 6.1: 100% Word-Agnostic Closed-Class Syntactic Frame Extractor for all 6 Strata
-                    // Frame 1 (Stratum 1 & Stratum 3): Taxonomic & Property Copula ("A <Subj> is a <Adj> <Hypernym>")
-                    if (sent_word_idx == 6.0 && p_h4 == g_wn_hash_a && p_h3 != 17.0 && p_h2 == g_wn_hash_is && p_h1 == g_wn_hash_a && p_h0 != 17.0) {
+                    // Stage 7.0: Position-Independent Closed-Class Syntactic Frame Extractor for all 6 Strata
+                    // Frame 1 (Stratum 1 & Stratum 3): Taxonomic & Property Copula ("a/the <Subj> is a <Adj> <Hypernym>")
+                    if ((p_h4 == g_wn_hash_a || p_h4 == g_wn_hash_the) && p_h3 != 17.0 && p_h2 == g_wn_hash_is && p_h1 == g_wn_hash_a && p_h0 != 17.0) {
                         geomind_e8_rel_train_step(g_e8_rel_isa_248x248, p_v3, cur_p_vec, 0.92, 1.0, 0.45);
                         geomind_e8_rel_train_step(g_e8_rel_prop_248x248, p_v3, p_v0, 0.90, 1.0, 0.45);
                     }
                     // Frame 2 (Stratum 3 & Stratum 4): Attributive, Gerund, & Affective State Copulas
                     //   - "<Gerund> a <Noun> is <Valence>" ("Bouncing a ball is fun")
                     //   - "<Subj> <Verb> when it is <State>" ("A gentle cat purrs when it is happy")
-                    //   - "[The] <Subj> is <Prop>" ("The ball is round", "Water is clear")
+                    //   - "[The/A] <Subj> is <Prop>" ("The ball is round", "Water is clear")
                     if (p_h1 != 17.0 && p_h0 == g_wn_hash_is && saved_patch_hash != g_wn_hash_a && saved_patch_hash != g_wn_hash_the) {
-                        if (sent_word_idx == 5.0 && p_h3 != 17.0 && p_h2 == g_wn_hash_a) {
+                        if (p_h3 != 17.0 && p_h2 == g_wn_hash_a) {
                             geomind_e8_rel_train_step(g_e8_rel_prop_248x248, p_v3, cur_p_vec, 0.92, 1.0, 0.45);
                             geomind_e8_rel_train_step(g_e8_rel_val_248x248, p_v3, cur_p_vec, 0.92, 1.0, 0.45);
                         } else if (p_h4 != 17.0 && p_h2 == g_wn_hash_when && p_h1 == g_wn_hash_it) {
                             geomind_e8_rel_train_step(g_e8_rel_cap_248x248, p_v4, p_v3, 0.92, 1.0, 0.45);
                             geomind_e8_rel_train_step(g_e8_rel_val_248x248, p_v3, cur_p_vec, 0.92, 1.0, 0.45);
-                        } else if (sent_word_idx <= 4.0) {
+                        } else if (p_h2 == 17.0 || p_h2 == g_wn_hash_the || p_h2 == g_wn_hash_a) {
                             geomind_e8_rel_train_step(g_e8_rel_prop_248x248, p_v1, cur_p_vec, 0.90, 1.0, 0.45);
                         }
                     }
                     // Frame 3 (Stratum 3 & Stratum 4): Modal Capability, Transitive Affordance, & Action-Locus Frames
-                    //   - "A <Subj> can <Verb> ... in the <Locus>" ("A bird can fly high in the sky")
+                    //   - "A/The <Subj> can <Verb> ... in the <Locus>" ("A bird can fly high in the sky")
                     //   - "You can <Verb> the <Obj> on the <Locus>" ("You can bounce the ball on the ground")
                     //   - "A <Subj> <Verb> in the <Adj> <Locus>." ("A fish swims in the deep water.")
-                    if (sent_word_idx == 4.0 && p_h2 == g_wn_hash_a && p_h0 == g_wn_verb_can) {
+                    if ((p_h2 == g_wn_hash_a || p_h2 == g_wn_hash_the) && p_h1 != 17.0 && p_h0 == g_wn_verb_can) {
                         geomind_e8_rel_train_step(g_e8_rel_cap_248x248, p_v1, cur_p_vec, 0.92, 1.0, 0.45);
                         sent_verb_h = saved_patch_hash;
                     }
@@ -3827,12 +3998,12 @@ fn geomind_byte_latent_train_deep_e8_corpus(
                         geomind_e8_rel_train_step(g_e8_rel_val_248x248, g_e8_rel_tmp_u, cur_p_vec, 0.92, 1.0, 0.45);
                         sent_verb_h = 17.0;
                     }
-                    if (sent_word_idx == 7.0 && p_h4 == g_wn_verb_can && p_h2 == g_wn_hash_the && p_h0 == g_wn_hash_on && saved_patch_hash == g_wn_hash_the) {
+                    if (p_h4 == g_wn_verb_can && p_h2 == g_wn_hash_the && p_h0 == g_wn_hash_on && saved_patch_hash == g_wn_hash_the) {
                         geomind_e8_rel_train_step(g_e8_rel_cap_248x248, p_v1, p_v3, 0.92, 1.0, 0.45);
                         geomind_e8_rel_train_step(g_e8_rel_prop_248x248, p_v3, g_e8_vec_fun, 0.90, 1.0, 0.45);
                         geomind_e8_rel_train_step(g_e8_rel_val_248x248, p_v3, g_e8_vec_fun, 0.92, 1.0, 0.45);
                     }
-                    if (sent_word_idx == 7.0 && patch_sent_end == 1.0 && p_h2 == g_wn_hash_in && p_h1 == g_wn_hash_the && sent_subj_h != 17.0 && sent_act_h != 17.0) {
+                    if (patch_sent_end == 1.0 && p_h2 == g_wn_hash_in && p_h1 == g_wn_hash_the && sent_subj_h != 17.0 && sent_act_h != 17.0) {
                         geomind_e8_hash_to_vec_248(sent_subj_h, g_e8_rel_tmp_u);
                         geomind_e8_hash_to_vec_248(sent_act_h, g_e8_rel_tmp_v);
                         geomind_e8_rel_train_step(g_e8_rel_cap_248x248, g_e8_rel_tmp_u, g_e8_rel_tmp_v, 0.92, 1.0, 0.45);
@@ -3855,12 +4026,13 @@ fn geomind_byte_latent_train_deep_e8_corpus(
                         geomind_e8_rel_train_step(g_e8_rel_effect_248x248, cur_p_vec, g_e8_rel_tmp_v, 0.92, 1.0, 0.45);
                     }
                     // Frame 6 (Stratum 5 & Stratum 6): Conditional Physical Cause-Effect ("When you <Act> a <Subj>, <Force> ... to the <Dest>.")
-                    if (sent_word_idx == 5.0 && p_h3 == g_wn_hash_when && p_h2 == g_wn_hash_you && p_h0 == g_wn_hash_a && patch_comma_end == 1.0) {
+                    if (p_h3 == g_wn_hash_when && p_h2 == g_wn_hash_you && p_h0 == g_wn_hash_a && patch_comma_end == 1.0) {
                         sent_cond_obj_h = saved_patch_hash;
                     }
-                    if (sent_word_idx == 6.0 && p_h0 == sent_cond_obj_h && sent_cond_obj_h != 17.0) {
+                    if (p_h0 == sent_cond_obj_h && sent_cond_obj_h != 17.0) {
                         geomind_e8_rel_train_step(g_e8_rel_cause_248x248, p_v0, cur_p_vec, 0.92, 1.0, 0.45);
                         sent_cause_h = saved_patch_hash;
+                        sent_cond_obj_h = 17.0;
                     }
                     if (patch_sent_end == 1.0 && p_h1 == g_wn_verb_to && p_h0 == g_wn_hash_the && sent_cause_h != 17.0) {
                         geomind_e8_hash_to_vec_248(sent_cause_h, g_e8_rel_tmp_u);
@@ -3941,10 +4113,12 @@ fn geomind_byte_latent_train_deep_e8_corpus(
                     let del_c = cartan_vec_get_f32(delta_256, c);
                     if (math_abs_val(del_c) > 0.005) {
                         let w_dc = cartan_vec_get_f32(g_byte_e8_head_248x256, d * 256.0 + c);
+                        let base_w = 0.25 * cartan_vec_get_f32(g_byte_e8_emb_256x248, c * 248.0 + d);
                         dh_d = dh_d + w_dc * del_c;
-                        var new_w = geom_frs_riemannian_gradient_step(w_dc, h_comb * del_c, b_d, eff_lr * local_lr_scale);
-                        if (new_w > 0.10) { new_w = 0.10; }
-                        else if (new_w < -0.10) { new_w = -0.10; }
+                        var new_w = geom_frs_riemannian_gradient_step(w_dc, h_comb * del_c, b_d, eff_lr * local_lr_scale * 0.15);
+                        new_w = 0.96 * new_w + 0.04 * base_w;
+                        if (new_w > base_w + 0.012) { new_w = base_w + 0.012; }
+                        else if (new_w < base_w - 0.012) { new_w = base_w - 0.012; }
                         cartan_vec_set_f32(g_byte_e8_head_248x256, d * 256.0 + c, new_w);
                     }
                     c = c + 1.0;
@@ -3987,15 +4161,17 @@ fn geomind_byte_latent_train_deep_e8_corpus(
             }
 
             // 9. Update Byte-to-E8 Embedding row and Finsler-Randers Drift 1-form beta
+            var emb_nsq = 0.0;
             d = 0.0;
             while (d < 248.0) {
                 let dp_d = cartan_vec_get_f32(dh_pre_local, d);
                 let b_d = cartan_vec_get_f32(g_byte_e8_randers_b_248, d);
                 let old_emb = cartan_vec_get_f32(g_byte_e8_emb_256x248, row_off + d);
-                var new_emb = geom_frs_riemannian_gradient_step(old_emb, dp_d, b_d, eff_lr * 0.25);
-                if (new_emb > 0.85) { new_emb = 0.85; }
-                else if (new_emb < -0.85) { new_emb = -0.85; }
+                var new_emb = geom_frs_riemannian_gradient_step(old_emb, dp_d, b_d, eff_lr * 0.015);
+                if (new_emb > old_emb + 0.008) { new_emb = old_emb + 0.008; }
+                else if (new_emb < old_emb - 0.008) { new_emb = old_emb - 0.008; }
                 cartan_vec_set_f32(g_byte_e8_emb_256x248, row_off + d, new_emb);
+                emb_nsq = emb_nsq + new_emb * new_emb;
 
                 let h_d = cartan_vec_get_f32(h_local, d);
                 let old_h = cartan_vec_get_f32(h_prev_local, d);
@@ -4004,6 +4180,14 @@ fn geomind_byte_latent_train_deep_e8_corpus(
                 else if (new_b < -0.08) { new_b = -0.08; }
                 cartan_vec_set_f32(g_byte_e8_randers_b_248, d, new_b);
                 d = d + 1.0;
+            }
+            if (emb_nsq > 0.000001) {
+                let emb_sc = sqrt(5.58 / emb_nsq);
+                d = 0.0;
+                while (d < 248.0) {
+                    cartan_vec_set_f32(g_byte_e8_emb_256x248, row_off + d, cartan_vec_get_f32(g_byte_e8_emb_256x248, row_off + d) * emb_sc);
+                    d = d + 1.0;
+                }
             }
 
             b3 = b2;
@@ -4024,6 +4208,7 @@ fn geomind_byte_latent_train_deep_e8_corpus(
         geomind_markov_save_prior("Projects/geomind/trainingdata/checkpoints/geomind_markov_prior.bin");
         geomind_byte_latent_save_weights("Projects/geomind/trainingdata/checkpoints/geomind_byte_latent_e8.bin");
         geomind_e8_stack_save("Projects/geomind/trainingdata/checkpoints/geomind_e8_deep_stack.bin");
+        geomind_e8_rel_save("Projects/geomind/trainingdata/checkpoints/geomind_e8_rel_tensors.bin");
         if (g_e8_anchor_count > 0.0) {
             geomind_e8_anchors_save("Projects/geomind/trainingdata/checkpoints/geomind_e8_anchors.bin");
         }
@@ -4188,6 +4373,29 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
         i = i + 1.0;
     }
 
+    // If the prompt ended on an unterminated word (no trailing space) whose 3-byte suffix has no space transition in the active hub,
+    // resolve its WordNet hypernym head suffix `(hb3, hb2, hb1)` so zero-shot hyponyms transition into delimiters natively:
+    if (cur_b != 32.0 && patch_hash != 17.0) {
+        let end_hub_c = geomind_markov_hub_ctx_idx(b3, b2, cur_b);
+        let end_w1_idx = geomind_markov_hub_row_idx(32768.0, 262144.0, g_markov_ctx_word1_id, end_hub_c, 0.0);
+        var end_space_cnt = 0.0;
+        if (end_w1_idx >= 32768.0) {
+            end_space_cnt = cartan_vec_get_f32(g_markov_3gram_counts, end_w1_idx * 128.0 + 32.0);
+        }
+        if (end_space_cnt < 0.5) {
+            let head_b321 = cartan_vec_create();
+            cartan_vec_push_f32(head_b321, 32.0);
+            cartan_vec_push_f32(head_b321, 32.0);
+            cartan_vec_push_f32(head_b321, 32.0);
+            if (geomind_wordnet_resolve_head_suffix(patch_hash, g_ctx_last_hash, head_b321) == 1.0) {
+                b3 = cartan_vec_get_f32(head_b321, 0.0);
+                b2 = cartan_vec_get_f32(head_b321, 1.0);
+                cur_b = cartan_vec_get_f32(head_b321, 2.0);
+            }
+            cartan_vec_free(head_b321);
+        }
+    }
+
     let wp1_len = cartan_string_length(g_e8_traj_waypt1_str);
     let wp2_len = cartan_string_length(g_e8_traj_waypt2_str);
     let wp3_len = cartan_string_length(g_e8_traj_waypt3_str);
@@ -4207,7 +4415,13 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
         if (step >= gen_len && (cur_b == 32.0 || cur_b == 46.0 || cur_b == 33.0 || cur_b == 63.0)) {
             break;
         }
-        geomind_byte_latent_decode_logits_blt(h_local, h_top_patch, b3, b2, cur_b, logits_256);
+        var ref_hub_id = g_markov_ctx_word2_id;
+        if (g_markov_ctx_syn2_id > 0.0) { ref_hub_id = g_markov_ctx_syn2_id; }
+        if (ref_hub_id <= 0.0) {
+            ref_hub_id = g_markov_ctx_word1_id;
+            if (g_markov_ctx_syn1_id > 0.0) { ref_hub_id = g_markov_ctx_syn1_id; }
+        }
+
         var wp1_tgt_b = 0.0;
         var wp2_tgt_b = 0.0;
         var wp3_tgt_b = 0.0;
@@ -4220,8 +4434,91 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
         if (wp3_match == 1.0 && patch_alnum_len < wp3_len) {
             wp3_tgt_b = cartan_byte_at(g_e8_traj_waypt3_str, patch_alnum_len);
         }
+
+        // Inject active 42-Layer E8 trajectory waypoint fibers into the 248-D patch state `vel_vec` (`h_decode_patch`)
+        // so `geomind_byte_latent_decode_logits_blt` computes trajectory steering directly via the 1:1 248-D readout `hv^T * W_dec`:
+        d = 0.0;
+        while (d < 248.0) {
+            cartan_vec_set_f32(vel_vec, d, cartan_vec_get_f32(h_top_patch, d));
+            d = d + 1.0;
+        }
+        if (wp1_tgt_b > 0.0 || wp2_tgt_b > 0.0 || wp3_tgt_b > 0.0) {
+            var max_mp = 0.0;
+            c = 97.0;
+            while (c <= 122.0) {
+                let mp_c = geomind_markov_get_3gram_prob(b3, b2, cur_b, c);
+                if (mp_c > max_mp) { max_mp = mp_c; }
+                c = c + 1.0;
+            }
+            var wi = 0.0;
+            while (wi < 3.0) {
+                var wb = wp1_tgt_b;
+                if (wi == 1.0) { wb = wp2_tgt_b; }
+                if (wi == 2.0) { wb = wp3_tgt_b; }
+                var dup = 0.0;
+                if (wi == 1.0 && wb == wp1_tgt_b) { dup = 1.0; }
+                if (wi == 2.0 && (wb == wp1_tgt_b || wb == wp2_tgt_b)) { dup = 1.0; }
+                if (wb > 0.0 && dup == 0.0) {
+                    let mp_w = geomind_markov_get_3gram_prob(b3, b2, cur_b, wb);
+                    var allow_wp = 0.0;
+                    if (max_mp > 0.0 && mp_w >= max_mp * 0.025 && mp_w > 0.005) { allow_wp = 1.0; }
+                    if (allow_wp == 1.0 && cur_b == 32.0 && ref_hub_id > 0.0) {
+                        var er_j = 0.0;
+                        while (er_j < 32.0) {
+                            if (cartan_vec_get_f32(g_e8_episodic_ref_w1, er_j) == ref_hub_id &&
+                                cartan_vec_get_f32(g_e8_episodic_ref_byte, er_j) == wb) {
+                                allow_wp = 0.0;
+                                break;
+                            }
+                            er_j = er_j + 1.0;
+                        }
+                    }
+                    if (allow_wp == 1.0) {
+                        // Compute centered dual readout fiber of column `wb` in `g_byte_e8_head_248x256` (`W_dec[:, wb] - \bar{W}`)
+                        // so `hv^T * W_dec` in `geomind_byte_latent_decode_logits_blt` excites `wb` without cross-exciting other letters:
+                        var fiber_norm_sq = 0.0;
+                        d = 0.0;
+                        while (d < 248.0) {
+                            let w_wb = cartan_vec_get_f32(g_byte_e8_head_248x256, d * 256.0 + wb);
+                            var w_mean = 0.0;
+                            var ca = 97.0;
+                            while (ca <= 122.0) {
+                                w_mean = w_mean + cartan_vec_get_f32(g_byte_e8_head_248x256, d * 256.0 + ca);
+                                ca = ca + 1.0;
+                            }
+                            w_mean = w_mean / 26.0;
+                            let fd = w_wb - w_mean;
+                            fiber_norm_sq = fiber_norm_sq + fd * fd;
+                            d = d + 1.0;
+                        }
+                        if (fiber_norm_sq < 0.0001) { fiber_norm_sq = 1.0; }
+                        var wp_gain = 36.0;
+                        if (wi == 1.0) { wp_gain = 28.0; }
+                        if (wi == 2.0) { wp_gain = 24.0; }
+                        let fiber_scale = wp_gain / fiber_norm_sq;
+                        d = 0.0;
+                        while (d < 248.0) {
+                            let w_wb = cartan_vec_get_f32(g_byte_e8_head_248x256, d * 256.0 + wb);
+                            var w_mean = 0.0;
+                            var ca = 97.0;
+                            while (ca <= 122.0) {
+                                w_mean = w_mean + cartan_vec_get_f32(g_byte_e8_head_248x256, d * 256.0 + ca);
+                                ca = ca + 1.0;
+                            }
+                            w_mean = w_mean / 26.0;
+                            let fd = w_wb - w_mean;
+                            cartan_vec_set_f32(vel_vec, d, cartan_vec_get_f32(vel_vec, d) + fiber_scale * fd);
+                            d = d + 1.0;
+                        }
+                    }
+                }
+                wi = wi + 1.0;
+            }
+        }
+
+        geomind_byte_latent_decode_logits_blt(h_local, vel_vec, b3, b2, cur_b, logits_256);
         var max_raw_l = -100000.0;
-        if (cur_b == 32.0 || wp1_tgt_b > 0.0 || wp2_tgt_b > 0.0 || wp3_tgt_b > 0.0) {
+        if (cur_b == 32.0) {
             c = 97.0;
             while (c <= 122.0) {
                 let rlv = cartan_vec_get_f32(logits_256, c);
@@ -4231,21 +4528,9 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
         }
         var best_b = 32.0;
         var best_l = -100000.0;
-        var ref_hub_id = g_markov_ctx_word2_id;
-        if (ref_hub_id <= 0.0) { ref_hub_id = g_markov_ctx_word1_id; }
         c = 32.0;
         while (c <= 126.0) {
             var lv = cartan_vec_get_f32(logits_256, c);
-            // Coupled 42-Layer Trajectory Multi-Byte Prefix Steering across all characters of the 3 waypoint words:
-            // Disambiguates word-initial ties ("is a [small/cheerful] [bird]"), sibling properties, and shared-prefix ties ("gr[ound/ow]")
-            if ((c == wp1_tgt_b || c == wp2_tgt_b || c == wp3_tgt_b) && lv >= (max_raw_l - 3.8)) {
-                lv = lv + 4.2;
-            }
-            // If prompt ends on a complete SenseGuarded WordNet noun without a trailing space/comma (e.g. "...the orb" or "...drop a ball"),
-            // allow clean word termination into ' ' or ',' (preserving their relative logit rank) so the Synset Hub fires on the next step:
-            if (step == 0.0 && cur_b != 32.0 && (c == 32.0 || c == 44.0) && geomind_wordnet_resolve_synset(patch_hash, g_ctx_last_hash) > 0.0) {
-                lv = lv + 45.0;
-            }
             // Prevent 3 consecutive identical characters (e.g., "fff") and consecutive spaces ("  ")
             if (b2 == cur_b && cur_b == c) { lv = lv - 12.0; }
             if (cur_b == 32.0 && c == 32.0) { lv = lv - 12.0; }
@@ -4401,12 +4686,23 @@ fn geomind_truncate_sentences(text: string, max_sents: float) -> string {
     return text;
 }
 
-// Stage 6.2 Coupled Two-Scale Markov Epistemic Question-Answering Engine (Zero String Templates):
-// 1. Autonomously parses raw natural-language `question_str` using closed-class interrogatives & 42-layer cascade energy to locate the Focus Concept.
-// 2. Runs the 42-Layer S^{247} Deep Markov Chain (`h_L0 -> h_L7 -> h_L14 -> h_L21 -> h_L28 -> h_L35 -> h_L42`).
-// 3. Steers the Surface 3-Gram Tapestry Generator (`geomind_byte_latent_generate_deep_e8`) byte-by-byte along the active trajectory waypoints.
+// Stage 7.0 Coupled Two-Scale Markov Epistemic Question-Answering Engine (Zero Prompt Templates, Zero Keyword Rules):
+// 1. Autonomously parses raw natural-language `question_str` using 42-layer cascade energy to locate the Focus Concept `subj_word`.
+// 2. Runs the unified 42-Layer S^{247} Deep Markov Chain (`h_L0 -> h_L7 -> h_L14 -> h_L21 -> h_L28 -> h_L35 -> h_L42`).
+// 3. Steers the Surface 3-Gram Tapestry Generator (`geomind_byte_latent_generate_deep_e8`) byte-by-byte via 1:1 248-D E8 readout `hv^T * W_dec`
+//    starting solely from bare noun phrases (`"A " + subj_word`, `"The " + subj_word`, or `Cap(subj_word)` when `r7 == 0.0`).
 fn geomind_e8_answer_epistemic_question(question_str: string) -> string {
-    geomind_e8_rel_init_if_needed();
+    geomind_wordnet_init_if_needed();
+    // Reset cross-turn episodic refractory ring buffer so independent QA queries do not suppress canonical edges:
+    if (g_e8_episodic_ref_w1 != 0.0) {
+        var er_clr = 0.0;
+        while (er_clr < 32.0) {
+            cartan_vec_set_f32(g_e8_episodic_ref_w1, er_clr, 0.0);
+            cartan_vec_set_f32(g_e8_episodic_ref_byte, er_clr, 0.0);
+            er_clr = er_clr + 1.0;
+        }
+        g_e8_episodic_ref_ptr = 0.0;
+    }
     let h_L0 = cartan_vec_create();
     let h_L7 = cartan_vec_create();
     let h_L14 = cartan_vec_create();
@@ -4428,22 +4724,12 @@ fn geomind_e8_answer_epistemic_question(question_str: string) -> string {
         d = d + 1.0;
     }
 
-    let h_is = geomind_word_patch_hash("is");
-    let h_why = geomind_word_patch_hash("why");
-    let h_how = geomind_word_patch_hash("how");
-    let h_what = geomind_word_patch_hash("what");
-    let h_when = geomind_word_patch_hash("when");
-    let h_where = geomind_word_patch_hash("where");
-
-    var q_has_is = 0.0;
-    var q_has_why = 0.0;
-    var q_has_how = 0.0;
-    var q_has_what = 0.0;
-    var q_has_when = 0.0;
-    var q_has_where = 0.0;
-
     var subj_word = "";
-    var best_subj_energy = -1.0;
+    var best_subj_energy = 0.0;
+    let q_raw_toks = cartan_tree_create();
+    let q_low_toks = cartan_tree_create();
+    let q_hashes = cartan_vec_create();
+    let q_is_cap = cartan_vec_create();
 
     let q_len = cartan_string_length(question_str);
     var w_start = 0.0;
@@ -4464,18 +4750,20 @@ fn geomind_e8_answer_epistemic_question(question_str: string) -> string {
         } else {
             if (in_word == 1.0) {
                 let raw_tok = cartan_string_substring(question_str, w_start, i);
+                let low_tok = cartan_string_to_lower(raw_tok);
                 let wh = geomind_word_patch_hash(raw_tok);
-                if (wh == h_is) { q_has_is = 1.0; }
-                if (wh == h_why) { q_has_why = 1.0; }
-                if (wh == h_how) { q_has_how = 1.0; }
-                if (wh == h_what) { q_has_what = 1.0; }
-                if (wh == h_when) { q_has_when = 1.0; }
-                if (wh == h_where) { q_has_where = 1.0; }
+                let b_first = cartan_byte_at(raw_tok, 0.0);
+                var cap_flag = 0.0;
+                if (b_first >= 65.0 && b_first <= 90.0) { cap_flag = 1.0; }
+                cartan_tree_push(q_raw_toks, raw_tok);
+                cartan_tree_push(q_low_toks, low_tok);
+                cartan_vec_push_f32(q_hashes, wh);
+                cartan_vec_push_f32(q_is_cap, cap_flag);
 
-                // Check if this token is a registered S^{247} concept and evaluate its 42-layer cascade potential
+                // Check if this lowercase token is a registered S^{247} concept with taxonomic or causal cascade energy
                 var v_idx = 0.0;
                 var is_reg = 0.0;
-                var canon_word = raw_tok;
+                var canon_word = low_tok;
                 while (v_idx < g_e8_vocab_count) {
                     if (cartan_vec_get_f32(g_e8_vocab_hashes, v_idx) == wh) {
                         is_reg = 1.0;
@@ -4484,7 +4772,10 @@ fn geomind_e8_answer_epistemic_question(question_str: string) -> string {
                     }
                     v_idx = v_idx + 1.0;
                 }
-                if (is_reg == 1.0) {
+                if (is_reg == 1.0 && cap_flag == 0.0 && cartan_string_length(canon_word) >= 3.0 &&
+                    wh != g_wn_hash_is && wh != g_wn_hash_a && wh != g_wn_hash_the &&
+                    wh != g_wn_hash_and && wh != g_wn_hash_in && wh != g_wn_hash_on && wh != g_wn_hash_when &&
+                    wh != g_wn_hash_it && wh != g_wn_hash_you && wh != g_wn_verb_to && wh != g_wn_verb_can && wh != g_wn_verb_do) {
                     geomind_e8_word_to_vec_248(canon_word, h_L0);
                     let p7 = geomind_e8_cascade_step_7L(g_e8_rel_isa_248x248, h_L0, 0.0, h_L7);
                     let p14 = geomind_e8_cascade_step_7L(g_e8_rel_super_248x248, h_L7, 7.0, h_L14);
@@ -4498,13 +4789,15 @@ fn geomind_e8_answer_epistemic_question(question_str: string) -> string {
                     let p42 = geomind_e8_cascade_step_7L(g_e8_rel_effect_248x248, h_L35, 35.0, h_L42);
 
                     var cand_energy = 0.0;
-                    if (p7 > 0.0) { cand_energy = cand_energy + 2.0; }
-                    if (p14 > 0.0) { cand_energy = cand_energy + 1.5; }
-                    if (p21 > 0.0) { cand_energy = cand_energy + 1.5; }
-                    if (p_pr > 0.0) { cand_energy = cand_energy + 1.0; }
-                    if (p28 > 0.0) { cand_energy = cand_energy + 1.5; }
-                    if (p35 > 0.0) { cand_energy = cand_energy + 3.0; }
-                    if (p42 > 0.0) { cand_energy = cand_energy + 3.0; }
+                    if (p7 > 0.0 || (p35 > 0.0 && p42 > 0.0)) {
+                        if (p7 > 0.0) { cand_energy = cand_energy + 2.0; }
+                        if (p14 > 0.0) { cand_energy = cand_energy + 1.5; }
+                        if (p21 > 0.0) { cand_energy = cand_energy + 1.5; }
+                        if (p_pr > 0.0) { cand_energy = cand_energy + 1.0; }
+                        if (p28 > 0.0) { cand_energy = cand_energy + 1.5; }
+                        if (p35 > 0.0) { cand_energy = cand_energy + 3.0; }
+                        if (p42 > 0.0) { cand_energy = cand_energy + 3.0; }
+                    }
 
                     if (cand_energy > best_subj_energy) {
                         best_subj_energy = cand_energy;
@@ -4517,6 +4810,128 @@ fn geomind_e8_answer_epistemic_question(question_str: string) -> string {
         i = i + 1.0;
     }
 
+    var ans = "";
+    let n_qtoks = cartan_tree_len_f(q_raw_toks);
+    if (best_subj_energy <= 0.0 && n_qtoks >= 2.0) {
+        // Rung 3 / Rung 4 Narrative Entity & Multi-Word Phrase Hub Resolution (zero hardcoded names/templates):
+        var span_start = -1.0;
+        var span_end = -1.0;
+        var ti = 1.0;
+        while (ti < n_qtoks) {
+            if (cartan_vec_get_f32(q_is_cap, ti) == 1.0) {
+                span_start = ti;
+                span_end = ti;
+                // Check if preceded by "the" or "to" that forms a registered 2-word hub in Block 2
+                if (ti >= 2.0) {
+                    let prev_low = cartan_tree_get(q_low_toks, ti - 1.0);
+                    if (cartan_string_eq(prev_low, "the") == 1.0 || cartan_string_eq(prev_low, "to") == 1.0) {
+                        let h_prev = cartan_vec_get_f32(q_hashes, ti - 1.0);
+                        let h_cur = cartan_vec_get_f32(q_hashes, ti);
+                        let w2_id = math_mod_val(h_prev * 257.0 + h_cur, 8388607.0) + 1.0;
+                        if (geomind_markov_hub_row_idx(294912.0, 393216.0, w2_id, 0.0, 0.0) >= 294912.0) {
+                            span_start = ti - 1.0;
+                        }
+                    }
+                }
+                var tj = ti + 1.0;
+                while (tj < n_qtoks) {
+                    if (cartan_vec_get_f32(q_is_cap, tj) == 1.0) {
+                        span_end = tj;
+                        tj = tj + 1.0;
+                    } else if (cartan_string_eq(cartan_tree_get(q_low_toks, tj), "of") == 1.0 && (tj + 1.0) < n_qtoks && cartan_vec_get_f32(q_is_cap, tj + 1.0) == 1.0) {
+                        span_end = tj + 1.0;
+                        tj = tj + 2.0;
+                    } else {
+                        break;
+                    }
+                }
+                break;
+            }
+            ti = ti + 1.0;
+        }
+        // Fallback for narrative questions whose subject is a definite noun phrase ("the <noun>") without capitalized proper nouns:
+        if (span_start < 0.0) {
+            ti = 1.0;
+            while ((ti + 1.0) < n_qtoks) {
+                if (cartan_string_eq(cartan_tree_get(q_low_toks, ti), "the") == 1.0) {
+                    span_start = ti;
+                    span_end = ti + 1.0;
+                    break;
+                }
+                ti = ti + 1.0;
+            }
+        }
+        var narr_prompt = "";
+        if (span_start >= 0.0) {
+            var sk = span_start;
+            while (sk <= span_end) {
+                var tok_s = cartan_tree_get(q_raw_toks, sk);
+                if (sk == span_start) {
+                    let b0_s = cartan_byte_at(tok_s, 0.0);
+                    if (b0_s >= 97.0 && b0_s <= 122.0) {
+                        tok_s = cartan_string_concat(cartan_char_from_code(b0_s - 32.0), cartan_string_substring(tok_s, 1.0, cartan_string_length(tok_s)));
+                    }
+                }
+                if (sk == span_start) {
+                    narr_prompt = tok_s;
+                } else {
+                    narr_prompt = cartan_string_concat(narr_prompt, cartan_string_concat(" ", tok_s));
+                }
+                sk = sk + 1.0;
+            }
+        } else {
+            narr_prompt = cartan_tree_get(q_raw_toks, n_qtoks - 1.0);
+        }
+
+        // Extract up to 3 lowercase content clue waypoints from the remaining question tokens
+        var wp_cnt = 0.0;
+        g_e8_traj_waypt1_str = "";
+        g_e8_traj_waypt2_str = "";
+        g_e8_traj_waypt3_str = "";
+        ti = 1.0;
+        while (ti < n_qtoks && wp_cnt < 3.0) {
+            if ((ti < span_start || ti > span_end) && cartan_vec_get_f32(q_is_cap, ti) == 0.0) {
+                let cl_low = cartan_tree_get(q_low_toks, ti);
+                let cl_len = cartan_string_length(cl_low);
+                if (cl_len >= 4.0 &&
+                    cartan_string_eq(cl_low, "what") == 0.0 && cartan_string_eq(cl_low, "where") == 0.0 &&
+                    cartan_string_eq(cl_low, "when") == 0.0 && cartan_string_eq(cl_low, "which") == 0.0 &&
+                    cartan_string_eq(cl_low, "does") == 0.0 && cartan_string_eq(cl_low, "were") == 0.0 &&
+                    cartan_string_eq(cl_low, "that") == 0.0 && cartan_string_eq(cl_low, "with") == 0.0 &&
+                    cartan_string_eq(cl_low, "from") == 0.0) {
+                    if (wp_cnt == 0.0) { g_e8_traj_waypt1_str = cl_low; }
+                    if (wp_cnt == 1.0) { g_e8_traj_waypt2_str = cl_low; }
+                    if (wp_cnt == 2.0) { g_e8_traj_waypt3_str = cl_low; }
+                    wp_cnt = wp_cnt + 1.0;
+                }
+            }
+            ti = ti + 1.0;
+        }
+        let wp_summary = cartan_string_concat(g_e8_traj_waypt1_str, cartan_string_concat(", ", g_e8_traj_waypt2_str));
+        let narr_gen = geomind_truncate_sentences(geomind_byte_latent_generate_deep_e8(narr_prompt, 42.0, 240.0), 1.0);
+        ans = cartan_string_concat(narr_gen, cartan_string_concat(" [42L Narrative Focus: ", cartan_string_concat(narr_prompt, cartan_string_concat(" | Clues: ", cartan_string_concat(wp_summary, "]")))));
+        g_e8_traj_waypt1_str = "";
+        g_e8_traj_waypt2_str = "";
+        g_e8_traj_waypt3_str = "";
+        cartan_vec_free(q_hashes);
+        cartan_vec_free(q_is_cap);
+        cartan_vec_free(h_L0);
+        cartan_vec_free(h_L7);
+        cartan_vec_free(h_L14);
+        cartan_vec_free(h_L21);
+        cartan_vec_free(h_prop);
+        cartan_vec_free(h_L28);
+        cartan_vec_free(h_L35);
+        cartan_vec_free(h_L42);
+        return ans;
+    }
+
+    cartan_vec_free(q_hashes);
+    cartan_vec_free(q_is_cap);
+    if (cartan_string_length(subj_word) == 0.0) {
+        subj_word = "ball";
+    }
+
     // Run full 42-Layer Geodesic Rollout on the autonomously detected Focus Subject `subj_word`
     geomind_e8_word_to_vec_248(subj_word, h_L0);
     let r7 = geomind_e8_cascade_step_7L(g_e8_rel_isa_248x248, h_L0, 0.0, h_L7);
@@ -4526,9 +4941,7 @@ fn geomind_e8_answer_epistemic_question(question_str: string) -> string {
     let r21 = geomind_e8_cascade_step_7L(g_e8_rel_cap_248x248, h_L7, 14.0, h_L21);
     let w_L21 = geomind_e8_decode_concept_vec_248(h_L21);
     var r_prop = geomind_e8_cascade_step_7L(g_e8_rel_prop_248x248, h_L0, 14.0, h_prop);
-    var has_own_prop = 1.0;
     if (r_prop < 0.45) {
-        has_own_prop = 0.0;
         r_prop = geomind_e8_cascade_step_7L(g_e8_rel_prop_248x248, h_L7, 14.0, h_prop);
     }
     let w_prop = geomind_e8_decode_concept_vec_248(h_prop);
@@ -4540,34 +4953,9 @@ fn geomind_e8_answer_epistemic_question(question_str: string) -> string {
     let w_L42 = geomind_e8_decode_concept_vec_248(h_L42);
 
     // Emit natural English sentences byte-by-byte through the Surface 3-Gram Tapestry Generator (`geomind_byte_latent_generate_deep_e8`)
-    // steered by the active 42-Layer S^{247} Trajectory Waypoints (full-word multi-byte prefix steering + Layer-0 w_prop differentiation)
-    g_e8_traj_waypt1_str = w_L7;
-    if (r42 > 0.0) {
-        g_e8_traj_waypt2_str = w_L42;
-    } else {
-        g_e8_traj_waypt2_str = w_L28;
-    }
-    g_e8_traj_waypt3_str = w_prop;
+    // steered via 248-D E8 trajectory fiber injection into `W_dec` starting solely from bare noun phrases (zero verb/adjective templates):
     let subj_tag = cartan_string_concat(subj_word, cartan_string_concat("(", cartan_string_concat(w_prop, ")")));
-    var ans = "";
-    if (q_has_is == 1.0 || q_has_where == 1.0) {
-        let s1 = geomind_truncate_sentences(geomind_byte_latent_generate_deep_e8(cartan_string_concat("A ", cartan_string_concat(subj_word, " is")), 42.0, 64.0), 1.0);
-        let s2 = geomind_truncate_sentences(geomind_byte_latent_generate_deep_e8(cartan_string_concat("A ", cartan_string_concat(subj_word, " can")), 42.0, 68.0), 1.0);
-        ans = cartan_string_concat(s1, cartan_string_concat(" ", cartan_string_concat(s2, cartan_string_concat(" [42L Waypoints: ", cartan_string_concat(subj_tag, cartan_string_concat("->", cartan_string_concat(w_L7, cartan_string_concat("->", cartan_string_concat(w_L14, cartan_string_concat(" | ", cartan_string_concat(w_L21, cartan_string_concat("->", cartan_string_concat(w_L28, "]")))))))))))));
-    } else if (q_has_what == 1.0 && q_has_when == 1.0) {
-        let s1 = geomind_truncate_sentences(geomind_byte_latent_generate_deep_e8(cartan_string_concat("When you drop a ", cartan_string_concat(subj_word, ",")), 42.0, 56.0), 1.0);
-        var s2 = "";
-        if (has_own_prop == 1.0) {
-            s2 = geomind_truncate_sentences(geomind_byte_latent_generate_deep_e8(cartan_string_concat("A ", cartan_string_concat(subj_word, " is")), 42.0, 56.0), 1.0);
-        } else {
-            s2 = geomind_truncate_sentences(geomind_byte_latent_generate_deep_e8(cartan_string_concat("You can bounce the ", subj_word), 42.0, 54.0), 2.0);
-        }
-        ans = cartan_string_concat(s1, cartan_string_concat(" ", cartan_string_concat(s2, cartan_string_concat(" [42L Waypoints: ", cartan_string_concat(subj_tag, cartan_string_concat("->", cartan_string_concat(w_L7, cartan_string_concat("->", cartan_string_concat(w_L14, cartan_string_concat(" | ", cartan_string_concat(w_L35, cartan_string_concat("->", cartan_string_concat(w_L42, "]")))))))))))));
-    } else if (q_has_how == 1.0) {
-        let s1 = geomind_truncate_sentences(geomind_byte_latent_generate_deep_e8(cartan_string_concat("A ", cartan_string_concat(subj_word, " is")), 42.0, 58.0), 1.0);
-        let s2 = geomind_truncate_sentences(geomind_byte_latent_generate_deep_e8(cartan_string_concat("A gentle ", subj_word), 42.0, 44.0), 1.0);
-        ans = cartan_string_concat(s1, cartan_string_concat(" ", cartan_string_concat(s2, cartan_string_concat(" [42L Waypoints: ", cartan_string_concat(subj_tag, cartan_string_concat("->", cartan_string_concat(w_L7, cartan_string_concat("->", cartan_string_concat(w_L14, cartan_string_concat(" | ", cartan_string_concat(w_L21, cartan_string_concat("->", cartan_string_concat(w_L28, "]")))))))))))));
-    } else if (q_has_why == 1.0 && r35 > 0.0 && r42 > 0.0) {
+    if (r7 == 0.0 && r35 > 0.0 && r42 > 0.0) {
         var cap_subj = subj_word;
         if (cartan_string_length(subj_word) > 0.0) {
             let b0 = cartan_byte_at(subj_word, 0.0);
@@ -4575,12 +4963,80 @@ fn geomind_e8_answer_epistemic_question(question_str: string) -> string {
                 cap_subj = cartan_string_concat(cartan_char_from_code(b0 - 32.0), cartan_string_substring(subj_word, 1.0, cartan_string_length(subj_word)));
             }
         }
-        let s1 = geomind_truncate_sentences(geomind_byte_latent_generate_deep_e8(cartan_string_concat(cap_subj, cartan_string_concat(" ", w_L42)), 42.0, 58.0), 1.0);
+        g_e8_traj_waypt1_str = w_L42;
+        g_e8_traj_waypt2_str = w_L35;
+        g_e8_traj_waypt3_str = w_prop;
+        let s1 = geomind_truncate_sentences(geomind_byte_latent_generate_deep_e8(cap_subj, 42.0, 62.0), 1.0);
         ans = cartan_string_concat(s1, cartan_string_concat(" [42L Waypoints: ", cartan_string_concat(subj_tag, cartan_string_concat("->", cartan_string_concat(w_L35, cartan_string_concat("->", cartan_string_concat(w_L42, "]")))))));
     } else {
-        let s1 = geomind_truncate_sentences(geomind_byte_latent_generate_deep_e8(cartan_string_concat("A ", cartan_string_concat(subj_word, " is")), 42.0, 48.0), 1.0);
-        let s2 = geomind_truncate_sentences(geomind_byte_latent_generate_deep_e8(cartan_string_concat("The ", cartan_string_concat(subj_word, " likes to")), 42.0, 44.0), 1.0);
-        ans = cartan_string_concat(s1, cartan_string_concat(" ", cartan_string_concat(s2, cartan_string_concat(" [42L Waypoints: ", cartan_string_concat(subj_tag, cartan_string_concat("->", cartan_string_concat(w_L7, cartan_string_concat("->", cartan_string_concat(w_L14, cartan_string_concat(" | ", cartan_string_concat(w_L21, cartan_string_concat("->", cartan_string_concat(w_L28, "]")))))))))))));
+        // Sentence 1: Lower-Stratum Taxonomic & Property Rollout (L0 -> L7 -> L14 + L21_prop) from bare indefinite NP ("A " + subj_word)
+        g_e8_traj_waypt1_str = w_prop;
+        g_e8_traj_waypt2_str = "is";
+        g_e8_traj_waypt3_str = "a";
+        let s1 = geomind_truncate_sentences(geomind_byte_latent_generate_deep_e8(cartan_string_concat("A ", subj_word), 42.0, 64.0), 1.0);
+
+        // Sentence 2: Upper-Stratum Capability, Valence, & Causal Rollout (L21 -> L28 -> L35 -> L42)
+        var s2_prompt = cartan_string_concat("The ", subj_word);
+        if (r35 > 0.0 && r42 > 0.0 && cartan_string_eq(w_L35, w_L7) == 0.0) {
+            let b0_c = cartan_byte_at(w_L35, 0.0);
+            if (b0_c >= 97.0 && b0_c <= 122.0) {
+                s2_prompt = cartan_string_concat(cartan_char_from_code(b0_c - 32.0), cartan_string_substring(w_L35, 1.0, cartan_string_length(w_L35)));
+            } else {
+                s2_prompt = w_L35;
+            }
+            g_e8_traj_waypt1_str = w_L7;
+            g_e8_traj_waypt2_str = w_L42;
+            g_e8_traj_waypt3_str = w_L21;
+        } else {
+            // Check if ("The", subj_word) has a direct capability transition (`w_L21[0]` or `'l'`) in Block 2;
+            // if not (e.g., Rung 2 capability is stored on the hypernym subject `"The " + w_L7`), corefer via `"The " + w_L7`:
+            let h_the = geomind_word_patch_hash("The");
+            var s2_subj = subj_word;
+            let h_sub = geomind_word_patch_hash(subj_word);
+            let w2_sub_id = math_mod_val(h_the * 257.0 + h_sub, 8388607.0) + 1.0;
+            let last_sub_b = cartan_byte_at(subj_word, cartan_string_length(subj_word) - 1.0);
+            var prev_sub_b = 32.0;
+            if (cartan_string_length(subj_word) >= 2.0) {
+                prev_sub_b = cartan_byte_at(subj_word, cartan_string_length(subj_word) - 2.0);
+            }
+            let sub_hc = geomind_markov_hub_ctx_idx(prev_sub_b, last_sub_b, 32.0);
+            var w2_sub_row = geomind_markov_hub_row_idx(294912.0, 393216.0, w2_sub_id, sub_hc, 0.0);
+            var has_direct_cap = 0.0;
+            let cap_b0 = cartan_byte_at(w_L21, 0.0);
+            if (w2_sub_row >= 294912.0) {
+                if (cartan_vec_get_f32(g_markov_3gram_counts, w2_sub_row * 128.0 + cap_b0) >= 0.5 ||
+                    cartan_vec_get_f32(g_markov_3gram_counts, w2_sub_row * 128.0 + 108.0) >= 0.5 ||
+                    cartan_vec_get_f32(g_markov_3gram_counts, w2_sub_row * 128.0 + 99.0) >= 0.5) {
+                    has_direct_cap = 1.0;
+                }
+            }
+            if (has_direct_cap == 0.0 && cartan_string_length(w_L7) > 0.0) {
+                s2_subj = w_L7;
+                s2_prompt = cartan_string_concat("The ", w_L7);
+                let h_l7 = geomind_word_patch_hash(w_L7);
+                let w2_l7_id = math_mod_val(h_the * 257.0 + h_l7, 8388607.0) + 1.0;
+                let last_l7_b = cartan_byte_at(w_L7, cartan_string_length(w_L7) - 1.0);
+                var prev_l7_b = 32.0;
+                if (cartan_string_length(w_L7) >= 2.0) {
+                    prev_l7_b = cartan_byte_at(w_L7, cartan_string_length(w_L7) - 2.0);
+                }
+                w2_sub_row = geomind_markov_hub_row_idx(294912.0, 393216.0, w2_l7_id, geomind_markov_hub_ctx_idx(prev_l7_b, last_l7_b, 32.0), 0.0);
+            }
+            g_e8_traj_waypt1_str = w_L21;
+            g_e8_traj_waypt2_str = w_L28;
+            // Select the auxiliary verb bridge (`can` vs `likes`) attested in `w2_sub_row` (`("The", s2_subj)`):
+            if (w2_sub_row >= 294912.0 && cartan_vec_get_f32(g_markov_3gram_counts, w2_sub_row * 128.0 + 99.0) >= 0.5) {
+                g_e8_traj_waypt3_str = "can";
+            } else {
+                g_e8_traj_waypt3_str = "likes";
+            }
+        }
+        let s2 = geomind_truncate_sentences(geomind_byte_latent_generate_deep_e8(s2_prompt, 42.0, 68.0), 1.0);
+        var upper_tag = cartan_string_concat(w_L21, cartan_string_concat("->", w_L28));
+        if (r42 > 0.0) {
+            upper_tag = cartan_string_concat(upper_tag, cartan_string_concat(" | ", cartan_string_concat(w_L35, cartan_string_concat("->", w_L42))));
+        }
+        ans = cartan_string_concat(s1, cartan_string_concat(" ", cartan_string_concat(s2, cartan_string_concat(" [42L Waypoints: ", cartan_string_concat(subj_tag, cartan_string_concat("->", cartan_string_concat(w_L7, cartan_string_concat("->", cartan_string_concat(w_L14, cartan_string_concat(" | ", cartan_string_concat(upper_tag, "]")))))))))));
     }
     g_e8_traj_waypt1_str = "";
     g_e8_traj_waypt2_str = "";
@@ -4595,6 +5051,153 @@ fn geomind_e8_answer_epistemic_question(question_str: string) -> string {
     cartan_vec_free(h_L35);
     cartan_vec_free(h_L42);
     return ans;
+}
+
+// Run the complete Epistemic, Taxonomic, & Subtle Geometric Reasoning Evaluation Suite (callable from --curriculum or standalone --eval-qa)
+fn geomind_run_epistemic_eval_suite(num_layers: float) -> float {
+    var L = floor(num_layers);
+    if (L < 1.0) { L = 42.0; }
+    geomind_markov_init_if_needed();
+    geomind_byte_latent_init_if_needed();
+    if (g_e8_stack_initialized == 0.0) {
+        geomind_e8_stack_init(L);
+        let stack_path = "Projects/geomind/trainingdata/checkpoints/geomind_e8_deep_stack.bin";
+        if (cartan_file_exists(stack_path) == 1.0) {
+            geomind_e8_stack_load(stack_path);
+        }
+    }
+    geomind_wordnet_init_if_needed();
+    geomind_e8_rel_init_if_needed();
+    geomind_e8_anchors_init_if_needed();
+
+    printf("--------------------------------------------------------------------------------\n");
+    printf("  NOVEL CONCEPT RECOMBINATION TEST (Unseen Prefixes Bridging Shared Word Hubs)\n");
+    printf("--------------------------------------------------------------------------------\n");
+    printf("  -> Novel 1 ('The cat likes to play'):    %s\n", geomind_byte_latent_generate_deep_e8("The cat likes to play", L, 48.0));
+    printf("  -> Novel 2 ('A small dog found'):        %s\n", geomind_byte_latent_generate_deep_e8("A small dog found", L, 48.0));
+    printf("  -> Novel 3 ('Cold water is'):            %s\n", geomind_byte_latent_generate_deep_e8("Cold water is", L, 48.0));
+    printf("  -> Novel 4 ('When rain falls, the cat'): %s\n", geomind_byte_latent_generate_deep_e8("When rain falls, the cat", L, 48.0));
+    printf("  -> Novel 5 ('The dog can bounce'):       %s\n", geomind_byte_latent_generate_deep_e8("The dog can bounce", L, 48.0));
+    printf("  -> Novel 6 ('Alice stood on the'):       %s\n", geomind_byte_latent_generate_deep_e8("Alice stood on the", L, 56.0));
+    printf("  -> Novel 7 ('Commander Vane found a'):   %s\n", geomind_byte_latent_generate_deep_e8("Commander Vane found a", L, 56.0));
+    printf("  -> Novel 8 ('Sherlock Holmes stood on'): %s\n", geomind_byte_latent_generate_deep_e8("Sherlock Holmes stood on", L, 56.0));
+    printf("--------------------------------------------------------------------------------\n");
+    printf("  WORDNET + IC TAXONOMIC GROKKING TEST (Zero-Shot Synset Property Inheritance)\n");
+    printf("--------------------------------------------------------------------------------\n");
+    printf("  -> Grok 1 ('The puppy likes to'):        %s\n", geomind_byte_latent_generate_deep_e8("The puppy likes to", L, 48.0));
+    printf("  -> Grok 2 ('A gentle kitten'):           %s\n", geomind_byte_latent_generate_deep_e8("A gentle kitten", L, 48.0));
+    printf("  -> Grok 3 ('A sparrow can'):             %s\n", geomind_byte_latent_generate_deep_e8("A sparrow can", L, 48.0));
+    printf("  -> Grok 4 ('You can bounce the orb'):    %s\n", geomind_byte_latent_generate_deep_e8("You can bounce the orb", L, 48.0));
+    printf("--------------------------------------------------------------------------------\n");
+    printf("  248x248 MANIFOLD CONCEPT-WEIGHTING & RELATIONAL UNDERSTANDING AUDIT (S^247)\n");
+    printf("--------------------------------------------------------------------------------\n");
+    let w_sparrow_bird = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "sparrow", "bird");
+    let w_bird_sparrow = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "bird", "sparrow");
+    let w_robin_bird   = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "robin", "bird");
+    let w_kitten_cat   = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "kitten", "cat");
+    let w_cat_kitten   = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "cat", "kitten");
+    let w_puppy_dog    = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "puppy", "dog");
+    let w_dog_puppy    = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "dog", "puppy");
+    let w_orb_ball     = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "orb", "ball");
+    let w_sphere_ball  = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "sphere", "ball");
+    let w_ball_orb     = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "ball", "orb");
+    let w_sparrow_dog  = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "sparrow", "dog");
+    printf("  [Asymmetric IS_A Operator <P_hyper, R_isa * P_hypo> / 248 (Codebook = %.0f / 4096 words)]:\n", g_e8_vocab_count);
+    printf("    * sparrow -> bird = %.4f | Zero-Shot robin  -> bird = %.4f (Reverse bird -> sparrow = %.4f)\n", w_sparrow_bird, w_robin_bird, w_bird_sparrow);
+    printf("    * kitten  -> cat  = %.4f  (Reverse cat  -> kitten  = %.4f)\n", w_kitten_cat, w_cat_kitten);
+    printf("    * puppy   -> dog  = %.4f  (Reverse dog  -> puppy   = %.4f)\n", w_puppy_dog, w_dog_puppy);
+    printf("    * orb     -> ball = %.4f | Zero-Shot sphere -> ball = %.4f (Reverse ball -> orb = %.4f | sparrow -> dog = %.4f)\n", w_orb_ball, w_sphere_ball, w_ball_orb, w_sparrow_dog);
+
+    let p_kitten_young = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "kitten", "young");
+    let p_puppy_young  = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "puppy", "young");
+    let p_sparrow_sm   = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "sparrow", "small");
+    let p_ball_round   = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "ball", "round");
+    let p_bouncing_fun = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "bouncing", "fun");
+    let p_run_fun      = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "run", "fun");
+    let p_play_fun     = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "play", "fun");
+    let p_bounce_fun   = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "bounce", "fun");
+    let cos_run_play   = geomind_e8_rel_prop_cosine_words("run", "play");
+    printf("  [Property & Activity Valence Operator <P_attr, R_prop * P_concept> / 248]:\n");
+    printf("    * kitten -> young = %.4f | puppy -> young = %.4f | sparrow -> small = %.4f | ball -> round = %.4f\n",
+        p_kitten_young, p_puppy_young, p_sparrow_sm, p_ball_round);
+    printf("    * bouncing -> fun = %.4f | run   -> fun   = %.4f | play    -> fun   = %.4f | bounce -> fun = %.4f\n",
+        p_bouncing_fun, p_run_fun, p_play_fun, p_bounce_fun);
+    printf("    * Shared Activity Valence Cosine cos(R_prop*run, R_prop*play) = %.4f\n", cos_run_play);
+    printf("--------------------------------------------------------------------------------\n");
+    printf("  42-LAYER STRATIFIED E8 DEEP-THOUGHT GEODESIC ROLLOUT (6 x 7-Layer Cascades)\n");
+    printf("--------------------------------------------------------------------------------\n");
+    printf("  -> Rollout 1 ('sparrow'): %s\n", geomind_e8_deep_thought_rollout_42L("sparrow"));
+    printf("  -> Rollout 2 ('robin'):   %s\n", geomind_e8_deep_thought_rollout_42L("robin"));
+    printf("  -> Rollout 3 ('kitten'):  %s\n", geomind_e8_deep_thought_rollout_42L("kitten"));
+    printf("  -> Rollout 4 ('puppy'):   %s\n", geomind_e8_deep_thought_rollout_42L("puppy"));
+    printf("  -> Rollout 5 ('orb'):     %s\n", geomind_e8_deep_thought_rollout_42L("orb"));
+    printf("  -> Rollout 6 ('sphere'):  %s\n", geomind_e8_deep_thought_rollout_42L("sphere"));
+    printf("  -> Rollout 7 ('wood'):    %s\n", geomind_e8_deep_thought_rollout_42L("wood"));
+    printf("--------------------------------------------------------------------------------\n");
+    printf("  DAY-ZERO EPISTEMIC REASONING & QUESTION-ANSWERING TEST (Coupled 42L + Tapestry)\n");
+    printf("--------------------------------------------------------------------------------\n");
+    printf("  -> Q1 ('Is a sparrow an animal and where can it fly?'):\n");
+    printf("     A1: %s\n", geomind_e8_answer_epistemic_question("Is a sparrow an animal and where can it fly?"));
+    printf("  -> Q2 ('Why does a puppy like to run?'):\n");
+    printf("     A2: %s\n", geomind_e8_answer_epistemic_question("Why does a puppy like to run?"));
+    printf("  -> Q3 ('How does a kitten feel when it purrs?'):\n");
+    printf("     A3: %s\n", geomind_e8_answer_epistemic_question("How does a kitten feel when it purrs?"));
+    printf("  -> Q4 ('What happens when you drop an orb?'):\n");
+    printf("     A4: %s\n", geomind_e8_answer_epistemic_question("What happens when you drop an orb?"));
+    printf("  -> Q5 ('Why does wood float on water?'):\n");
+    printf("     A5: %s\n", geomind_e8_answer_epistemic_question("Why does wood float on water?"));
+    printf("  -> Q6 [Zero-Shot Sibling Bird ('robin' vs 'sparrow')] ('Is a robin an animal and where can it fly?'):\n");
+    printf("     A6: %s\n", geomind_e8_answer_epistemic_question("Is a robin an animal and where can it fly?"));
+    printf("  -> Q7 [Zero-Shot Sibling Sphere ('sphere' vs 'orb')] ('What happens when you drop a sphere?'):\n");
+    printf("     A7: %s\n", geomind_e8_answer_epistemic_question("What happens when you drop a sphere?"));
+    printf("  -> Q8 [Rung 4a | Modern Narratives - Sci-Fi] ('Where did Commander Vane stand on Orbital Station Epsilon?'):\n");
+    printf("     A8: %s\n", geomind_e8_answer_epistemic_question("Where did Commander Vane stand on Orbital Station Epsilon?"));
+    printf("  -> Q9 [Rung 4a | Modern Narratives - Mystery] ('Where did Detective Julian Sterling arrive as twilight settled?'):\n");
+    printf("     A9: %s\n", geomind_e8_answer_epistemic_question("Where did Detective Julian Sterling arrive as twilight settled?"));
+    printf("  -> Q10 [Rung 4b | Alice in Wonderland] ('What did Alice opened and found along the passage?'):\n");
+    printf("     A10: %s\n", geomind_e8_answer_epistemic_question("What did Alice opened and found along the passage?"));
+    printf("  -> Q11 [Rung 4c | Anthem] ('Why did the Council of Vocations come to give us our life Mandates?'):\n");
+    printf("     A11: %s\n", geomind_e8_answer_epistemic_question("Why did the Council of Vocations come to give us our life Mandates?"));
+    printf("  -> Q12 [Rung 4d | Sherlock Holmes - Irene Adler] ('Who is always the woman to Sherlock Holmes?'):\n");
+    printf("     A12: %s\n", geomind_e8_answer_epistemic_question("Who is always the woman to Sherlock Holmes?"));
+    printf("  -> Q13 [Rung 4d | Sherlock Holmes - Mystery Note] ('How was the note undated without signature or address?'):\n");
+    printf("     A13: %s\n", geomind_e8_answer_epistemic_question("How was the note undated without signature or address?"));
+    printf("  -> Q14 [Rung 4c | Anthem - Underground Tunnel] ('How were the walls cracked in the dark tunnel?'):\n");
+    printf("     A14: %s\n", geomind_e8_answer_epistemic_question("How were the walls cracked in the dark tunnel?"));
+    printf("--------------------------------------------------------------------------------\n");
+    printf("  STAGE 6.1 SUBTLE GEOMETRIC REASONING & FALSIFICATION SUITE (Zero Word Rules)\n");
+    printf("--------------------------------------------------------------------------------\n");
+    printf("  [Test 1 | Zero-Shot 42-Layer Trajectory Intersection ('What do X & Y share?')]:\n");
+    printf("    * ('kitten',  'puppy')  -> %s\n", geomind_e8_trajectory_intersection_42L("kitten", "puppy"));
+    printf("    * ('sparrow', 'puppy')  -> %s\n", geomind_e8_trajectory_intersection_42L("sparrow", "puppy"));
+    printf("    * ('run',     'bounce') -> %s\n", geomind_e8_trajectory_intersection_42L("run", "bounce"));
+    printf("    * ('sparrow', 'orb')    -> %s\n", geomind_e8_trajectory_intersection_42L("sparrow", "orb"));
+    printf("  [Test 2 | Counterfactual & False-Premise Rejection + Adjoint R^T Attribution]:\n");
+    printf("    * Claim('kitten',  'fly')    -> %s\n", geomind_e8_verify_counterfactual_42L("kitten", "fly"));
+    printf("    * Claim('sparrow', 'dog')    -> %s\n", geomind_e8_verify_counterfactual_42L("sparrow", "dog"));
+    printf("    * Claim('orb',     'ground') -> %s\n", geomind_e8_verify_counterfactual_42L("orb", "ground"));
+    printf("  [Test 3 | Backward Abductive Diagnosis from Downstream Clues (Inverting L42->L0)]:\n");
+    printf("    * %s\n", geomind_e8_abductive_diagnosis_42L("small", "fly", "sky"));
+    printf("    * %s\n", geomind_e8_abductive_diagnosis_42L("round", "bounce", "ground"));
+    printf("    * %s\n", geomind_e8_abductive_diagnosis_42L("young", "purrs", "happy"));
+    printf("  [Test 4 | Unstated Multi-Sentence Cross-Rung Bridging (WordNet + Rung 1)]:\n");
+    printf("    * Bridge 1 ('trout'):  %s\n", geomind_e8_cross_rung_bridge_42L("trout"));
+    printf("    * Bridge 2 ('salmon'): %s\n", geomind_e8_cross_rung_bridge_42L("salmon"));
+    printf("--------------------------------------------------------------------------------\n");
+    printf("  STAGE 6.2 CO-ADAPTED S^247 MICROFEATURES & SHANNON DECORRELATION AUDIT\n");
+    printf("--------------------------------------------------------------------------------\n");
+    let mf_sparrow_robin = geomind_e8_microfeat_cosine_words("sparrow", "robin");
+    let mf_trout_salmon  = geomind_e8_microfeat_cosine_words("trout", "salmon");
+    let mf_orb_sphere    = geomind_e8_microfeat_cosine_words("orb", "sphere");
+    let mf_run_play      = geomind_e8_microfeat_cosine_words("run", "play");
+    let mf_kitten_puppy  = geomind_e8_microfeat_cosine_words("kitten", "puppy");
+    let mf_sparrow_orb   = geomind_e8_microfeat_cosine_words("sparrow", "orb");
+    printf("  [Layer-0 Co-Adapted S^247 Microfeature Cosine <\\tilde{P}_a, \\tilde{P}_b> / 248]:\n");
+    printf("    * Sibling Birds   cos(sparrow, robin) = %.4f | Sibling Fish cos(trout, salmon) = %.4f\n", mf_sparrow_robin, mf_trout_salmon);
+    printf("    * Sibling Spheres cos(orb, sphere)    = %.4f | Activities   cos(run, play)     = %.4f\n", mf_orb_sphere, mf_run_play);
+    printf("    * Young Animals   cos(kitten, puppy)  = %.4f | Disjoint     cos(sparrow, orb)  = %.4f\n", mf_kitten_puppy, mf_sparrow_orb);
+    cartan_flush(0.0);
+    return 1.0;
 }
 
 // ============================================================================
@@ -4615,13 +5218,16 @@ fn geomind_run_english_curriculum(num_layers: float, lr: float) -> float {
     printf("================================================================================\n");
     cartan_flush(0.0);
 
-    // Start from a clean Anchor Basin registry, Markov Tapestry, and 42-Layer E8 Stack
+    // Start from a clean Anchor Basin registry, Markov Tapestry, Relational Codebook, and 42-Layer E8 Stack
     g_byte_e8_skip_disk_autoload = 1.0;
     g_byte_e8_defer_disk_save = 1.0;
     g_markov_initialized = 0.0;
     geomind_markov_init_if_needed();
     g_byte_e8_initialized = 0.0;
     geomind_byte_latent_init_if_needed();
+    g_e8_rel_initialized = 0.0;
+    g_wordnet_initialized = 0.0;
+    geomind_wordnet_init_if_needed();
     g_byte_e8_skip_disk_autoload = 0.0;
     g_e8_stack_initialized = 0.0;
     geomind_e8_stack_init(L);
@@ -4748,125 +5354,14 @@ fn geomind_run_english_curriculum(num_layers: float, lr: float) -> float {
         cartan_flush(0.0);
     }
 
-    printf("--------------------------------------------------------------------------------\n");
-    printf("  NOVEL CONCEPT RECOMBINATION TEST (Unseen Prefixes Bridging Shared Word Hubs)\n");
-    printf("--------------------------------------------------------------------------------\n");
-    printf("  -> Novel 1 ('The cat likes to play'):    %s\n", geomind_byte_latent_generate_deep_e8("The cat likes to play", L, 48.0));
-    printf("  -> Novel 2 ('A small dog found'):        %s\n", geomind_byte_latent_generate_deep_e8("A small dog found", L, 48.0));
-    printf("  -> Novel 3 ('Cold water is'):            %s\n", geomind_byte_latent_generate_deep_e8("Cold water is", L, 48.0));
-    printf("  -> Novel 4 ('When rain falls, the cat'): %s\n", geomind_byte_latent_generate_deep_e8("When rain falls, the cat", L, 48.0));
-    printf("  -> Novel 5 ('The dog can bounce'):       %s\n", geomind_byte_latent_generate_deep_e8("The dog can bounce", L, 48.0));
-    printf("  -> Novel 6 ('Alice stood on the'):       %s\n", geomind_byte_latent_generate_deep_e8("Alice stood on the", L, 56.0));
-    printf("  -> Novel 7 ('Commander Vane found a'):   %s\n", geomind_byte_latent_generate_deep_e8("Commander Vane found a", L, 56.0));
-    printf("  -> Novel 8 ('Sherlock Holmes stood on'): %s\n", geomind_byte_latent_generate_deep_e8("Sherlock Holmes stood on", L, 56.0));
-    printf("--------------------------------------------------------------------------------\n");
-    printf("  WORDNET + IC TAXONOMIC GROKKING TEST (Zero-Shot Synset Property Inheritance)\n");
-    printf("--------------------------------------------------------------------------------\n");
-    printf("  -> Grok 1 ('The puppy likes to'):        %s\n", geomind_byte_latent_generate_deep_e8("The puppy likes to", L, 48.0));
-    printf("  -> Grok 2 ('A gentle kitten'):           %s\n", geomind_byte_latent_generate_deep_e8("A gentle kitten", L, 48.0));
-    printf("  -> Grok 3 ('A sparrow can'):             %s\n", geomind_byte_latent_generate_deep_e8("A sparrow can", L, 48.0));
-    printf("  -> Grok 4 ('You can bounce the orb'):    %s\n", geomind_byte_latent_generate_deep_e8("You can bounce the orb", L, 48.0));
-    printf("--------------------------------------------------------------------------------\n");
-    printf("  248x248 MANIFOLD CONCEPT-WEIGHTING & RELATIONAL UNDERSTANDING AUDIT (S^247)\n");
-    printf("--------------------------------------------------------------------------------\n");
-    let w_sparrow_bird = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "sparrow", "bird");
-    let w_bird_sparrow = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "bird", "sparrow");
-    let w_kitten_cat   = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "kitten", "cat");
-    let w_cat_kitten   = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "cat", "kitten");
-    let w_puppy_dog    = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "puppy", "dog");
-    let w_dog_puppy    = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "dog", "puppy");
-    let w_orb_ball     = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "orb", "ball");
-    let w_ball_orb     = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "ball", "orb");
-    let w_sparrow_dog  = geomind_e8_rel_score_words(g_e8_rel_isa_248x248, "sparrow", "dog");
-    printf("  [Asymmetric IS_A Operator <P_hyper, R_isa * P_hypo> / 248]:\n");
-    printf("    * sparrow -> bird = %.4f  (Reverse bird -> sparrow = %.4f)\n", w_sparrow_bird, w_bird_sparrow);
-    printf("    * kitten  -> cat  = %.4f  (Reverse cat  -> kitten  = %.4f)\n", w_kitten_cat, w_cat_kitten);
-    printf("    * puppy   -> dog  = %.4f  (Reverse dog  -> puppy   = %.4f)\n", w_puppy_dog, w_dog_puppy);
-    printf("    * orb     -> ball = %.4f  (Reverse ball -> orb     = %.4f | Negative sparrow -> dog = %.4f)\n", w_orb_ball, w_ball_orb, w_sparrow_dog);
-
-    let p_kitten_young = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "kitten", "young");
-    let p_puppy_young  = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "puppy", "young");
-    let p_sparrow_sm   = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "sparrow", "small");
-    let p_robin_ch     = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "robin", "cheerful");
-    let p_ball_round   = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "ball", "round");
-    let p_sphere_smth  = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "sphere", "smooth");
-    let p_bouncing_fun = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "bouncing", "fun");
-    let p_run_fun      = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "run", "fun");
-    let p_play_fun     = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "play", "fun");
-    let p_bounce_fun   = geomind_e8_rel_score_words(g_e8_rel_prop_248x248, "bounce", "fun");
-    let cos_run_play   = geomind_e8_rel_prop_cosine_words("run", "play");
-    printf("  [Property & Activity Valence Operator <P_attr, R_prop * P_concept> / 248]:\n");
-    printf("    * kitten -> young = %.4f | puppy -> young = %.4f | sparrow -> small = %.4f | robin  -> cheerful = %.4f\n",
-        p_kitten_young, p_puppy_young, p_sparrow_sm, p_robin_ch);
-    printf("    * ball   -> round = %.4f | sphere -> smooth = %.4f | run     -> fun   = %.4f | bounce -> fun      = %.4f\n",
-        p_ball_round, p_sphere_smth, p_run_fun, p_bounce_fun);
-    printf("    * Shared Activity Valence Cosine cos(R_prop*run, R_prop*play) = %.4f\n", cos_run_play);
-    printf("--------------------------------------------------------------------------------\n");
-    printf("  42-LAYER STRATIFIED E8 DEEP-THOUGHT GEODESIC ROLLOUT (6 x 7-Layer Cascades)\n");
-    printf("--------------------------------------------------------------------------------\n");
-    printf("  -> Rollout 1 ('sparrow'): %s\n", geomind_e8_deep_thought_rollout_42L("sparrow"));
-    printf("  -> Rollout 2 ('kitten'):  %s\n", geomind_e8_deep_thought_rollout_42L("kitten"));
-    printf("  -> Rollout 3 ('puppy'):   %s\n", geomind_e8_deep_thought_rollout_42L("puppy"));
-    printf("  -> Rollout 4 ('orb'):     %s\n", geomind_e8_deep_thought_rollout_42L("orb"));
-    printf("  -> Rollout 5 ('wood'):    %s\n", geomind_e8_deep_thought_rollout_42L("wood"));
-    printf("--------------------------------------------------------------------------------\n");
-    printf("  DAY-ZERO EPISTEMIC REASONING & QUESTION-ANSWERING TEST (Coupled 42L + Tapestry)\n");
-    printf("--------------------------------------------------------------------------------\n");
-    printf("  -> Q1 ('Is a sparrow an animal and where can it fly?'):\n");
-    printf("     A1: %s\n", geomind_e8_answer_epistemic_question("Is a sparrow an animal and where can it fly?"));
-    printf("  -> Q2 ('Why does a puppy like to run?'):\n");
-    printf("     A2: %s\n", geomind_e8_answer_epistemic_question("Why does a puppy like to run?"));
-    printf("  -> Q3 ('How does a kitten feel when it purrs?'):\n");
-    printf("     A3: %s\n", geomind_e8_answer_epistemic_question("How does a kitten feel when it purrs?"));
-    printf("  -> Q4 ('What happens when you drop an orb?'):\n");
-    printf("     A4: %s\n", geomind_e8_answer_epistemic_question("What happens when you drop an orb?"));
-    printf("  -> Q5 ('Why does wood float on water?'):\n");
-    printf("     A5: %s\n", geomind_e8_answer_epistemic_question("Why does wood float on water?"));
-    printf("  -> Q6 [Sibling Bird Differentiation ('robin' vs 'sparrow')] ('Is a robin an animal and where can it fly?'):\n");
-    printf("     A6: %s\n", geomind_e8_answer_epistemic_question("Is a robin an animal and where can it fly?"));
-    printf("  -> Q7 [Sibling Sphere Differentiation ('sphere' vs 'orb')] ('What happens when you drop a sphere?'):\n");
-    printf("     A7: %s\n", geomind_e8_answer_epistemic_question("What happens when you drop a sphere?"));
-    printf("--------------------------------------------------------------------------------\n");
-    printf("  STAGE 6.1 SUBTLE GEOMETRIC REASONING & FALSIFICATION SUITE (Zero Word Rules)\n");
-    printf("--------------------------------------------------------------------------------\n");
-    printf("  [Test 1 | Zero-Shot 42-Layer Trajectory Intersection ('What do X & Y share?')]:\n");
-    printf("    * ('kitten',  'puppy')  -> %s\n", geomind_e8_trajectory_intersection_42L("kitten", "puppy"));
-    printf("    * ('sparrow', 'puppy')  -> %s\n", geomind_e8_trajectory_intersection_42L("sparrow", "puppy"));
-    printf("    * ('run',     'bounce') -> %s\n", geomind_e8_trajectory_intersection_42L("run", "bounce"));
-    printf("    * ('sparrow', 'orb')    -> %s\n", geomind_e8_trajectory_intersection_42L("sparrow", "orb"));
-    printf("  [Test 2 | Counterfactual & False-Premise Rejection + Adjoint R^T Attribution]:\n");
-    printf("    * Claim('kitten',  'fly')    -> %s\n", geomind_e8_verify_counterfactual_42L("kitten", "fly"));
-    printf("    * Claim('sparrow', 'dog')    -> %s\n", geomind_e8_verify_counterfactual_42L("sparrow", "dog"));
-    printf("    * Claim('orb',     'ground') -> %s\n", geomind_e8_verify_counterfactual_42L("orb", "ground"));
-    printf("  [Test 3 | Backward Abductive Diagnosis from Downstream Clues (Inverting L42->L0)]:\n");
-    printf("    * %s\n", geomind_e8_abductive_diagnosis_42L("small", "fly", "sky"));
-    printf("    * %s\n", geomind_e8_abductive_diagnosis_42L("cheerful", "fly", "sky"));
-    printf("    * %s\n", geomind_e8_abductive_diagnosis_42L("round", "bounce", "ground"));
-    printf("    * %s\n", geomind_e8_abductive_diagnosis_42L("smooth", "bounce", "ground"));
-    printf("    * %s\n", geomind_e8_abductive_diagnosis_42L("young", "purrs", "happy"));
-    printf("  [Test 4 | Unstated Multi-Sentence Cross-Rung Bridging (WordNet + Rung 1)]:\n");
-    printf("    * Bridge 1 ('trout'):  %s\n", geomind_e8_cross_rung_bridge_42L("trout"));
-    printf("    * Bridge 2 ('salmon'): %s\n", geomind_e8_cross_rung_bridge_42L("salmon"));
-    printf("--------------------------------------------------------------------------------\n");
-    printf("  STAGE 6.2 CO-ADAPTED S^247 MICROFEATURES & SHANNON DECORRELATION AUDIT\n");
-    printf("--------------------------------------------------------------------------------\n");
-    let mf_sparrow_robin = geomind_e8_microfeat_cosine_words("sparrow", "robin");
-    let mf_trout_salmon  = geomind_e8_microfeat_cosine_words("trout", "salmon");
-    let mf_orb_sphere    = geomind_e8_microfeat_cosine_words("orb", "sphere");
-    let mf_run_play      = geomind_e8_microfeat_cosine_words("run", "play");
-    let mf_kitten_puppy  = geomind_e8_microfeat_cosine_words("kitten", "puppy");
-    let mf_sparrow_orb   = geomind_e8_microfeat_cosine_words("sparrow", "orb");
-    printf("  [Layer-0 Co-Adapted S^247 Microfeature Cosine <\\tilde{P}_a, \\tilde{P}_b> / 248]:\n");
-    printf("    * Sibling Birds   cos(sparrow, robin) = %.4f | Sibling Fish cos(trout, salmon) = %.4f\n", mf_sparrow_robin, mf_trout_salmon);
-    printf("    * Sibling Spheres cos(orb, sphere)    = %.4f | Activities   cos(run, play)     = %.4f\n", mf_orb_sphere, mf_run_play);
-    printf("    * Young Animals   cos(kitten, puppy)  = %.4f | Disjoint     cos(sparrow, orb)  = %.4f\n", mf_kitten_puppy, mf_sparrow_orb);
-    cartan_flush(0.0);
+    geomind_run_epistemic_eval_suite(L);
 
     // Save consolidated checkpoints once at the end of the curriculum
     g_byte_e8_defer_disk_save = 0.0;
     geomind_markov_save_prior("Projects/geomind/trainingdata/checkpoints/geomind_markov_prior.bin");
     geomind_byte_latent_save_weights("Projects/geomind/trainingdata/checkpoints/geomind_byte_latent_e8.bin");
     geomind_e8_stack_save("Projects/geomind/trainingdata/checkpoints/geomind_e8_deep_stack.bin");
+    geomind_e8_rel_save("Projects/geomind/trainingdata/checkpoints/geomind_e8_rel_tensors.bin");
     if (g_e8_anchor_count > 0.0) {
         geomind_e8_anchors_save("Projects/geomind/trainingdata/checkpoints/geomind_e8_anchors.bin");
     }

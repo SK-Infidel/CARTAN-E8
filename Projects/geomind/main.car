@@ -176,6 +176,7 @@ fn is_explicit_non_chat_mode(flag: string) -> float {
     if (cartan_string_eq(flag, "--diagnose-alignment") == 1.0 || cartan_string_eq(flag, "-diagnose-alignment") == 1.0) { return 1.0; }
     if (cartan_string_eq(flag, "--byte-latent") == 1.0 || cartan_string_eq(flag, "-byte-latent") == 1.0) { return 1.0; }
     if (cartan_string_eq(flag, "--curriculum") == 1.0 || cartan_string_eq(flag, "-curriculum") == 1.0) { return 1.0; }
+    if (cartan_string_eq(flag, "--eval-qa") == 1.0 || cartan_string_eq(flag, "-eval-qa") == 1.0) { return 1.0; }
     if (cartan_string_eq(flag, "--crawl") == 1.0 || cartan_string_eq(flag, "-crawl") == 1.0) { return 1.0; }
     return 0.0;
 }
@@ -897,9 +898,15 @@ fn geomind_chat_interactive_loop(image_arg: string, audio_arg: string, tokens_ar
             cartan_flush(0.0);
         } else {
             if (len > 0.0) {
-                let cur_temp = geomind_chat_get_default_temp();
-                geomind_chat_generate_reasoning_pass(line, cur_temp);
-                geomind_chat_generate_reply_multimodal(line, tokens_arg, cur_temp, image_arg, audio_arg);
+                var gen_len = tokens_arg;
+                if (gen_len < 32.0) { gen_len = 64.0; }
+                var reply_str = "";
+                if (cartan_string_ends_with(line, "?") == 1.0) {
+                    reply_str = geomind_e8_answer_epistemic_question(line);
+                } else {
+                    reply_str = geomind_byte_latent_generate_deep_e8(line, 42.0, gen_len);
+                }
+                printf("%sGeoMind [E8-248D]>%s %s\n\n", geomind_col_green(), geomind_col_reset(), reply_str);
                 cartan_flush(0.0);
             }
         }
@@ -976,13 +983,15 @@ fn geomind_run_chat_mode(arg_count: float, no_priming: float) -> float {
     }
 
     if (cartan_string_length(prompt_arg) > 0.0) {
-        let db = geomind_chat_get_db();
-        if (cartan_string_length(user_cli) == 0.0 && db != 0.0) {
-            geomind_chat_startup_biometric_scan(db);
+        var gen_len = tokens_arg;
+        if (gen_len < 32.0) { gen_len = 64.0; }
+        var reply_str = "";
+        if (cartan_string_ends_with(prompt_arg, "?") == 1.0) {
+            reply_str = geomind_e8_answer_epistemic_question(prompt_arg);
+        } else {
+            reply_str = geomind_byte_latent_generate_deep_e8(prompt_arg, 42.0, gen_len);
         }
-        geomind_chat_clear_session();
-        geomind_chat_generate_reasoning_pass(prompt_arg, temp_arg);
-        geomind_chat_generate_reply_multimodal(prompt_arg, tokens_arg, temp_arg, image_arg, audio_arg);
+        printf("%sGeoMind [E8-248D]>%s %s\n", geomind_col_green(), geomind_col_reset(), reply_str);
         cartan_flush(0.0);
         return 0.0;
     }
@@ -1537,6 +1546,12 @@ fn main() -> float {
             let layers = get_cli_param_float("-layers", arg_count, 42.0);
             let lr = get_cli_param_float("-lr", arg_count, 0.03);
             geomind_run_english_curriculum(layers, lr);
+            cartan_flush(0.0);
+            return 0.0;
+        }
+        if (cartan_string_eq(flag, "--eval-qa") == 1.0 || cartan_string_eq(flag, "-eval-qa") == 1.0) {
+            let layers = get_cli_param_float("-layers", arg_count, 42.0);
+            geomind_run_epistemic_eval_suite(layers);
             cartan_flush(0.0);
             return 0.0;
         }

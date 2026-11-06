@@ -581,22 +581,38 @@ fn geomind_e8_gauge_spinor_cross_gate_block248(
         gauge_blk = gauge_blk + 1.0;
     }
 
-    // 3. EXACT S^247 KILLING-FORM NORM RETRACTION
-    var out_norm_sq = 0.0;
+    // 3. EXACT SPLIT-MANIFOLD S^{119} x S^{127} SUBSET S^{247} KILLING-FORM NORM RETRACTION
+    // Preserves total norm ||h|| while maintaining the exact 120:128 Casimir energy partition between so(16) and S_16^+
+    var out_g_sq = 0.0;
+    var out_s_sq = 0.0;
     var tv = 0.0;
     d = 0.0;
     while (d < 248.0) {
         tv = cartan_vec_get_f32(g_e8_gs_temp_248, d);
-        out_norm_sq = out_norm_sq + tv * tv;
+        if (d < 120.0) {
+            out_g_sq = out_g_sq + tv * tv;
+        } else {
+            out_s_sq = out_s_sq + tv * tv;
+        }
         d = d + 1.0;
     }
-    var retract_scale = 1.0;
-    if (out_norm_sq > 0.0000000001) {
-        retract_scale = sqrt(in_norm_sq / out_norm_sq);
+    let target_g_sq = in_norm_sq * (120.0 / 248.0);
+    let target_s_sq = in_norm_sq * (128.0 / 248.0);
+    var g_retract_scale = 1.0;
+    if (out_g_sq > 0.0000000001) {
+        g_retract_scale = sqrt(target_g_sq / out_g_sq);
+    }
+    var s_retract_scale = 1.0;
+    if (out_s_sq > 0.0000000001) {
+        s_retract_scale = sqrt(target_s_sq / out_s_sq);
     }
     d = 0.0;
     while (d < 248.0) {
-        tv = cartan_vec_get_f32(g_e8_gs_temp_248, d) * retract_scale;
+        if (d < 120.0) {
+            tv = cartan_vec_get_f32(g_e8_gs_temp_248, d) * g_retract_scale;
+        } else {
+            tv = cartan_vec_get_f32(g_e8_gs_temp_248, d) * s_retract_scale;
+        }
         cartan_vec_set_f32(out_vec, out_off + d, tv);
         d = d + 1.0;
     }
