@@ -1,0 +1,144 @@
+// Projects/geomind/sleep.car
+// GeoMind Autonomous Metacognitive Sleep Memory Consolidation Daemon
+// Replays Continuous Hopfield episodic attractors into slow cortical weights during system idle
+// AND executes NSES Subconscious Delta-CSR Memory Compaction & Synaptic Decay Pruning (Milestone M-6.4)
+
+include "../../src/std/gpu.cl";
+include "../../src/std/resonator.cl";
+include "../../src/std/sleep.cl";
+include "../../src/std/string.cl";
+include "../../src/std/collections.cl";
+include "../../src/std/fs.cl";
+include "../../src/std/hub.cl";
+include "src/std/cargraph_consolidate.cl";
+
+extern fn printf(format: string) -> i32;
+extern fn cartan_flush(v: float) -> float;
+extern fn cartan_float_to_string(v: float) -> string;
+extern fn sys_get_arg_count() -> float;
+extern fn sys_get_arg(idx: float) -> string;
+
+extern fn cartan_sleep_consolidate_cycle(filepath: string, lr: float, thresh: float) -> float;
+
+fn main() -> float {
+    printf("=================================================================================\n");
+    printf("  GEOMIND AUTONOMOUS METACOGNITIVE SLEEP CONSOLIDATION DAEMON (sleep.car)\n");
+    printf("  Phase 1: Hippocampal-Neocortical Continuous Hopfield Replay\n");
+    printf("  Phase 2: NSES Subconscious Delta-CSR Compaction & Synaptic Decay Pruning\n");
+    printf("  Phase 3: Axiomatic NSES Rule Replay & Neocortical Gradient Imprinting\n");
+    printf("=================================================================================\n\n");
+    cartan_flush(0.0);
+
+    let ckpt_path = "Projects/geomind/trainingdata/checkpoints/geomind_steady_state_weights.bin";
+    let bak_path = "Projects/geomind/trainingdata/checkpoints/geomind_steady_state_weights.bin.bak";
+    let basins_file = "Projects/geomind/trainingdata/hopfield_basins.bin";
+    let nses_graph = "Projects/geomind/trainingdata/nses_knowledge.car_graph";
+
+    var max_cycles = 1.0;
+    let argc = sys_get_arg_count();
+    if (argc >= 2.0) {
+        max_cycles = 3.0;
+    }
+
+    // -------------------------------------------------------------------------
+    // Restore Baseline Cortical Slow Weights
+    // -------------------------------------------------------------------------
+    cartan_init_cortical_weights_if_needed();
+    let total_params = 256.0 * 256.0;
+    if (cartan_file_exists(ckpt_path) == 1.0) {
+        let loaded = cartan_safetensors_load_raw_tensor_f32(ckpt_path, total_params);
+        if (loaded != 0.0 && cartan_vec_len(loaded) == total_params) {
+            g_cortical_weights = loaded;
+            printf("[GeoMind Sleep Daemon] Loaded baseline steady-state weights from: %s\n\n", ckpt_path);
+            cartan_flush(0.0);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 1: Episodic Attractor Replay
+    // -------------------------------------------------------------------------
+    printf("[GeoMind Sleep Daemon] Phase 1: Inspecting episodic attractor memory bank: %s\n", basins_file);
+    cartan_flush(0.0);
+    let initial_count = cartan_hopfield_load_basins(basins_file);
+    printf("[GeoMind Sleep Daemon] Active episodic attractors prior to sleep: %s\n", cartan_float_to_string(initial_count));
+    cartan_flush(0.0);
+
+    if (initial_count > 0.0) {
+        var cycle = 1.0;
+        while (cycle <= max_cycles) {
+            printf("[GeoMind Sleep Daemon] Executing Hopfield Consolidation Cycle %s/%s...\n",
+                cartan_float_to_string(cycle), cartan_float_to_string(max_cycles));
+            let remaining = cartan_sleep_consolidate_cycle(basins_file, 0.001, 0.98);
+            printf("[GeoMind Sleep Daemon] Cycle %s complete. Consolidated and preserved %s stable attractors.\n",
+                cartan_float_to_string(cycle), cartan_float_to_string(remaining));
+            cycle = cycle + 1.0;
+        }
+    } else {
+        printf("[GeoMind Sleep Daemon] No episodic attractors found. Proceeding to NSES consolidation.\n");
+        cartan_flush(0.0);
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 2: NSES Subconscious Delta-CSR Consolidation (Milestone M-6.4)
+    // -------------------------------------------------------------------------
+    if (fs_exists(nses_graph) != 0.0) {
+        printf("\n[GeoMind Sleep Daemon] Phase 2: Initiating NSES Subconscious Memory Consolidation on '%s'...\n", nses_graph);
+        cartan_flush(0.0);
+        let arena = dynamic_arena_create(65536.0, 32.0);
+        let report = cargraph_sleep_consolidate_file(nses_graph, arena, 1.001);
+        if (report.is_success != 0.0) {
+            printf("[GeoMind Sleep Daemon] NSES Consolidation complete: %s nodes, %s edges retained, %s decayed pruned.\n",
+                cartan_float_to_string(report.total_nodes),
+                cartan_float_to_string(report.retained_edges),
+                cartan_float_to_string(report.pruned_edges));
+            printf("[GeoMind Sleep Daemon] Atomic .car_graph file swap verified. Compaction latency: %.2f ms\n",
+                report.compaction_time_ms);
+            cartan_flush(0.0);
+        } else {
+            printf("[GeoMind Sleep Daemon] NSES Consolidation skipped or encountered error.\n");
+            cartan_flush(0.0);
+        }
+        dynamic_arena_free(arena);
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 3: Axiomatic NSES Rule Replay & Neocortical Gradient Imprinting
+    // -------------------------------------------------------------------------
+    if (fs_exists(nses_graph) != 0.0) {
+        printf("\n[GeoMind Sleep Daemon] Phase 3: Axiomatic NSES Rule Replay & Neocortical Gradient Imprinting...\n");
+        cartan_flush(0.0);
+        let ax_count = sleep_run_axiomatic_consolidation(nses_graph, basins_file, 256.0, 0.0005);
+        printf("[GeoMind Sleep Daemon] Axiomatic Imprinting complete: %s rules consolidated into slow cortical weights.\n",
+            cartan_float_to_string(ax_count));
+        cartan_flush(0.0);
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 4: Metacognitive Void Detection & Epiphany Discovery
+    // -------------------------------------------------------------------------
+    printf("\n[GeoMind Sleep Daemon] Phase 4: Metacognitive Void Detection & Epiphany Discovery...\n");
+    cartan_flush(0.0);
+    let epiphanies = sleep_detect_attractor_voids(basins_file, 248.0);
+    printf("[GeoMind Sleep Daemon] Void Detection complete: %s SLERP discovery bridge attractors synthesized on S^247.\n",
+        cartan_float_to_string(epiphanies));
+    cartan_flush(0.0);
+
+    // -------------------------------------------------------------------------
+    // Persist Consolidated Slow Cortical Weights
+    // -------------------------------------------------------------------------
+    if (cartan_file_exists(ckpt_path) == 1.0) {
+        cartan_copy_file(ckpt_path, bak_path);
+    }
+    let save_ok = cartan_safetensors_save_tensor_f32(ckpt_path, "model.weights", g_cortical_weights);
+    if (save_ok == 1.0) {
+        printf("\n[GeoMind Sleep Daemon] Successfully serialized consolidated slow weights to %s (6,553,600 parameters).\n", ckpt_path);
+        cartan_flush(0.0);
+    } else {
+        printf("\n[GeoMind Sleep Daemon] Warning: Failed to serialize weights to %s\n", ckpt_path);
+        cartan_flush(0.0);
+    }
+
+    printf("\n[GeoMind Sleep Daemon] Offline metacognitive sleep phase complete. Synaptic consolidation finalized.\n\n");
+    cartan_flush(0.0);
+    return 0.0;
+}

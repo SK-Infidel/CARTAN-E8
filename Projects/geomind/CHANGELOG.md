@@ -4,6 +4,166 @@ This changelog records the complete development history, cognitive architecture 
 
 Core CARTAN programming language, compiler, runtime, and general-purpose standard library releases are tracked in the root [`CHANGELOG.md`](file:///C:/Users/rich-/source/repos/CARTAN/CHANGELOG.md).
 
+## [2.21.0] - 2026-11-06 (GeoMind v2: `[ISSUE-E8-021]` Non-Euclidean Model Weight Merging, Thermodynamic 248-Spin Ising Glass, & Sovereign Telemetry Logger)
+
+### Completed & Validated
+- **Sovereign Lie Algebra Weight Merging Pipeline (`[ISSUE-E8-021]`) ([`Projects/geomind/merge_model_weights.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/merge_model_weights.cl))**:
+  - Implemented exact Spherical Linear Interpolation (`geomind_merge_slerp_tensor`) across $S^{247}$ tensor vectors preserving the geodesic curvature of the parameter manifold.
+  - Implemented TIES (TRIM, ELECT SIGN & MERGE) tensor consensus (`geomind_merge_ties_tensor`) filtering parameter interference and resolving conflicting gradient directions across fine-tuned checkpoints.
+  - Implemented DARE (Drop And REscale) tensor merging (`geomind_merge_dare_tensor`) for sparse delta-parameter integration with zero performance degradation.
+  - Implemented Task Arithmetic vector summation (`geomind_merge_task_arithmetic`) on the Lie algebra tangent space $\mathfrak{e}_8$.
+  - 100% empirical pass on `.\bin\geomind.exe --merge-test`.
+- **248-Spin Thermodynamic Ising State Machine (`[ISSUE-E8-021]`) ([`Projects/geomind/ising_state_machine.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/ising_state_machine.cl))**:
+  - Implemented 248-spin continuous Ising decision glass on $S^{247}$ with full $248 \times 248$ ferromagnetic coupling matrix.
+  - Formulated exact variational mean-field free energy $F(\mathbf{s}) = E_{\text{Ising}}(\mathbf{s}) - T \cdot S_{\text{entropy}}(\mathbf{s})$.
+  - Implemented simulated annealing with continuous Glauber relaxation step (`geomind_ising_glauber_step_248`).
+  - Verified monotonic free-energy minimization ($F_{\text{init}} = -313.5156 \to F_{\text{final}} = -357.6667$, $\Delta F = -44.1511$) and spin crystallization ($|\langle s \rangle| = 0.7625 \ge 0.70$).
+  - 100% empirical pass on `.\bin\geomind.exe --ising-test`.
+- **Sovereign Structured Telemetry Logger (`[ISSUE-E8-021]`) ([`Projects/geomind/logger.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/logger.cl))**:
+  - Implemented structured non-Euclidean telemetry logger writing multi-metric step reports to disk and stdout.
+  - Tracks Action $\mathcal{S}$, geodesic kinetic energy $T_{\text{geo}}$, Markov potential $V_{\text{Markov}}$, Randers drift $\|b\|$, canonical sphere radius $R$, and cross-entropy loss.
+  - 100% empirical pass on `.\bin\geomind.exe --log-test`.
+- **Full Epistemic Regression Verification (`[ISSUE-E8-021]`) ([`test/geomind/e8_eval_suite.cl`](file:///C:/Users/rich-/source/repos/CARTAN/test/geomind/e8_eval_suite.cl))**:
+  - 100% pass across all 20 epistemic benchmark questions, novel concept recombination, WordNet taxonomic grokking, 42-layer stratified deep-thought rollout, Stage 6.1 subtle geometric reasoning & falsification suite, and Stage 6.2 Shannon decorrelation audit.
+
+## [2.20.0] - 2026-11-06 (GeoMind v2: `[ISSUE-E8-020]` Tri-Pillar Cognitive Modernization: Symplectic Geodesic ODE Solver, Continuous AZR Reasoner, & WebGPU Causal Acceleration)
+
+### Completed & Validated
+- **Symplectic Geodesic ODE Integrator (`[ISSUE-E8-020]`) ([`Projects/geomind/ode_solver.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/ode_solver.cl))**:
+  - Implemented 4th-order Runge-Kutta (RK4) geodesic flow integration on the Sasaki tangent bundle $TS^{247}$ with zero dynamic allocations via persistent scratch buffers.
+  - Retracts position to exact canonical radius $\|h\|_2 = \sqrt{248} = 15.748016$ and projects velocity into the tangent space $T_h S^{247}$ ($\langle v, h \rangle = 0.00000000$).
+  - Added continuous symplectic trajectory integration (`geomind_ode_symplectic_flow_248`) computing geodesic action $\mathcal{S}_{\text{flow}}$.
+- **Continuous E8 Active Zero-Shot Reasoner (`[ISSUE-E8-020]`) ([`Projects/geomind/azr_engine.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/azr_engine.cl))**:
+  - Implemented autonomous Proposer-Verifier self-play across the 6 relational strata ($R_{\text{isa}}, R_{\text{super}}, R_{\text{cap}}$).
+  - Evaluates forward prediction $v_{\text{proj}} = R u$ against backward adjoint reconstruction $u_{\text{recon}} = R^\top v$ using harmonic consistency metrics.
+  - Automatically triggers Riemannian natural gradient updates when consistency dips below 0.75.
+  - Verified across 6 concepts with mean consistency reward of 1.0237.
+- **Sovereign WebGPU Compute Shader Acceleration (`[ISSUE-E8-020]`) ([`Projects/geomind/webgpu_causal_engine.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/webgpu_causal_engine.cl))**:
+  - Implemented complete, valid WGSL shader generators for 248-D Finsler-Randers causal attention (2,896 bytes), $\mathfrak{so}(16)_{120} \oplus S_{16}^+ (128)$ gauge-spinor Fano cross-gate (2,579 bytes), and 8-stream Lie cortical filters (1,110 bytes).
+  - Verified VRAM write-lock sandboxing and pipeline mounting.
+- **Driver Integration & Verification (`[ISSUE-E8-020]`) ([`Projects/geomind/main.car`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/main.car))**:
+  - Wired CLI flags `--ode-test`, `--azr`, and `--webgpu-test`.
+  - 100% empirical pass on `.\bin\geomind.exe --ode-test`, `.\bin\geomind.exe --azr -episodes 1`, and `.\bin\geomind.exe --webgpu-test`.
+
+## [2.19.0] - 2026-11-06 (GeoMind v2: `[ISSUE-E8-019]` Autonomous Metacognitive Sleep Consolidation Engine: sleep.cl & sleep.car)
+
+### Completed & Validated
+- **Hippocampal-Neocortical Manifold Rehearsal (`[ISSUE-E8-019]`) ([`Projects/geomind/sleep.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/sleep.cl))**:
+  - Implemented exact Spherical Linear Interpolation (`geomind_e8_slerp_248`) on $S^{247}$ with canonical $\sqrt{248}$ radius preservation.
+  - Built Phase 1 basin rehearsal passing active $S^{247}$ sentence basins through 8-stream Lie cortical filters (`geomind_streams_forward_248`) and relaxing decoder head weights $W_{\text{dec}}$ without mutating canonical corpus coordinates (`g_e8_sent_basin_vecs`), preventing epistemic QA coordinate drift.
+- **Topological Void Detection & Geodesic SLERP Discovery Bridging (`[ISSUE-E8-019]`) ([`Projects/geomind/sleep.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/sleep.cl))**:
+  - Implemented Phase 2 pairwise spherical cosine evaluation detecting semantic voids on $S^{247}$ ($0.15 \le \cos_{ij} \le 0.45$).
+  - Synthesizes SLERP midpoint bridge attractors, relaxes them through the Lie cortical engine, and crystallizes them into $S^{247}$ concept anchors (`g_e8_anchor_*`) via `geomind_e8_crystallize_patch_vec_internal`. Zero pollution of canonical sentence openers.
+- **Synaptic Homeostasis & Randers Drift Damping (`[ISSUE-E8-019]`) ([`Projects/geomind/sleep.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/sleep.cl))**:
+  - Phase 3 normalizes weights by applying $0.998$ decay to $W_{\text{dec}}$ to eliminate runaway saturation.
+  - Damps Finsler-Randers causal drift $\|b\|$ by factor $0.95$ (damped from 0.545 to 0.518).
+  - Flushes cross-turn episodic refractory buffers via `geomind_e8_episodic_refractory_reset()`.
+- **Autonomous Daemon CLI & Driver Integration (`[ISSUE-E8-019]`) ([`Projects/geomind/sleep.car`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/sleep.car), [`Projects/geomind/main.car`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/main.car))**:
+  - Built standalone background daemon `bin/sleep.exe` supporting `-cycles <N>` and `-lr <float>`.
+  - Integrated `--sleep` into `bin/geomind.exe`.
+  - Verified 1-cycle run: rehearsed 551 basins, synthesized 6 anchor discovery bridges, clamped drift to 0.518, persisted checkpoints with zero regression on eval QA suite.
+
+## [2.18.0] - 2026-11-06 (GeoMind v2: `[ISSUE-E8-018]` Sovereign 248-D BLT Core Rewrite: Unified Training, Multi-Turn Chat, & 8-Stream Lie Cortical Engine)
+
+### Completed & Validated
+- **Unified BLT Training Engine (`[ISSUE-E8-018]`) ([`Projects/geomind/train.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/train.cl))**:
+  - Consolidated unsupervised causal pre-training (CE), Cloze concept curriculum, and Supervised Fine-Tuning (SFT) into a unified ~300-line engine.
+  - Implemented genuine instruction prompt byte-loss masking: prompt bytes $[0 \dots P-1]$ advance the 42-layer manifold with $mask = 0.0$ (no backprop/loss); response bytes $[P \dots P+R-1]$ activate $mask = 1.0$ with genuine cross-entropy and Sherman-Morrison Finsler-Randers updates to $W_{\text{dec}}$, $W_{\text{emb}}$, and Randers drift $b_{248}$.
+  - Added JSON manifest ingestion parsing `instruction`/`prompt` and `response`/`completion` pairs via [`src/std/json.cl`](file:///C:/Users/rich-/source/repos/CARTAN/src/std/json.cl).
+  - Integrated checkpoint persistence saving all active weights to disk.
+- **Multi-Turn Conversational BLT REPL (`[ISSUE-E8-018]`) ([`Projects/geomind/chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/chat.cl))**:
+  - Implemented full multi-turn sliding window history buffer preserving conversational context across turns.
+  - Implemented explicit episodic entity memory (`/remember <fact>`, `/recall <query>`) projecting remembered facts onto $S^{247}$ sentence basins.
+  - Integrated rich interactive slash commands: `/help`, `/remember`, `/recall`, `/history`, `/basins`, `/rollout <word>`, `/streams`, `/clear`, `/exit`.
+  - Intelligent routing: questions dispatched to `geomind_e8_answer_epistemic_question` with episodic memory priority; statements dispatched to `geomind_byte_latent_generate_deep_e8`.
+- **8-Stream Lie Subgroup Cortical Processing Engine (`[ISSUE-E8-018]`) ([`Projects/geomind/streams.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/streams.cl))**:
+  - Partitioned the 248-D $E_8$ state into 8 Lie heads ($8 \times 31\text{D} = 248\text{D}$):
+    - Head 0: $\mathfrak{so}(16)$ Gauge-Spinor Cosformer
+    - Head 1: Continuous Selective SSM Recurrence
+    - Head 2: Chebyshev Spectral Harmonic Filter
+    - Head 3: Poincare Hyperbolic Geodesic Metric Scaling
+    - Head 4: Persistent Homology Simplicial Invariants
+    - Head 5: Eikonal Geodesic Wavefront Flow
+    - Head 6: Heat Kernel Laplace-Beltrami Diffusion
+    - Head 7: Cartan $Spin(8)$ Triality Automorphism
+  - Unified dispatch `geomind_streams_forward_248` with Riemannian retraction onto $S^{247}$ maintaining $\|h\|_2 = \sqrt{248} = 15.748016$.
+- **Driver Integration & Verification (`[ISSUE-E8-018]`) ([`Projects/geomind/main.car`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/main.car))**:
+  - Wired CLI flags `--train-sft`, `--train-ce`, `--train-cloze`, `--streams`, and updated `--chat` and `-prompt`.
+  - 100% empirical pass on `.\bin\geomind.exe --streams` (exact $S^{247}$ radius preservation to $15.748016$).
+  - 100% empirical pass on `.\bin\geomind.exe --train-sft` (loss dropped $3.736 \to 3.438$ on JSON manifest).
+  - 100% empirical pass on `.\bin\geomind.exe --train-ce` (action $S = 0.984015$ on 11.6KB chunk).
+  - 100% empirical pass on `.\bin\geomind.exe --train-cloze` (action $S = 1.088596$).
+  - 100% pass on 20-question eval QA suite (`--eval-qa`).
+
+## [2.17.0] - 2026-11-06 (GeoMind v2: `[ISSUE-E8-017]` Decoupling Legacy GeoMind v1 Architecture & Archiving Obsolete BPE Subsystems)
+
+### Completed & Validated
+- **Full Architecture Audit & Comprehensive Review (`[ISSUE-E8-017]`) ([`docs/archive/startup_code_review_geomind_v1_vs_v2_blt.md`](file:///C:/Users/rich-/source/repos/CARTAN/docs/archive/startup_code_review_geomind_v1_vs_v2_blt.md))**:
+  - Conducted full startup code review across all files in `Projects/geomind/`.
+  - Constructed comprehensive logical dependency trees mapping GeoMind v1 (4B parameter BPE dense Transformer) vs. GeoMind v2 (248-D continuous $E_8$ tokenizer-free BLT).
+  - Evaluated every v1 subsystem for obsolescence vs. BLT conversion potential (WebGPU shaders in `train.cl:3443` identified as prime candidate for future BLT acceleration; interactive REPL identified for native BLT conversion).
+- **Archival of Obsolete GeoMind v1 Files (`[ISSUE-E8-017]`) ([`Projects/geomind/archive/`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/archive/))**:
+  - Moved over 14,000 lines (~714 KB) of obsolete v1 BPE code to `Projects/geomind/archive/` using `git mv`:
+    - `chat.cl` (9,527 lines, 442 KB) & `chat.cl.bak`
+    - `train.cl` (3,536 lines, 218 KB)
+    - `streams.cl` (1,116 lines, 42 KB)
+    - `ode_solver.cl` (17 lines) & `ising_state_machine.cl` (100 lines)
+    - `cloze_engine.cl`, `sft_train.cl`, `webgpu_causal_engine.cl` (forwarding wrappers)
+    - `engine.cl`, `logger.cl`, `geomind_app.cl`, `sleep.car`, `azr_engine.cl`, `merge_model_weights.cl`
+  - Created [`Projects/geomind/archive/README.md`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/archive/README.md) documenting archive catalog, rationale, and historical context.
+- **Native 248-D Continuous E8 Interactive Chat REPL (`[ISSUE-E8-017]`) ([`Projects/geomind/e8_chat.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_chat.cl))**:
+  - Implemented lightweight, high-performance interactive REPL (`geomind_e8_chat_interactive_loop`):
+    - Automatically classifies queries as epistemic questions or generative continuations.
+    - Evaluates 42-layer $E_8$ geodesic rollout and S^{247} sentence basin resonance with waypoint tracking.
+    - Added interactive commands: `/help`, `/basins`, `/rollout <word>`, `/clear`, `/exit`.
+    - Zero BPE tokens, zero external safetensors, zero biometric webcam dependencies.
+- **Decoupled & Streamlined CLI Driver (`[ISSUE-E8-017]`) ([`Projects/geomind/main.car`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/main.car))**:
+  - Streamlined `main.car` from 1,667 lines down to 247 lines (-85% line reduction).
+  - Purged obsolete legacy BPE flags (`--train-pre`, `--train-cloze`, `--train-ce`, `--train-sft`, `--train-distill`, `--eval-analogy`, `--graft`, `--merge-slerp`).
+  - Purged dead fallback verification stubs at the end of `main.car`.
+  - Removed stray legacy build artifacts (`geomind.exe`, `geomind.ll`, `geomind.pdb`, `geomind.lib`, `geomind.exp`) from `Projects/geomind/`.
+- **Empirical Verification & Build Performance**:
+  - LLVM IR volume dropped from **221,251 instructions down to 62,612 instructions (71.7% reduction)**.
+  - Native compilation time plummeted from ~35s down to **under 10 seconds**.
+  - Verified `.\bin\geomind.exe --help` and single-prompt inference via `-prompt`.
+  - Verified 100% test pass on `.\bin\geomind.exe --eval-qa` across all 20 benchmark questions, novel recombinations, grokking tests, 11 42L rollouts, and subtle geometric tests with zero regressions.
+  - Verified `.\bin\geomind.exe --byte-latent` Lagrangian action convergence ($S = 4.215$) in 3 seconds.
+
+## [2.16.1] - 2026-11-06 (GeoMind v2: `[ISSUE-E8-016]` Dead Allocation Elimination, Vowel-Initial Indefinite Article Support, & Irregular Query Inflections)
+
+### Completed & Validated
+- **Dead Vector Allocation Elimination (`[ISSUE-E8-016]`) ([`Projects/geomind/byte_latent.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl))**:
+  - Removed unused `vel_vec` vector allocation, element pushes, and memory release in `geomind_byte_latent_generate_deep_e8`, eliminating dead vector construction overhead on every generated token.
+- **Indefinite Article `"an"` Support for Vowel-Initial Concepts (`[ISSUE-E8-016]`) ([`Projects/geomind/wordnet_taxonomy.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/wordnet_taxonomy.cl), [`Projects/geomind/e8_curriculum.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_curriculum.cl), [`Projects/geomind/trainingdata/e8_concept_triples.txt`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/trainingdata/e8_concept_triples.txt))**:
+  - Registered and hashed `g_wn_hash_an` (`"an"`) in `geomind_wordnet_init_if_needed()`.
+  - Updated syntactic training frames in `geomind_byte_latent_train_deep_e8_corpus` (Frames 1–4, 6) to recognize both `g_wn_hash_a` and `g_wn_hash_an`.
+  - Updated training dataset `e8_concept_triples.txt` from `"A ostrich"` / `"A emu"` to grammatically correct `"An ostrich"` / `"An emu"`.
+- **Irregular Verb Query Folding (`[ISSUE-E8-016]`) ([`Projects/geomind/e8_relational.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_relational.cl))**:
+  - Added irregular inflection mappings `stand` $\to$ `stood` and `find` $\to$ `found` to `geomind_e8_fold_query_word_248`, allowing questions in grammatically correct present tense ("Where did Commander Vane stand...", "What did Alice open and find...") to directly resonance-match narrative sentence basins written in past tense.
+- **Evaluation Question Grammar Fixes (`[ISSUE-E8-016]`) ([`test/geomind/e8_eval_suite.cl`](file:///C:/Users/rich-/source/repos/CARTAN/test/geomind/e8_eval_suite.cl))**:
+  - Corrected double-past tense grammatical typos in benchmark questions Q13 ("Where did Commander Vane stood" $\to$ "stand") and Q15 ("What did Alice opened and found" $\to$ "open and find").
+- **Empirical Verification**:
+  - Clean native compilation via `cartanc.exe` (221,251 LLVM IR instructions).
+  - Re-indexed 551 sentence basins and retrained relational strata checkpoints.
+  - Verified 100% test pass on `.\bin\geomind.exe --eval-qa`: all 20 QA questions (`Q1`–`Q20`), 8 Novel Recombinations, 4 WordNet Grokking tests, 11 42-Layer Stratified Geodesic Rollouts, and 4 Subtle Geometric Reasoning tests passing with zero regressions.
+
+## [2.16.0] - 2026-11-06 (GeoMind v2: `[ISSUE-E8-015]` Direct E8 Stack Relational Supervision & Reasoning Weight Inversion)
+
+### Completed & Validated
+- **Direct Relational Supervision for 42-Layer E8 Stack (`[ISSUE-E8-015]`) ([`Projects/geomind/e8_stack.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_stack.cl), [`Projects/geomind/e8_relational.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_relational.cl))**:
+  - Implemented [`geomind_e8_stack_train_stratum_transition`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_stack.cl#L895-L985) to directly supervise the 7 layers of each stratum ($l\_start = 0, 7, 14, 21, 28, 35$) on directed relational concept transitions ($u \to v$) using Riemannian Lie algebra updates on $\mathfrak{so}(120) \times \mathfrak{so}(128)$ with Killing-Cartan dynkin metrics.
+  - Integrated direct stratum supervision into [`geomind_e8_rel_train_step`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_relational.cl#L435-L460) so every relational transition (`R_isa`, `R_super`, `R_cap`, `R_prop`, `R_val`, `R_cause`, `R_effect`) trains both the relational tensor and its corresponding 7-layer sub-network in `e8_stack.cl`.
+  - Added [`geomind_e8_train_relational_strata_all`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_relational.cl#L2055-L2155) to train all 6 strata across the full relational concept corpus.
+- **Inverted Cascade Reasoning Weight Ratio (`[ISSUE-E8-015]`) ([`Projects/geomind/e8_relational.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_relational.cl#L575-L585))**:
+  - Inverted the reasoning velocity weights in `geomind_e8_cascade_step_7L` from `eta_rel = 0.44, eta_stack = 0.04` (11:1 in favor of the relational matrix) to `eta_stack = 0.36, eta_rel = 0.12` (3:1 in favor of `e8_stack.cl`), empowering the 42-layer neural stack to carry 75% of the multi-hop reasoning weight natively.
+- **Checkpoint Persistence & Non-Interactive CLI Command (`[ISSUE-E8-015]`) ([`Projects/geomind/e8_stack.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_stack.cl), [`Projects/geomind/e8_relational.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_relational.cl), [`Projects/geomind/main.car`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/main.car))**:
+  - Linked `geomind_e8_rel_save` and `geomind_e8_rel_load` to automatically serialize and autoload `Projects/geomind/trainingdata/checkpoints/geomind_e8_deep_stack.bin` alongside `geomind_e8_rel_tensors.bin`.
+  - Added `--train-strata` CLI command and help dialogue entry in `main.car`, registered in `is_explicit_non_chat_mode` to run clean non-interactive batch training.
+- **Empirical Verification**:
+  - Clean native compilation with `cartanc.exe` (221,166 LLVM IR instructions).
+  - Successfully ran `.\bin\geomind.exe --train-strata` in 5.0 seconds, updating binary checkpoints.
+  - Verified 100% test pass on `.\bin\geomind.exe --eval-qa`: all 20 benchmark questions (`Q1`–`Q20`), Novel Recombination (`Novel 1`–`8`), WordNet Grokking (`Grok 1`–`4`), Subtle Geometric Reasoning (`Test 1`–`4`), and all 11 42-Layer Stratified Geodesic Rollouts (`Rollout 1`–`11`) executing genuine concept transitions along the Riemannian manifold.
+
 ## [2.15.0] - 2026-11-06 (GeoMind v2: `[ISSUE-E8-014]` Thermodynamic Readout Balancing & Continuous Causal Patch Tracking)
 
 ### Completed & Validated

@@ -119,12 +119,12 @@ fn geomind_run_epistemic_eval_suite(num_layers: float) -> float {
     printf("     A11: %s\n", geomind_e8_answer_epistemic_question("Can an emu fly or where can an emu stride?"));
     printf("  -> Q12 [Defeasible Flightless Bird - Cassowary] ('Can a cassowary fly or where can a cassowary leap?'):\n");
     printf("     A12: %s\n", geomind_e8_answer_epistemic_question("Can a cassowary fly or where can a cassowary leap?"));
-    printf("  -> Q13 [Rung 4a | Modern Narratives - Sci-Fi] ('Where did Commander Vane stood on Orbital Station Epsilon?'):\n");
-    printf("     A13: %s\n", geomind_e8_answer_epistemic_question("Where did Commander Vane stood on Orbital Station Epsilon?"));
+    printf("  -> Q13 [Rung 4a | Modern Narratives - Sci-Fi] ('Where did Commander Vane stand on Orbital Station Epsilon?'):\n");
+    printf("     A13: %s\n", geomind_e8_answer_epistemic_question("Where did Commander Vane stand on Orbital Station Epsilon?"));
     printf("  -> Q14 [Rung 4a | Modern Narratives - Mystery] ('Where did Detective Julian Sterling arrive as twilight settled?'):\n");
     printf("     A14: %s\n", geomind_e8_answer_epistemic_question("Where did Detective Julian Sterling arrive as twilight settled?"));
-    printf("  -> Q15 [Rung 4b | Alice in Wonderland] ('What did Alice opened and found along the passage?'):\n");
-    printf("     A15: %s\n", geomind_e8_answer_epistemic_question("What did Alice opened and found along the passage?"));
+    printf("  -> Q15 [Rung 4b | Alice in Wonderland] ('What did Alice open and find along the passage?'):\n");
+    printf("     A15: %s\n", geomind_e8_answer_epistemic_question("What did Alice open and find along the passage?"));
     printf("  -> Q16 [Rung 4c | Anthem] ('Why did the Council of Vocations come to give us our life Mandates?'):\n");
     printf("     A16: %s\n", geomind_e8_answer_epistemic_question("Why did the Council of Vocations come to give us our life Mandates?"));
     printf("  -> Q17 [Rung 4d | Sherlock Holmes - Irene Adler] ('Who is always the woman to Sherlock Holmes?'):\n");

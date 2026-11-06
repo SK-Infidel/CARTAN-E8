@@ -587,7 +587,7 @@ fn geomind_byte_latent_train_deep_e8_corpus(
                 geomind_e8_hash_to_vec_248(saved_patch_hash, cur_p_vec);
                 if (sent_word_idx == 1.0) { sent_first_h = saved_patch_hash; }
                 if (sent_word_idx == 2.0) { sent_second_h = saved_patch_hash; }
-                if (p_h1 == g_wn_hash_a && saved_patch_hash != g_wn_hash_is && saved_patch_hash != g_wn_verb_can && sent_subj_h == 17.0) {
+                if ((p_h1 == g_wn_hash_a || p_h1 == g_wn_hash_an) && saved_patch_hash != g_wn_hash_is && saved_patch_hash != g_wn_verb_can && sent_subj_h == 17.0) {
                     sent_subj_h = p_h0;
                     sent_act_h = saved_patch_hash;
                 }
@@ -605,9 +605,9 @@ fn geomind_byte_latent_train_deep_e8_corpus(
                     patch_steps_taken = patch_steps_taken + 1.0;
 
                     // Stage 7.0: Position-Independent Closed-Class Syntactic Frame Extractor for all 6 Strata
-                    // Frame 1 (Stratum 1 & Stratum 3): Taxonomic & Property Copula ("a/the <Subj> is a <Adj> <Hypernym>")
+                    // Frame 1 (Stratum 1 & Stratum 3): Taxonomic & Property Copula ("a/the/an <Subj> is a/an <Adj> <Hypernym>")
                     // Note: Stratum 2 (`R_super`, e.g., `bird -> animal`) is anchored directly by `wordnet_taxonomy.txt`.
-                    if ((p_h4 == g_wn_hash_a || p_h4 == g_wn_hash_the) && p_h3 != 17.0 && p_h2 == g_wn_hash_is && p_h1 == g_wn_hash_a && p_h0 != 17.0) {
+                    if ((p_h4 == g_wn_hash_a || p_h4 == g_wn_hash_an || p_h4 == g_wn_hash_the) && p_h3 != 17.0 && p_h2 == g_wn_hash_is && (p_h1 == g_wn_hash_a || p_h1 == g_wn_hash_an) && p_h0 != 17.0) {
                         if (geomind_wordnet_is_head_lemma(p_h3) == 0.0) {
                             geomind_e8_rel_train_step(g_e8_rel_isa_248x248, p_v3, cur_p_vec, 0.92, 1.0, 0.45);
                         }
@@ -616,23 +616,23 @@ fn geomind_byte_latent_train_deep_e8_corpus(
                     // Frame 2 (Stratum 3 & Stratum 4): Attributive, Gerund, & Affective State Copulas
                     //   - "<Gerund> a <Noun> is <Valence>" ("Bouncing a ball is fun")
                     //   - "<Subj> <Verb> when it is <State>" ("A gentle cat purrs when it is happy")
-                    //   - "[The/A] <Subj> is <Prop>" ("The ball is round", "Water is clear")
-                    if (p_h1 != 17.0 && p_h0 == g_wn_hash_is && saved_patch_hash != g_wn_hash_a && saved_patch_hash != g_wn_hash_the) {
-                        if (p_h3 != 17.0 && p_h2 == g_wn_hash_a) {
+                    //   - "[The/A/An] <Subj> is <Prop>" ("The ball is round", "Water is clear")
+                    if (p_h1 != 17.0 && p_h0 == g_wn_hash_is && saved_patch_hash != g_wn_hash_a && saved_patch_hash != g_wn_hash_an && saved_patch_hash != g_wn_hash_the) {
+                        if (p_h3 != 17.0 && (p_h2 == g_wn_hash_a || p_h2 == g_wn_hash_an)) {
                             geomind_e8_rel_train_step(g_e8_rel_prop_248x248, p_v3, cur_p_vec, 0.92, 1.0, 0.45);
                             geomind_e8_rel_train_step(g_e8_rel_val_248x248, p_v3, cur_p_vec, 0.92, 1.0, 0.45);
                         } else if (p_h4 != 17.0 && p_h2 == g_wn_hash_when && p_h1 == g_wn_hash_it) {
                             geomind_e8_rel_train_step(g_e8_rel_cap_248x248, p_v4, p_v3, 0.92, 1.0, 0.45);
                             geomind_e8_rel_train_step(g_e8_rel_val_248x248, p_v3, cur_p_vec, 0.92, 1.0, 0.45);
-                        } else if (p_h2 == 17.0 || p_h2 == g_wn_hash_the || p_h2 == g_wn_hash_a) {
+                        } else if (p_h2 == 17.0 || p_h2 == g_wn_hash_the || p_h2 == g_wn_hash_a || p_h2 == g_wn_hash_an) {
                             geomind_e8_rel_train_step(g_e8_rel_prop_248x248, p_v1, cur_p_vec, 0.90, 1.0, 0.45);
                         }
                     }
                     // Frame 3 (Stratum 3 & Stratum 4): Modal Capability, Transitive Affordance, & Action-Locus Frames
-                    //   - "A/The <Subj> can <Verb> ... in the [Adj] <Locus>." ("A bird can fly high in the sky.", "The penguin can swim in the cold ocean.")
+                    //   - "A/The/An <Subj> can <Verb> ... in the [Adj] <Locus>." ("A bird can fly high in the sky.", "The penguin can swim in the cold ocean.")
                     //   - "You can <Verb> the <Obj> on the <Locus>" ("You can bounce the ball on the ground")
                     //   - "A <Subj> <Verb> in the <Adj> <Locus>." ("A fish swims in the deep water.")
-                    if ((p_h2 == g_wn_hash_a || p_h2 == g_wn_hash_the) && p_h1 != 17.0 && p_h0 == g_wn_verb_can) {
+                    if ((p_h2 == g_wn_hash_a || p_h2 == g_wn_hash_an || p_h2 == g_wn_hash_the) && p_h1 != 17.0 && p_h0 == g_wn_verb_can) {
                         if (geomind_wordnet_resolve_synset(p_h1, 17.0) == 0.0 || geomind_wordnet_is_head_lemma(p_h1) == 1.0) {
                             geomind_e8_rel_train_step(g_e8_rel_cap_248x248, p_v1, cur_p_vec, 0.92, 1.0, 0.45);
                         }
@@ -672,7 +672,7 @@ fn geomind_byte_latent_train_deep_e8_corpus(
                         geomind_e8_rel_train_step(g_e8_rel_effect_248x248, cur_p_vec, g_e8_rel_tmp_v, 0.92, 1.0, 0.45);
                     }
                     // Frame 6 (Stratum 5 & Stratum 6): Conditional Physical Cause-Effect ("When you <Act> a <Subj>, <Force> ... to the <Dest>.")
-                    if (p_h3 == g_wn_hash_when && p_h2 == g_wn_hash_you && p_h0 == g_wn_hash_a && patch_comma_end == 1.0) {
+                    if (p_h3 == g_wn_hash_when && p_h2 == g_wn_hash_you && (p_h0 == g_wn_hash_a || p_h0 == g_wn_hash_an) && patch_comma_end == 1.0) {
                         sent_cond_obj_h = saved_patch_hash;
                     }
                     if (p_h0 == sent_cond_obj_h && sent_cond_obj_h != 17.0) {

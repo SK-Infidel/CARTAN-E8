@@ -270,11 +270,17 @@ fn geomind_e8_rel_save(path: string) -> float {
         }
         fclose(wf);
     }
+    let stack_ckpt = "Projects/geomind/trainingdata/checkpoints/geomind_e8_deep_stack.bin";
+    geomind_e8_stack_save(stack_ckpt);
     return 1.0;
 }
 
 fn geomind_e8_rel_load(path: string) -> float {
     if (path == 0.0 || cartan_file_exists(path) == 0.0) { return 0.0; }
+    let stack_ckpt = "Projects/geomind/trainingdata/checkpoints/geomind_e8_deep_stack.bin";
+    if (g_byte_e8_skip_disk_autoload == 0.0 && cartan_file_exists(stack_ckpt) == 1.0) {
+        geomind_e8_stack_load(stack_ckpt);
+    }
     let expected_elems = 7.0 * (61504.0 + 2.0) + (4096.0 + 2.0) + 2.0 * (1015808.0 + 2.0);
     let f_sz = cartan_get_binary_file_size(path);
     if (f_sz < expected_elems * 8.0) { return 0.0; }
@@ -432,6 +438,24 @@ fn geomind_e8_rel_train_step(
     if (target_w >= 0.70) {
         geomind_e8_coadapt_microfeatures_248(u_248, v_248, 0.14);
     }
+    // Direct supervision of the corresponding e8_stack stratum
+    var l_start = -1.0;
+    if (rel_mat_248x248 == g_e8_rel_isa_248x248) {
+        l_start = 0.0;
+    } else if (rel_mat_248x248 == g_e8_rel_super_248x248) {
+        l_start = 7.0;
+    } else if (rel_mat_248x248 == g_e8_rel_cap_248x248 || rel_mat_248x248 == g_e8_rel_prop_248x248) {
+        l_start = 14.0;
+    } else if (rel_mat_248x248 == g_e8_rel_val_248x248) {
+        l_start = 21.0;
+    } else if (rel_mat_248x248 == g_e8_rel_cause_248x248) {
+        l_start = 28.0;
+    } else if (rel_mat_248x248 == g_e8_rel_effect_248x248) {
+        l_start = 35.0;
+    }
+    if (l_start >= 0.0 && g_e8_stack_w_gauge != 0.0 && g_e8_stack_num_layers >= 42.0) {
+        geomind_e8_stack_train_stratum_transition(l_start, u_248, v_248, target_w, 0.05);
+    }
     g_e8_rel_updates_count = g_e8_rel_updates_count + 1.0;
     return s_fwd;
 }
@@ -552,8 +576,8 @@ fn geomind_e8_cascade_step_7L(rel_mat_248x248: ptr, h_in_248: ptr, l_start: floa
         cartan_vec_push_f32(h_gated, 0.0);
         d = d + 1.0;
     }
-    let eta_rel = 0.44;
-    let eta_stack = 0.04;
+    let eta_rel = 0.12;
+    let eta_stack = 0.36;
     var vel_norm_accum = 0.0;
     var k = 0.0;
     while (k < 7.0) {
@@ -1749,12 +1773,14 @@ fn geomind_e8_fold_query_word_248(word_low: string, weight: float, q_vec_248: pt
         cartan_vec_set_f32(q_vec_248, d, cartan_vec_get_f32(q_vec_248, d) + weight * cartan_vec_get_f32(g_e8_rel_tmp_u, d));
         d = d + 1.0;
     }
-    // Check registered morphological inflections (+d, +ed, +s, or irregular come->came / go->went) in S^{247} codebook
+    // Check registered morphological inflections (+d, +ed, +s, or irregular come->came / go->went / stand->stood / find->found) in S^{247} codebook
     var m1 = cartan_string_concat(word_low, "d");
     var m2 = cartan_string_concat(word_low, "ed");
     var m3 = cartan_string_concat(word_low, "s");
     if (cartan_string_eq(word_low, "come") == 1.0) { m1 = "came"; }
     if (cartan_string_eq(word_low, "go") == 1.0) { m1 = "went"; }
+    if (cartan_string_eq(word_low, "stand") == 1.0) { m1 = "stood"; }
+    if (cartan_string_eq(word_low, "find") == 1.0) { m1 = "found"; }
     let h1 = geomind_word_patch_hash(m1);
     let h2 = geomind_word_patch_hash(m2);
     let h3 = geomind_word_patch_hash(m3);
@@ -2025,6 +2051,108 @@ fn geomind_e8_answer_epistemic_question(question_str: string) -> string {
     cartan_vec_free(h_L35);
     cartan_vec_free(h_L42);
     return ans;
+}
+
+// ============================================================================
+// STAGE 7.0 / SPRINT 561: STRATUM-DIRECT E8 STACK RELATIONAL TRAINER
+// ============================================================================
+fn geomind_e8_train_relational_strata_all() -> float {
+    printf("[E8 Strata Trainer] Initializing 42-layer E8 stack and relational codebook...\n");
+    g_byte_e8_skip_disk_autoload = 0.0;
+    geomind_e8_stack_init(42.0);
+    geomind_e8_rel_init_if_needed();
+    geomind_wordnet_init_if_needed();
+    geomind_e8_sent_basins_load_if_needed();
+
+    printf("[E8 Strata Trainer] Training 6 strata of e8_stack.cl on relational concept transitions...\n");
+
+    // Stratum 0 (Layers 0..6): Primary IS_A transitions
+    geomind_e8_rel_train_words(g_e8_rel_isa_248x248, "sparrow", "bird", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_isa_248x248, "robin", "bird", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_isa_248x248, "penguin", "bird", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_isa_248x248, "ostrich", "bird", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_isa_248x248, "emu", "bird", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_isa_248x248, "cassowary", "bird", 0.94, 16.0);
+    geomind_e8_rel_train_words(g_e8_rel_isa_248x248, "kitten", "cat", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_isa_248x248, "puppy", "dog", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_isa_248x248, "orb", "ball", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_isa_248x248, "sphere", "ball", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_isa_248x248, "wood", "wood", 0.94, 14.0);
+
+    // Stratum 1 (Layers 7..13): Superordinate category transitions
+    geomind_e8_rel_train_words(g_e8_rel_super_248x248, "bird", "animal", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_super_248x248, "cat", "animal", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_super_248x248, "dog", "animal", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_super_248x248, "ball", "plaything", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_super_248x248, "wood", "wood", 0.94, 14.0);
+
+    // Stratum 2 (Layers 14..20): Defeasible capability & intrinsic property transitions
+    geomind_e8_rel_train_words(g_e8_rel_cap_248x248, "bird", "fly", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_cap_248x248, "sparrow", "fly", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_cap_248x248, "robin", "fly", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_cap_248x248, "penguin", "swim", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_cap_248x248, "ostrich", "sprint", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_cap_248x248, "emu", "stride", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_cap_248x248, "cassowary", "leap", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_cap_248x248, "ball", "bounce", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_cap_248x248, "orb", "bounce", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_cap_248x248, "sphere", "bounce", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_cap_248x248, "cat", "purrs", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_cap_248x248, "kitten", "purrs", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_cap_248x248, "dog", "run", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_cap_248x248, "puppy", "run", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_cap_248x248, "wood", "wood", 0.94, 14.0);
+
+    geomind_e8_rel_train_words(g_e8_rel_prop_248x248, "sparrow", "small", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_prop_248x248, "robin", "small", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_prop_248x248, "penguin", "flightless", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_prop_248x248, "ostrich", "flightless", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_prop_248x248, "emu", "flightless", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_prop_248x248, "cassowary", "flightless", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_prop_248x248, "kitten", "young", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_prop_248x248, "puppy", "young", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_prop_248x248, "ball", "round", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_prop_248x248, "orb", "round", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_prop_248x248, "sphere", "geometric", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_prop_248x248, "wood", "lighter", 0.94, 14.0);
+
+    // Stratum 3 (Layers 21..27): Valence / Locus transitions
+    geomind_e8_rel_train_words(g_e8_rel_val_248x248, "fly", "sky", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_val_248x248, "swim", "ocean", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_val_248x248, "sprint", "desert", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_val_248x248, "stride", "outback", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_val_248x248, "leap", "jungle", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_val_248x248, "bounce", "fun", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_val_248x248, "run", "fun", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_val_248x248, "play", "fun", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_val_248x248, "purrs", "happy", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_val_248x248, "wood", "wood", 0.94, 14.0);
+
+    // Stratum 4 (Layers 28..34): Defeasible causal mechanism transitions
+    geomind_e8_rel_train_words(g_e8_rel_cause_248x248, "drop", "gravity", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_cause_248x248, "ball", "gravity", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_cause_248x248, "orb", "gravity", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_cause_248x248, "sphere", "gravity", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_cause_248x248, "wood", "lighter", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_cause_248x248, "kitten", "cat", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_cause_248x248, "puppy", "dog", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_cause_248x248, "bird", "bird", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_cause_248x248, "sparrow", "bird", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_cause_248x248, "cat", "cat", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_cause_248x248, "dog", "dog", 0.94, 14.0);
+
+    // Stratum 5 (Layers 35..41): Ultimate causal effect transitions
+    geomind_e8_rel_train_words(g_e8_rel_effect_248x248, "gravity", "ground", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_effect_248x248, "lighter", "floats", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_effect_248x248, "bird", "bird", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_effect_248x248, "cat", "cat", 0.94, 14.0);
+    geomind_e8_rel_train_words(g_e8_rel_effect_248x248, "dog", "dog", 0.94, 14.0);
+
+    printf("[E8 Strata Trainer] Saving trained 42-layer stack and relational checkpoints...\n");
+    geomind_e8_rel_save("Projects/geomind/trainingdata/checkpoints/geomind_e8_rel_tensors.bin");
+    geomind_e8_stack_save("Projects/geomind/trainingdata/checkpoints/geomind_e8_deep_stack.bin");
+    printf("[E8 Strata Trainer] Checkpoints saved successfully.\n");
+    return 1.0;
 }
 
 // Run the complete Epistemic, Taxonomic, & Subtle Geometric Reasoning Evaluation Suite (callable from --curriculum or standalone --eval-qa)

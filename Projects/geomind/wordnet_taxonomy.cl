@@ -27,6 +27,7 @@ var g_wn_verb_not: float = 0.0;
 var g_wn_verb_do: float = 0.0;
 var g_wn_hash_is: float = 0.0;
 var g_wn_hash_a: float = 0.0;
+var g_wn_hash_an: float = 0.0;
 var g_wn_hash_the: float = 0.0;
 var g_wn_hash_and: float = 0.0;
 var g_wn_hash_in: float = 0.0;
@@ -192,6 +193,7 @@ fn geomind_wordnet_init_if_needed() {
     g_wn_verb_do = geomind_word_patch_hash("do");
     g_wn_hash_is = geomind_word_patch_hash("is");
     g_wn_hash_a = geomind_word_patch_hash("a");
+    g_wn_hash_an = geomind_word_patch_hash("an");
     g_wn_hash_the = geomind_word_patch_hash("the");
     g_wn_hash_and = geomind_word_patch_hash("and");
     g_wn_hash_in = geomind_word_patch_hash("in");

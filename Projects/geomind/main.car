@@ -1,205 +1,95 @@
 // Projects/geomind/main.car
-// GeoMind Unified Multi-Phase Model Driver
+// GeoMind Sovereign 248-D Continuous E8 Manifold Driver
+// Continuous Lie Group E8 Manifold Architecture | 42-Layer Octonionic Geodesic Stack
+// Tokenizer-Free Byte-Latent (BLT) Cognitive Agent | Zero External Pretrained Weights
 
 include "src/std/geom.cl";
 include "Projects/geomind/geometry.cl";
-include "Projects/geomind/ode_solver.cl";
-include "Projects/geomind/ising_state_machine.cl";
 include "Projects/geomind/moe.cl";
 include "Projects/geomind/e8_attention_engine.cl";
-include "Projects/geomind/streams.cl";
 include "Projects/geomind/markov_tapestry.cl";
 include "Projects/geomind/byte_latent.cl";
+include "Projects/geomind/e8_stack.cl";
 include "Projects/geomind/e8_relational.cl";
 include "Projects/geomind/wordnet_taxonomy.cl";
 include "Projects/geomind/e8_anchors.cl";
 include "Projects/geomind/gguf_export.cl";
+include "Projects/geomind/streams.cl";
 include "Projects/geomind/e8_curriculum.cl";
+include "Projects/geomind/train.cl";
+include "Projects/geomind/chat.cl";
+include "Projects/geomind/sleep.cl";
+include "Projects/geomind/ode_solver.cl";
+include "Projects/geomind/azr_engine.cl";
+include "Projects/geomind/webgpu_causal_engine.cl";
+include "Projects/geomind/merge_model_weights.cl";
+include "Projects/geomind/ising_state_machine.cl";
+include "Projects/geomind/logger.cl";
 include "Projects/geomind/e8_crawler.cl";
 include "test/geomind/e8_eval_suite.cl";
-include "Projects/geomind/chat.cl";
-include "Projects/geomind/train.cl";
-include "Projects/geomind/azr_engine.cl";
-
-
 include "src/std/string.cl";
-include "src/std/distill.cl";
-include "src/std/fusion.cl";
-include "src/std/hub.cl";
-include "src/std/sleep.cl";
-include "src/std/cargraph_consolidate.cl";
-include "src/std/sqlite_vec.cl";
 
 extern fn sys_get_arg_count() -> float;
 extern fn sys_get_arg(idx: float) -> string;
 extern fn atof(s: string) -> float;
 extern fn cartan_flush(v: float) -> float;
 extern fn cartan_read_line() -> string;
-extern fn cartan_hopfield_ingest(path: string) -> float;
-extern fn cartan_hopfield_attractor_count() -> float;
-extern fn cartan_hopfield_relax(h: ptr, beta: float, steps: float) -> float;
-extern fn cartan_hopfield_energy(h: ptr) -> float;
-extern fn cartan_hopfield_save_basins(path: string) -> float;
-extern fn cartan_hopfield_load_basins(path: string) -> float;
-extern fn cartan_sleep_consolidate_cycle(filepath: string, lr: float, thresh: float) -> float;
-
 
 fn print_help_dialogue() -> float {
     printf("================================================================================\n");
-    printf("  GEOMIND PRODUCTION AI ENGINE (geomind.exe)\n");
-    printf("  Lie Group E8 Manifold Architecture | Continuous Hopfield Resonator\n");
-    printf("  Powered by CARTAN Standard Library Layer 1/Layer 2 Stack\n");
+    printf("  GEOMIND SOVEREIGN AI ENGINE (geomind.exe)\n");
+    printf("  Lie Group E8 Manifold Architecture | 42-Layer Octonionic Geodesic Stack\n");
+    printf("  Continuous S^{247} Manifold | Tokenizer-Free Byte-Latent (BLT) Engine\n");
     printf("================================================================================\n\n");
     printf("Usage: geomind.exe [mode flag] [options]\n");
-    printf("  (Default: Launches interactive WebGPU chat engine when run without mode flags)\n\n");
+    printf("  (Default: Launches interactive 248-D E8 Chat REPL when run without mode flags)\n\n");
     printf("Modes:\n");
-    printf("  --chat          Start interactive E8 Hopfield multimodal chat engine (DEFAULT MODE)\n");
-    printf("                  Flags: -prompt <text>, -tokens <num>, -temp <float>, -cpu, -stream-prune, -speculative-draft, -sasaki-bypass, -debias\n");
-    printf("  --hf-download   Explore & download HuggingFace datasets (-repo <repo_id>)\n");
-    printf("  --train-pre     Pre-train model on skill corpus (-target <file>|-repo <id>)\n");
-    printf("  --train-cloze   Run Anchored Cloze Curriculum Stream (-target <file>)\n");
-    printf("  --train-ce      Run Cross-Entropy Autoregressive Pre-Trainer (-target <file>)\n");
-    printf("  --train-sft     Run Supervised Fine-Tuning loop (-repo <id>|-target <file>)\n");
-    printf("  --train-distill Run Teacher-Student KL divergence logit distillation pass\n");
-    printf("  --merge-slerp   Run Zero-Day SLERP geodesic model weight merging pipeline\n");
-    printf("  --graft         Graft 42-layer sovereign multimodal weights into manifold\n");
-    printf("  --azr-selfplay  Run Absolute Zero Reasoning (AZR) compiler self-play loop\n");
-    printf("  --ingest        Ingest material into Continuous Hopfield memory (-target <file>)\n");
-    printf("  --sleep         Run Autonomous Metacognitive Sleep memory consolidation\n");
-    printf("  --train-webgpu  Run pure native CARTAN WebGPU Causal Training Engine\n");
-    printf("  --byte-latent   Run 248-D E8 Tokenizer-Free Byte-Latent + Markov-Lagrangian Engine (-target <file>, -prompt <text>, --visualize)\n");
+    printf("  --chat          Start interactive 248-D E8 continuous manifold chat REPL (DEFAULT MODE)\n");
+    printf("                  Options: -prompt <text>, -layers <N>, -bytes <N>\n");
+    printf("  --eval-qa       Run 20-Question Epistemic & Subtle Geometric Evaluation Suite (-layers <N>)\n");
     printf("  --curriculum    Run 4-Rung Concentric English Storytelling Curriculum (-layers <N>, -lr <float>)\n");
-    printf("  --eval-qa       Run 21-Question Epistemic & Subtle Geometric Evaluation Suite (-layers <N>)\n");
-    printf("  --index-basins  Pre-index and serialize S^{247} sentence basins and relational operators into checkpoints/\n");
-    printf("  --crawl <url>   Run Autonomous Domain-Bounded Recursive Web Crawler (--recurse, --max-depth <N>, -epochs <N>, --visualize)\n");
-    printf("  --extract-alignment-vector Extract 5-rank orthonormal alignment subspace {u_syc, u_per, u_ref, u_disc, u_care} with C_en orthogonalization\n");
+    printf("  --train-strata  Directly train all 6 strata of e8_stack.cl on relational concept transitions\n");
+    printf("  --train-sft     Run Supervised Fine-Tuning with prompt loss masking on JSON manifest (-target <file>, -epochs <N>, -lr <float>)\n");
+    printf("  --train-ce      Run Causal Pre-training (CE) over raw text corpus (-target <file>, -epochs <N>, -lr <float>)\n");
+    printf("  --train-cloze   Run Cloze Concept Curriculum Training (-target <file>, -epochs <N>, -lr <float>)\n");
+    printf("  --streams       Execute 8-Stream Lie Subgroup Cortical Processing Verification\n");
+    printf("  --sleep         Run Autonomous Metacognitive Sleep Consolidation (-cycles <N>)\n");
+    printf("  --ode-test      Execute TS^{247} Symplectic Geodesic ODE Integrator Verification\n");
+    printf("  --azr           Execute Autonomous Active Zero-Shot Reasoner Self-Play (-episodes <N>, -lr <float>)\n");
+    printf("  --webgpu-test   Verify WebGPU E8 Acceleration WGSL Compute Shader Pipeline\n");
+    printf("  --merge-test    Verify E8 Lie Algebra Model Weight Merging (SLERP, TIES, DARE, Task Arithmetic)\n");
+    printf("  --ising-test    Execute 248-Spin Ising Decision Glass & Simulated Annealing Verification\n");
+    printf("  --log-test      Execute Non-Euclidean Telemetry Structured Logger Verification\n");
+    printf("  --index-basins  Pre-index and serialize S^{247} sentence basins and relational operators\n");
+    printf("  --byte-latent   Run 248-D E8 Tokenizer-Free Byte-Latent + Markov-Lagrangian Engine\n");
+    printf("                  Options: -target <file>, -prompt <text>, -layers <N>, -epochs <N>, -lr <float>, --visualize\n");
+    printf("  --crawl <url>   Run Autonomous Domain-Bounded Recursive Web Crawler (--recurse, --max-depth <N>, -epochs <N>)\n");
     printf("  --help, -h      Display this help dialogue and exit\n\n");
-    printf("Hardware & Compute Flags:\n");
-    printf("  (WebGPU hardware acceleration on NVIDIA RTX 2000 Ada GPU is ENABLED BY DEFAULT)\n");
-    printf("  -cpu, --cpu, -no-gpu, --no-gpu: Run on CPU only (disables WebGPU hardware acceleration)\n");
-    printf("  -context <num>, --context <num>: Set max context window capacity in tokens (Default: 8192 [8k], up to 131072 [128k])\n");
-    printf("                                   Accepted values: 2048, 8192, 32768, 65536, 131072\n\n");
-    printf("Training & Optimization Flags (Optional - All have calibrated defaults):\n");
-    printf("  -target-loss <float>, -tl, -loss, -training-loss: Universal target loss stopping threshold\n");
-    printf("                       Default: 2.50 Cloze, 3.00 CE, 2.00 SFT. Accepted universally across all modes.\n");
-    printf("                       When any individual dataset in the corpus reaches this loss,\n");
-    printf("                       weight updates on the backward pass are frozen for that dataset.\n");
-    printf("  -epochs <num>, -ep   Optional maximum epoch ceiling (Default: Unlimited until target loss reached)\n");
-    printf("                       Each epoch traverses 100%% of the dataset corpus from start to finish.\n");
-    printf("  -lr <float>          Starting base learning rate ceiling (Default: 0.001)\n");
-    printf("                       Omitting -lr uses the optimal default: starts at 0.001,\n");
-    printf("                       decays 0.90/epoch to 0.0001 floor. Never exceeds this ceiling.\n");
+    printf("Training & Optimization Flags:\n");
     printf("  -target <file>       Explicit dataset file path on disk (Defaults to stage corpus)\n");
-    printf("  -stride <bytes>      Sliding curriculum stride in bytes (Default: 2048 Cloze, 1024 CE)\n");
-    printf("  -manifest <file>     Multi-dataset JSON manifest path (Default: Projects/geomind/trainingdata/corpus.json)\n");
-    printf("  -reset-manifest      Reset manifest position to dataset 0, offset 0.0, epoch 1.0\n");
-    printf("  -focus-delta <float> Focus trigger PPL delta above anchor (Default: 25.0)\n");
-    printf("  -focus-ratio <float> Focus trigger PPL ratio above anchor (Default: 1.35)\n");
-    printf("  -focus-budget <num>  Maximum focused chunk budget before yielding (Default: 24.0)\n");
-    printf("  -auto-sft [loss]     Automatically transition to SFT when CE target loss is reached\n");
-    printf("                       Optional argument specifies SFT target loss (Default: 2.00, e.g. -auto-sft 2.5)\n\n");
-    printf("Targeting & Multimodal Flags:\n");
-    printf("  -target <file>  Explicit dataset file path on disk\n");
-    printf("  -repo <repo_id> HuggingFace dataset repository ID\n");
-    printf("  --image <file>  Input image file (PPM / BMP) for visual Eikonal grounding\n");
-    printf("  --audio <file>  Input audio file (WAV PCM) for auditory Spectral grounding\n\n");
-    printf("Safety, Resumption & Persistence:\n");
-    printf("  - Multi-Dataset Manifest: Sequences across all datasets configured in corpus.json.\n");
-    printf("  - Byte-Exact Resumption: Tracks dataset index, byte offset, and epoch in corpus.json.\n");
-    printf("    Interrupted training (Ctrl-C) automatically preserves current weights and resumes\n");
-    printf("    from the exact byte offset without restarting or losing progress.\n");
-    printf("  - Pre-Training Backup: Automatically creates .bin.bak before fresh multi-epoch runs.\n\n");
+    printf("  -prompt <text>       Input text prompt or question for generation / evaluation\n");
+    printf("  -epochs <num>, -ep   Maximum training epoch ceiling (Default: 5.0)\n");
+    printf("  -layers <num>        Number of active E8 stack layers (Default: 42.0)\n");
+    printf("  -lr <float>          Base learning rate ceiling (Default: 0.03)\n");
+    printf("  --visualize          Export HTML SVG manifold visualization to manifold_relaxation.html\n\n");
     printf("================================================================================\n");
     cartan_flush(0.0);
     return 0.0;
 }
 
-// Validate pre-training mode flags and aliases
-fn is_pre_mode(flag: string) -> float {
-    if (cartan_string_eq(flag, "--train-pre") == 1.0 ||
-        cartan_string_eq(flag, "-train-pre") == 1.0 ||
-        cartan_string_eq(flag, "train-pre") == 1.0 ||
-        cartan_string_eq(flag, "--pre") == 1.0 ||
-        cartan_string_eq(flag, "-pre") == 1.0 ||
-        cartan_string_eq(flag, "pre") == 1.0) {
-        return 1.0;
-    }
-    return 0.0;
-}
-
-// Validate cloze curriculum mode flags and aliases
-fn is_cloze_mode(flag: string) -> float {
-    if (cartan_string_eq(flag, "--train-cloze") == 1.0 ||
-        cartan_string_eq(flag, "-train-cloze") == 1.0 ||
-        cartan_string_eq(flag, "train-cloze") == 1.0 ||
-        cartan_string_eq(flag, "--cloze") == 1.0 ||
-        cartan_string_eq(flag, "-cloze") == 1.0 ||
-        cartan_string_eq(flag, "cloze") == 1.0) {
-        return 1.0;
-    }
-    return 0.0;
-}
-
-// Validate cross-entropy mode flags and aliases
-fn is_ce_mode(flag: string) -> float {
-    if (cartan_string_eq(flag, "--train-ce") == 1.0 ||
-        cartan_string_eq(flag, "-train-ce") == 1.0 ||
-        cartan_string_eq(flag, "train-ce") == 1.0 ||
-        cartan_string_eq(flag, "--ce") == 1.0 ||
-        cartan_string_eq(flag, "-ce") == 1.0 ||
-        cartan_string_eq(flag, "ce") == 1.0) {
-        return 1.0;
-    }
-    return 0.0;
-}
-
-// Validate supervised fine-tuning mode flags and aliases
-fn is_sft_mode(flag: string) -> float {
-    if (cartan_string_eq(flag, "--train-sft") == 1.0 ||
-        cartan_string_eq(flag, "-train-sft") == 1.0 ||
-        cartan_string_eq(flag, "train-sft") == 1.0 ||
-        cartan_string_eq(flag, "--sft") == 1.0 ||
-        cartan_string_eq(flag, "-sft") == 1.0 ||
-        cartan_string_eq(flag, "sft") == 1.0) {
-        return 1.0;
-    }
-    return 0.0;
-}
-
-// Determines if a command line flag is an explicit non-chat command mode
-fn is_explicit_non_chat_mode(flag: string) -> float {
-    if (cartan_string_eq(flag, "--help") == 1.0 || cartan_string_eq(flag, "-h") == 1.0) { return 1.0; }
-    if (cartan_string_eq(flag, "--hf-download") == 1.0) { return 1.0; }
-    if (cartan_string_eq(flag, "--sleep") == 1.0) { return 1.0; }
-    if (is_cloze_mode(flag) == 1.0) { return 1.0; }
-    if (is_ce_mode(flag) == 1.0) { return 1.0; }
-    if (is_sft_mode(flag) == 1.0) { return 1.0; }
-    if (is_pre_mode(flag) == 1.0) { return 1.0; }
-    if (cartan_string_eq(flag, "--train-distill") == 1.0) { return 1.0; }
-    if (cartan_string_eq(flag, "--train-webgpu") == 1.0) { return 1.0; }
-    if (cartan_string_eq(flag, "--rlaif") == 1.0) { return 1.0; }
-    if (cartan_string_eq(flag, "--ingest") == 1.0) { return 1.0; }
-    if (cartan_string_eq(flag, "--analogy") == 1.0) { return 1.0; }
-    if (cartan_string_eq(flag, "--merge-slerp") == 1.0) { return 1.0; }
-    if (cartan_string_eq(flag, "--graft") == 1.0) { return 1.0; }
-    if (cartan_string_eq(flag, "--azr-selfplay") == 1.0) { return 1.0; }
-    if (cartan_string_eq(flag, "--extract-alignment-vector") == 1.0 || cartan_string_eq(flag, "-extract-alignment-vector") == 1.0) { return 1.0; }
-    if (cartan_string_eq(flag, "--diagnose-alignment") == 1.0 || cartan_string_eq(flag, "-diagnose-alignment") == 1.0) { return 1.0; }
-    if (cartan_string_eq(flag, "--byte-latent") == 1.0 || cartan_string_eq(flag, "-byte-latent") == 1.0) { return 1.0; }
-    if (cartan_string_eq(flag, "--curriculum") == 1.0 || cartan_string_eq(flag, "-curriculum") == 1.0) { return 1.0; }
-    if (cartan_string_eq(flag, "--eval-qa") == 1.0 || cartan_string_eq(flag, "-eval-qa") == 1.0) { return 1.0; }
-    if (cartan_string_eq(flag, "--index-basins") == 1.0 || cartan_string_eq(flag, "-index-basins") == 1.0) { return 1.0; }
-    if (cartan_string_eq(flag, "--crawl") == 1.0 || cartan_string_eq(flag, "-crawl") == 1.0) { return 1.0; }
-    return 0.0;
-}
-
-// Checks if any non-chat mode was explicitly specified on the command line
-fn has_non_chat_mode_arg(arg_count: float) -> float {
+// Check presence of CLI flag matching single or double dash
+fn get_cli_flag_present(flag_name: string, arg_count: float) -> float {
     var i = 1.0;
     while (i < arg_count) {
-        let flag = sys_get_arg(i);
-        if (is_explicit_non_chat_mode(flag) == 1.0) {
+        let arg = sys_get_arg(i);
+        if (cartan_string_eq(arg, flag_name) == 1.0) {
             return 1.0;
+        }
+        if (cartan_string_starts_with(flag_name, "-") == 1.0) {
+            let dbl = cartan_string_concat("-", flag_name);
+            if (cartan_string_eq(arg, dbl) == 1.0) {
+                return 1.0;
+            }
         }
         i = i + 1.0;
     }
@@ -229,7 +119,16 @@ fn get_cli_param(flag_name: string, arg_count: float) -> string {
     return "";
 }
 
-// Retrieve multi-word CLI prompt argument across single/double dash, assembling tokens until next flag
+// Retrieve float CLI parameter value with fallback default
+fn get_cli_param_float(flag_name: string, arg_count: float, default_val: float) -> float {
+    let p = get_cli_param(flag_name, arg_count);
+    if (cartan_string_length(p) > 0.0) {
+        return atof(p);
+    }
+    return default_val;
+}
+
+// Retrieve multi-word CLI prompt argument
 fn get_cli_prompt(arg_count: float) -> string {
     var i = 1.0;
     while (i < arg_count) {
@@ -256,759 +155,43 @@ fn get_cli_prompt(arg_count: float) -> string {
     return "";
 }
 
-// Check presence of CLI flag matching single or double dash
-fn get_cli_flag_present(flag_name: string, arg_count: float) -> float {
-    var i = 1.0;
-    while (i < arg_count) {
-        let arg = sys_get_arg(i);
-        if (cartan_string_eq(arg, flag_name) == 1.0) {
-            return 1.0;
-        }
-        if (cartan_string_starts_with(flag_name, "-") == 1.0) {
-            let dbl = cartan_string_concat("-", flag_name);
-            if (cartan_string_eq(arg, dbl) == 1.0) {
-                return 1.0;
-            }
-        }
-        i = i + 1.0;
-    }
-    return 0.0;
-}
-
 fn get_cli_target_path(arg_count: float) -> string {
     return get_cli_param("-target", arg_count);
 }
 
-fn get_cli_train_target(arg_count: float) -> string {
-    let manifest_arg = get_cli_param("-manifest", arg_count);
-    if (cartan_string_length(manifest_arg) > 0.0) {
-        return manifest_arg;
-    }
-    return get_cli_param("-target", arg_count);
-}
-
-fn check_and_apply_manifest_reset(target: string, arg_count: float, default_manifest: string) {
-    let reset_flag = get_cli_flag_present("-reset-manifest", arg_count);
-    if (reset_flag == 1.0) {
-        var m_path = geomind_resolve_path(default_manifest);
-        if (cartan_string_length(target) > 0.0 && cartan_string_ends_with(target, ".json") == 1.0) {
-            m_path = geomind_resolve_path(target);
-        }
-        if (cartan_file_exists(m_path) == 1.0) {
-            let m_content = cartan_read_file(m_path);
-            let list = geomind_manifest_parse_datasets(m_content);
-            var reset_lr = 0.05;
-            if (cartan_string_contains(m_path, "corpus.json") == 1.0) {
-                reset_lr = 0.0022;
-            }
-            geomind_manifest_save(m_path, list, 0.0, 0.0, 1.0, reset_lr);
-            printf("[GeoMind Main] Manifest reset to dataset 0, offset 0.0, epoch 1.0 (LR: %s): %s\n", cartan_float_to_string(reset_lr), m_path);
-            cartan_flush(0.0);
-        }
-    }
-}
-
-fn get_cli_param_float(flag_name: string, arg_count: float, default_val: float) -> float {
-    let p = get_cli_param(flag_name, arg_count);
-    if (cartan_string_length(p) > 0.0) {
-        return atof(p);
-    }
-    var i = 1.0;
-    let eq_flag = cartan_string_concat(flag_name, "=");
-    let dbl_eq_flag = cartan_string_concat("-", eq_flag);
-    while (i < arg_count) {
-        let arg = sys_get_arg(i);
-        if (cartan_string_starts_with(arg, eq_flag) == 1.0) {
-            let val_str = cartan_string_substring(arg, cartan_string_length(eq_flag), cartan_string_length(arg));
-            return atof(val_str);
-        }
-        if (cartan_string_starts_with(arg, dbl_eq_flag) == 1.0) {
-            let val_str = cartan_string_substring(arg, cartan_string_length(dbl_eq_flag), cartan_string_length(arg));
-            return atof(val_str);
-        }
-        i = i + 1.0;
-    }
-    return default_val;
-}
-
-// Parse target loss stopping threshold across all aliases
-fn get_cli_target_loss(arg_count: float, default_val: float) -> float {
-    var i = 1.0;
-    while (i < arg_count) {
-        let arg = sys_get_arg(i);
-        if (cartan_string_eq(arg, "-training-loss") == 1.0 ||
-            cartan_string_eq(arg, "--training-loss") == 1.0 ||
-            cartan_string_eq(arg, "-target-loss") == 1.0 ||
-            cartan_string_eq(arg, "--target-loss") == 1.0 ||
-            cartan_string_eq(arg, "-tl") == 1.0 ||
-            cartan_string_eq(arg, "--tl") == 1.0 ||
-            cartan_string_eq(arg, "-loss") == 1.0 ||
-            cartan_string_eq(arg, "--loss") == 1.0) {
-            if ((i + 1.0) < arg_count) {
-                return atof(sys_get_arg(i + 1.0));
-            }
-        }
-        i = i + 1.0;
-    }
-    return default_val;
-}
-
-// Check if user explicitly provided an epoch ceiling
-fn has_cli_epochs(arg_count: float) -> float {
-    var i = 1.0;
-    while (i < arg_count) {
-        let arg = sys_get_arg(i);
-        if (cartan_string_eq(arg, "-epochs") == 1.0 ||
-            cartan_string_eq(arg, "--epochs") == 1.0 ||
-            cartan_string_eq(arg, "-ep") == 1.0 ||
-            cartan_string_eq(arg, "--ep") == 1.0) {
-            return 1.0;
-        }
-        i = i + 1.0;
-    }
-    return 0.0;
-}
-
-// Retrieve user-specified epoch ceiling or return default
 fn get_cli_epochs(arg_count: float, default_val: float) -> float {
-    var i = 1.0;
-    while (i < arg_count) {
-        let arg = sys_get_arg(i);
-        if (cartan_string_eq(arg, "-epochs") == 1.0 ||
-            cartan_string_eq(arg, "--epochs") == 1.0 ||
-            cartan_string_eq(arg, "-ep") == 1.0 ||
-            cartan_string_eq(arg, "--ep") == 1.0) {
-            if ((i + 1.0) < arg_count) {
-                return atof(sys_get_arg(i + 1.0));
-            }
-        }
-        i = i + 1.0;
+    let ep = get_cli_param("-epochs", arg_count);
+    if (cartan_string_length(ep) > 0.0) {
+        return atof(ep);
+    }
+    let ep_short = get_cli_param("-ep", arg_count);
+    if (cartan_string_length(ep_short) > 0.0) {
+        return atof(ep_short);
     }
     return default_val;
 }
 
-// Check if auto-sft transition flag is present
-fn has_cli_auto_sft(arg_count: float) -> float {
-    var i = 1.0;
-    while (i < arg_count) {
-        let arg = sys_get_arg(i);
-        if (cartan_string_eq(arg, "-auto-sft") == 1.0 ||
-            cartan_string_eq(arg, "--auto-sft") == 1.0 ||
-            cartan_string_starts_with(arg, "-auto-sft=") == 1.0 ||
-            cartan_string_starts_with(arg, "--auto-sft=") == 1.0) {
-            return 1.0;
-        }
-        i = i + 1.0;
-    }
+// Determines if a command line flag is an explicit non-chat command mode
+fn is_explicit_non_chat_mode(flag: string) -> float {
+    if (cartan_string_eq(flag, "--help") == 1.0 || cartan_string_eq(flag, "-h") == 1.0) { return 1.0; }
+    if (cartan_string_eq(flag, "--curriculum") == 1.0 || cartan_string_eq(flag, "-curriculum") == 1.0) { return 1.0; }
+    if (cartan_string_eq(flag, "--eval-qa") == 1.0 || cartan_string_eq(flag, "-eval-qa") == 1.0) { return 1.0; }
+    if (cartan_string_eq(flag, "--index-basins") == 1.0 || cartan_string_eq(flag, "-index-basins") == 1.0) { return 1.0; }
+    if (cartan_string_eq(flag, "--train-strata") == 1.0 || cartan_string_eq(flag, "-train-strata") == 1.0) { return 1.0; }
+    if (cartan_string_eq(flag, "--train-sft") == 1.0 || cartan_string_eq(flag, "-train-sft") == 1.0) { return 1.0; }
+    if (cartan_string_eq(flag, "--train-ce") == 1.0 || cartan_string_eq(flag, "-train-ce") == 1.0) { return 1.0; }
+    if (cartan_string_eq(flag, "--train-cloze") == 1.0 || cartan_string_eq(flag, "-train-cloze") == 1.0) { return 1.0; }
+    if (cartan_string_eq(flag, "--streams") == 1.0 || cartan_string_eq(flag, "-streams") == 1.0) { return 1.0; }
+    if (cartan_string_eq(flag, "--sleep") == 1.0 || cartan_string_eq(flag, "-sleep") == 1.0) { return 1.0; }
+    if (cartan_string_eq(flag, "--ode-test") == 1.0 || cartan_string_eq(flag, "-ode-test") == 1.0) { return 1.0; }
+    if (cartan_string_eq(flag, "--azr") == 1.0 || cartan_string_eq(flag, "-azr") == 1.0) { return 1.0; }
+    if (cartan_string_eq(flag, "--webgpu-test") == 1.0 || cartan_string_eq(flag, "-webgpu-test") == 1.0) { return 1.0; }
+    if (cartan_string_eq(flag, "--merge-test") == 1.0 || cartan_string_eq(flag, "-merge-test") == 1.0) { return 1.0; }
+    if (cartan_string_eq(flag, "--ising-test") == 1.0 || cartan_string_eq(flag, "-ising-test") == 1.0) { return 1.0; }
+    if (cartan_string_eq(flag, "--log-test") == 1.0 || cartan_string_eq(flag, "-log-test") == 1.0) { return 1.0; }
+    if (cartan_string_eq(flag, "--byte-latent") == 1.0 || cartan_string_eq(flag, "-byte-latent") == 1.0) { return 1.0; }
+    if (cartan_string_eq(flag, "--crawl") == 1.0 || cartan_string_eq(flag, "-crawl") == 1.0) { return 1.0; }
     return 0.0;
-}
-
-// Parse auto-sft target loss threshold (e.g. -auto-sft 2.5, -auto-sft=2.5, or default 2.00)
-fn get_cli_auto_sft_target_loss(arg_count: float, default_val: float) -> float {
-    var i = 1.0;
-    while (i < arg_count) {
-        let arg = sys_get_arg(i);
-        if (cartan_string_starts_with(arg, "-auto-sft=") == 1.0) {
-            let val_str = cartan_string_substring(arg, 10.0, cartan_string_length(arg));
-            let v = atof(val_str);
-            if (v > 0.0) { return v; }
-            return default_val;
-        }
-        if (cartan_string_starts_with(arg, "--auto-sft=") == 1.0) {
-            let val_str = cartan_string_substring(arg, 11.0, cartan_string_length(arg));
-            let v = atof(val_str);
-            if (v > 0.0) { return v; }
-            return default_val;
-        }
-        if (cartan_string_eq(arg, "-auto-sft") == 1.0 || cartan_string_eq(arg, "--auto-sft") == 1.0) {
-            if ((i + 1.0) < arg_count) {
-                let next_arg = sys_get_arg(i + 1.0);
-                if (cartan_string_starts_with(next_arg, "-") == 0.0) {
-                    let v = atof(next_arg);
-                    if (v > 0.0) { return v; }
-                }
-            }
-            return default_val;
-        }
-        i = i + 1.0;
-    }
-    return default_val;
-}
-
-// Parse and configure dynamic focus scheduler CLI overrides
-fn apply_focus_cli_params(arg_count: float) {
-    let f_delta = get_cli_param_float("-focus-delta", arg_count, 0.0);
-    if (f_delta > 0.0) { g_focus_ppl_delta = f_delta; }
-    let f_ratio = get_cli_param_float("-focus-ratio", arg_count, 0.0);
-    if (f_ratio > 0.0) { g_focus_ppl_ratio = f_ratio; }
-    let f_exit_delta = get_cli_param_float("-focus-exit-delta", arg_count, 0.0);
-    if (f_exit_delta > 0.0) { g_focus_exit_delta = f_exit_delta; }
-    let f_exit_ratio = get_cli_param_float("-focus-exit-ratio", arg_count, 0.0);
-    if (f_exit_ratio > 0.0) { g_focus_exit_ratio = f_exit_ratio; }
-    let f_budget = get_cli_param_float("-focus-budget", arg_count, 0.0);
-    if (f_budget > 0.0) { g_focus_max_session_chunks = f_budget; }
-}
-
-// Evaluate vector analogy arithmetic on cortical weight manifold: a - b + c = ?
-fn geomind_eval_single_analogy(a_tok: float, b_tok: float, c_tok: float, expected_tok: float, a_name: string, b_name: string, c_name: string, exp_name: string) -> float {
-    geomind_load_e8_assets_if_needed();
-    var emb_buf: ptr = 0.0;
-    var dim: float = 2560.0;
-    let full_emb = geomind_get_full_embeddings();
-    if (full_emb != 0.0) {
-        emb_buf = full_emb;
-        dim = 2560.0;
-    } else if (g_e8_embeddings != 0.0) {
-        emb_buf = g_e8_embeddings;
-        dim = 248.0;
-    }
-
-    if (emb_buf != 0.0) {
-        let t_vec = cartan_tensor_alloc(dim);
-        var r = 0.0;
-        while (r < dim) {
-            let va = cartan_f32_at(emb_buf, a_tok * dim + r);
-            let vb = cartan_f32_at(emb_buf, b_tok * dim + r);
-            let vc = cartan_f32_at(emb_buf, c_tok * dim + r);
-            let vt = va - vb + vc;
-            cartan_vec_set_f32(t_vec, r, vt);
-            r = r + 1.0;
-        }
-
-        let stats = cartan_tensor_alloc(8.0);
-        cartan_analogy_search_topk(t_vec, emb_buf, 262144.0, dim, a_tok, b_tok, c_tok, expected_tok, stats);
-
-        let best_tok = cartan_vec_get_f32(stats, 0.0);
-        let best_sim = cartan_vec_get_f32(stats, 1.0);
-        let second_tok = cartan_vec_get_f32(stats, 2.0);
-        let second_sim = cartan_vec_get_f32(stats, 3.0);
-        let exp_sim = cartan_vec_get_f32(stats, 5.0);
-        let exp_rank = cartan_vec_get_f32(stats, 6.0);
-        let margin = cartan_vec_get_f32(stats, 7.0);
-
-        free(t_vec);
-        free(stats);
-
-        let best_word = bpe_decode_token(best_tok);
-        let second_word = bpe_decode_token(second_tok);
-        let exp_word = bpe_decode_token(expected_tok);
-
-        printf("  >>> Rank 1 Result: Token %s ('%s') | Cosine Similarity: %s\n",
-            cartan_float_to_string(best_tok), best_word, cartan_float_to_string(best_sim));
-        printf("  >>> Rank 2 Runner-Up: Token %s ('%s') | Cosine Similarity: %s\n",
-            cartan_float_to_string(second_tok), second_word, cartan_float_to_string(second_sim));
-        printf("  >>> Target '%s' (Token %s): Rank %s | Cosine Similarity: %s\n",
-            exp_name, cartan_float_to_string(expected_tok), cartan_float_to_string(exp_rank), cartan_float_to_string(exp_sim));
-
-        if (best_tok == expected_tok) {
-            printf("  >>> Status: PASS (Expected '%s' matches Rank 1 cleanly! Margin: +%s)\n\n",
-                exp_name, cartan_float_to_string(margin));
-        } else {
-            printf("  >>> Status: GAP (Target is Rank %s, diff from top: %s)\n\n",
-                cartan_float_to_string(exp_rank), cartan_float_to_string(best_sim - exp_sim));
-        }
-        cartan_flush(0.0);
-        return exp_rank;
-    }
-
-
-    let dim = 256.0;
-    let vocab = 256.0;
-    var weights_table = g_cortical_weights;
-    if (g_embedding_weights != 0.0) {
-        weights_table = g_embedding_weights;
-    }
-
-    let t_vec = cartan_tensor_alloc(dim);
-    var norm_t = 0.0;
-    var r = 0.0;
-    while (r < dim) {
-        let va = cartan_vec_get_f32(weights_table, r * vocab + a_tok);
-        let vb = cartan_vec_get_f32(weights_table, r * vocab + b_tok);
-        let vc = cartan_vec_get_f32(weights_table, r * vocab + c_tok);
-        let vt = va - vb + vc;
-        cartan_vec_set_f32(t_vec, r, vt);
-        let sub_idx = floor(r / 32.0);
-        let g_r = geom_killing_form_dynkin_weight(sub_idx);
-        norm_t = norm_t + vt * vt * g_r;
-        r = r + 1.0;
-    }
-    norm_t = sqrt(norm_t + 0.000001);
-
-    var best_tok = -1.0;
-    var best_sim = -100.0;
-    var second_tok = -1.0;
-    var second_sim = -100.0;
-    var expected_sim = -100.0;
-
-    var col = 0.0;
-    while (col < vocab) {
-        if (col != a_tok && col != b_tok && col != c_tok) {
-            var dot = 0.0;
-            var norm_c = 0.0;
-            r = 0.0;
-            while (r < dim) {
-                let vt = cartan_vec_get_f32(t_vec, r);
-                let vc = cartan_vec_get_f32(weights_table, r * vocab + col);
-                let sub_idx = floor(r / 32.0);
-                let g_r = geom_killing_form_dynkin_weight(sub_idx);
-                dot = dot + vt * vc * g_r;
-                norm_c = norm_c + vc * vc * g_r;
-                r = r + 1.0;
-            }
-            norm_c = sqrt(norm_c + 0.000001);
-            let sim = dot / (norm_t * norm_c);
-            if (col == expected_tok) {
-                expected_sim = sim;
-            }
-            if (sim > best_sim) {
-                second_sim = best_sim;
-                second_tok = best_tok;
-                best_sim = sim;
-                best_tok = col;
-            } else if (sim > second_sim) {
-                second_sim = sim;
-                second_tok = col;
-            }
-        }
-        col = col + 1.0;
-    }
-    free(t_vec);
-
-    let best_word = bpe_decode_token(best_tok);
-    let second_word = bpe_decode_token(second_tok);
-    let exp_word = bpe_decode_token(expected_tok);
-
-    printf("  >>> Rank 1 Result: Token %s ('%s') | Cosine Similarity: %s\n",
-        cartan_float_to_string(best_tok), best_word, cartan_float_to_string(best_sim));
-    printf("  >>> Rank 2 Runner-Up: Token %s ('%s') | Cosine Similarity: %s\n",
-        cartan_float_to_string(second_tok), second_word, cartan_float_to_string(second_sim));
-    if (best_tok == expected_tok) {
-        printf("  >>> Status: PASS (Expected '%s' matches Rank 1 cleanly! Margin: +%s)\n\n",
-            exp_name, cartan_float_to_string(best_sim - second_sim));
-    } else {
-        printf("  >>> Status: Expected Token %s ('%s') similarity is %s\n\n",
-            cartan_float_to_string(expected_tok), exp_word, cartan_float_to_string(expected_sim));
-    }
-    cartan_flush(0.0);
-}
-
-fn geomind_chat_interactive_loop(image_arg: string, audio_arg: string, tokens_arg: float) -> float {
-    let db = geomind_chat_get_db();
-    if (db != 0.0) {
-        geomind_chat_startup_biometric_scan(db);
-    }
-    let cur_user = geomind_chat_get_active_user();
-    if (geomind_chat_is_user_verified() == 1.0) {
-        var pref_name = sqlite_vec_get_user_attr(db, cur_user, "preferred_name");
-        if (cartan_string_length(pref_name) == 0.0) { pref_name = cur_user; }
-        printf("%sGeoMind>%s Hello %s! Great to see you. How can I assist you today?\n\n",
-            geomind_col_green(), geomind_col_reset(), pref_name);
-    } else {
-        printf("%sGeoMind>%s Hello! Welcome to GeoMind. How can I help you today?\n\n",
-            geomind_col_green(), geomind_col_reset());
-    }
-    printf("[GeoMind Chat] Interactive REPL Session Ready. Type 'exit' or 'quit' to end.\n\n");
-    cartan_flush(0.0);
-    var running = 1.0;
-    while (running == 1.0) {
-        cartan_trans_pool_enter_standby();
-        var line = "";
-        if (geomind_chat_get_interrupted() == 1.0) {
-            geomind_chat_set_interrupted(0.0);
-            printf("%sCommand>%s /", geomind_col_yellow(), geomind_col_reset());
-            cartan_flush(0.0);
-            let sub_line = cartan_read_line();
-            if (cartan_string_starts_with(sub_line, "/") == 1.0) {
-                line = sub_line;
-            } else {
-                line = cartan_string_concat("/", sub_line);
-            }
-        } else {
-            let active_user = geomind_chat_get_active_user();
-            if (cartan_string_length(active_user) > 0.0) {
-                printf("%s%s>%s ", geomind_col_cyan(), active_user, geomind_col_reset());
-            } else {
-                printf("%sUser>%s ", geomind_col_cyan(), geomind_col_reset());
-            }
-            cartan_flush(0.0);
-            line = cartan_read_line();
-        }
-        cartan_trans_pool_resume_active();
-        let len = cartan_string_length(line);
-        if (cartan_string_eq(line, "exit") == 1.0 || cartan_string_eq(line, "quit") == 1.0 ||
-            cartan_string_eq(line, "/exit") == 1.0 || cartan_string_eq(line, "/quit") == 1.0) {
-            cartan_trans_pool_shutdown();
-            running = 0.0;
-        } else if (cartan_string_starts_with(line, "/remember ") == 1.0) {
-            let fact = cartan_string_substring(line, 10.0, len);
-            geomind_chat_remember_fact(fact);
-            cartan_flush(0.0);
-        } else if (cartan_string_eq(line, "/state") == 1.0) {
-            geomind_chat_print_entity_states();
-            cartan_flush(0.0);
-        } else if (cartan_string_eq(line, "/sleep") == 1.0) {
-            geomind_chat_run_sleep_consolidation();
-            cartan_flush(0.0);
-        } else if (cartan_string_eq(line, "/help") == 1.0) {
-            printf("\n--- GeoMind Interactive REPL Commands ---\n");
-            printf("  /think, t               Toggle thinking display (default: hidden)\n");
-            printf("  /telemetry, m           Toggle inference telemetry metrics (default: hidden)\n");
-            printf("  /stream, s              Toggle output mode between BUFFERED and STREAMING\n");
-            printf("  /color, c               Toggle ANSI terminal color styling (default: enabled)\n");
-            printf("  /anim, a                Toggle dynamic in-place ASCII animations (default: enabled)\n");
-            printf("  /tools                  Toggle autonomous tool calling (on-demand vs always-active)\n");
-            printf("  /whoami                 Display active interlocutor profile and verification status\n");
-            printf("  /register-face [user]   Capture camera frame and enroll biometric face map in Domain 10\n");
-            printf("  /verify-face            Re-scan webcam and authenticate interlocutor identity\n");
-            printf("  /capture-face           Manually trigger webcam snapshot and extract 320-D embedding\n");
-            printf("  /switch-user <user>     Switch active interlocutor session (e.g. User:Rick)\n");
-            printf("  /who, /identity         Display cognitive self-identity and preamble\n");
-            printf("  /clear, /reset, /new    Reset conversation history and KV cache\n");
-            printf("  /remember <fact>        Store explicit semantic belief in cognitive memory\n");
-            printf("  /state                  Print active cognitive entity states\n");
-            printf("  /sleep                  Run online two-tier memory consolidation\n");
-            printf("  /context [N]            Query or dynamically resize context window (e.g. /context 32768)\n");
-            printf("  /read <path>            Read and display file contents\n");
-            printf("  /write <path> <content> Write content to file on disk\n");
-            printf("  /exec <cmd>             Execute command-line operation with stdout capture\n");
-            printf("  /ls [path]              List directory contents\n");
-            printf("  /browse <url>           Fetch and parse web page with hyperlinks\n");
-            printf("  /screen                 Capture active desktop and extract on-screen OCR text\n");
-            printf("  /config, /reload        Display or reload geomind_config.json\n");
-            printf("  /rules                  Display all cognitive rules (from config & cognitive_memory.db)\n");
-            printf("  /rule <op> ...          Manage rules: enable <id> | disable <id> | del <id> | add <id>|<trig>|<hook>|<dir>\n");
-            printf("  /debug                  Toggle diagnostic telemetry\n");
-            printf("  /exit, exit, quit       End interactive REPL session\n");
-            printf("  Shortcut: Press '/' at any time during generation to immediately interrupt.\n\n");
-            cartan_flush(0.0);
-        } else if (cartan_string_eq(line, "/who") == 1.0 || cartan_string_eq(line, "/identity") == 1.0) {
-            let db = geomind_chat_get_db();
-            if (db != 0.0) {
-                let pre = geomind_chat_build_cognitive_preamble(db);
-                printf("%s\n\n", pre);
-            }
-            cartan_flush(0.0);
-        } else if (cartan_string_eq(line, "/whoami") == 1.0) {
-            geomind_chat_print_active_interlocutor();
-            cartan_flush(0.0);
-        } else if (cartan_string_eq(line, "/capture-face") == 1.0) {
-            geomind_chat_capture_face_frame();
-            cartan_flush(0.0);
-        } else if (cartan_string_starts_with(line, "/register-face") == 1.0) {
-            var target_user = "User:Rick";
-            if (len > 15.0) {
-                let raw_arg = cartan_string_substring(line, 15.0, len);
-                let trimmed = cartan_string_trim(raw_arg);
-                if (cartan_string_length(trimmed) > 0.0 &&
-                    cartan_string_starts_with(trimmed, "[") == 0.0 &&
-                    cartan_string_starts_with(trimmed, "<") == 0.0 &&
-                    cartan_string_contains(trimmed, "Capture camera") == 0.0 &&
-                    cartan_string_length(trimmed) <= 32.0) {
-                    target_user = trimmed;
-                }
-            }
-            if (cartan_string_starts_with(target_user, "User:") == 0.0) {
-                target_user = cartan_string_concat("User:", target_user);
-            }
-            geomind_chat_register_face(target_user);
-            cartan_flush(0.0);
-        } else if (cartan_string_eq(line, "/verify-face") == 1.0) {
-            geomind_chat_verify_face();
-            cartan_flush(0.0);
-        } else if (cartan_string_starts_with(line, "/switch-user") == 1.0) {
-            var u_id = "User:Rick";
-            if (len > 13.0) {
-                let raw_arg = cartan_string_substring(line, 13.0, len);
-                let trimmed = cartan_string_trim(raw_arg);
-                if (cartan_string_length(trimmed) > 0.0 &&
-                    cartan_string_starts_with(trimmed, "<") == 0.0 &&
-                    cartan_string_starts_with(trimmed, "[") == 0.0 &&
-                    cartan_string_length(trimmed) <= 32.0) {
-                    u_id = trimmed;
-                }
-            }
-            if (cartan_string_starts_with(u_id, "User:") == 0.0) {
-                u_id = cartan_string_concat("User:", u_id);
-            }
-            geomind_chat_switch_user(u_id);
-            cartan_flush(0.0);
-        } else if (cartan_string_eq(line, "/clear") == 1.0 || cartan_string_eq(line, "/reset") == 1.0 || cartan_string_eq(line, "/new") == 1.0) {
-            geomind_chat_clear_session();
-            printf("[GeoMind Chat] Active conversation history and KV cache reset.\n\n");
-            cartan_flush(0.0);
-        } else if (cartan_string_eq(line, "/think") == 1.0 || cartan_string_eq(line, "t") == 1.0) {
-            let cur_th = geomind_chat_get_show_thinking();
-            if (cur_th == 1.0) {
-                geomind_chat_set_show_thinking(0.0);
-                printf("  [GeoMind Interface] Thinking Display: HIDDEN (/think or 't' to toggle)\n\n");
-            } else {
-                geomind_chat_set_show_thinking(1.0);
-                printf("  [GeoMind Interface] Thinking Display: VISIBLE (/think or 't' to toggle)\n\n");
-            }
-            cartan_flush(0.0);
-        } else if (cartan_string_eq(line, "/telemetry") == 1.0 || cartan_string_eq(line, "m") == 1.0) {
-            let cur_tel = geomind_chat_get_show_telemetry();
-            if (cur_tel == 1.0) {
-                geomind_chat_set_show_telemetry(0.0);
-                printf("  [GeoMind Interface] Telemetry Metrics: HIDDEN (/telemetry or 'm' to toggle)\n\n");
-            } else {
-                geomind_chat_set_show_telemetry(1.0);
-                printf("  [GeoMind Interface] Telemetry Metrics: VISIBLE (/telemetry or 'm' to toggle)\n\n");
-            }
-            cartan_flush(0.0);
-        } else if (cartan_string_eq(line, "/stream") == 1.0 || cartan_string_eq(line, "s") == 1.0) {
-            let cur_buf = geomind_chat_get_buffered_output();
-            if (cur_buf == 1.0) {
-                geomind_chat_set_buffered_output(0.0);
-                printf("  [GeoMind Interface] Output Mode: STREAMING (Live token flow, /stream or 's' to toggle)\n\n");
-            } else {
-                geomind_chat_set_buffered_output(1.0);
-                printf("  [GeoMind Interface] Output Mode: BUFFERED (Clean response on completion, /stream or 's' to toggle)\n\n");
-            }
-            cartan_flush(0.0);
-        } else if (cartan_string_eq(line, "/tools") == 1.0) {
-            let cur_tp = geomind_chat_get_tools_persistent();
-            if (cur_tp == 1.0) {
-                geomind_chat_set_tools_persistent(0.0);
-                printf("  [GeoMind Tools] Autonomous Tool Calling: ON-DEMAND INTENT GATING (/tools to toggle)\n\n");
-            } else {
-                geomind_chat_set_tools_persistent(1.0);
-                printf("  %s[GeoMind Tools] Autonomous Tool Calling: ALWAYS ACTIVE (Persistent across all turns)%s\n\n", geomind_col_green(), geomind_col_reset());
-            }
-            cartan_flush(0.0);
-        } else if (cartan_string_eq(line, "/color") == 1.0 || cartan_string_eq(line, "c") == 1.0) {
-            let cur_col = geomind_chat_get_use_color();
-            if (cur_col == 1.0) {
-                geomind_chat_set_use_color(0.0);
-                printf("  [GeoMind Interface] ANSI Color Styling: DISABLED (/color or 'c' to toggle)\n\n");
-            } else {
-                geomind_chat_set_use_color(1.0);
-                printf("  %s[GeoMind Interface] ANSI Color Styling: ENABLED (/color or 'c' to toggle)%s\n\n", geomind_col_green(), geomind_col_reset());
-            }
-            cartan_flush(0.0);
-        } else if (cartan_string_eq(line, "/anim") == 1.0 || cartan_string_eq(line, "a") == 1.0) {
-            let cur_an = geomind_chat_get_use_animation();
-            if (cur_an == 1.0) {
-                geomind_chat_set_use_animation(0.0);
-                printf("  [GeoMind Interface] Dynamic ASCII Animations: DISABLED (/anim or 'a' to toggle)\n\n");
-            } else {
-                geomind_chat_set_use_animation(1.0);
-                printf("  %s[GeoMind Interface] Dynamic ASCII Animations: ENABLED (/anim or 'a' to toggle)%s\n\n", geomind_col_green(), geomind_col_reset());
-            }
-            cartan_flush(0.0);
-        } else if (cartan_string_eq(line, "/debug") == 1.0) {
-            let cur_dbg = geomind_chat_get_debug_mode();
-            if (cur_dbg == 1.0) {
-                geomind_chat_set_debug_mode(0.0);
-                printf("  [GeoMind Debug] Diagnostic telemetry DISABLED (/debug to toggle).\n\n");
-            } else {
-                geomind_chat_set_debug_mode(1.0);
-                printf("  [GeoMind Debug] Diagnostic telemetry ENABLED (/debug to toggle).\n\n");
-            }
-            cartan_flush(0.0);
-        } else if (cartan_string_eq(line, "/context") == 1.0) {
-            let cur_limit = geomind_chat_get_context_limit();
-            let cur_pos = geomind_chat_get_session_pos();
-            let pct = (cur_pos / cur_limit) * 100.0;
-            printf("  [GeoMind Context] Active context window: %.0f tokens (Session pos: %.0f / %.0f, %.1f%% used)\n\n",
-                   cur_limit, cur_pos, cur_limit, pct);
-            cartan_flush(0.0);
-        } else if (cartan_string_starts_with(line, "/context ") == 1.0) {
-            let ctx_str = cartan_string_substring(line, 9.0, len);
-            let target_ctx = atof(ctx_str);
-            if (target_ctx > 0.0) {
-                let actual_ctx = geomind_chat_set_context_limit(target_ctx);
-                printf("  [GeoMind Context] Context window resized to %.0f tokens (24 KV layers, %.2f GB resident).\n\n",
-                       actual_ctx, (24.0 * actual_ctx * 1024.0 * 8.0) / 1073741824.0);
-            } else {
-                printf("[Usage] /context <num_tokens> (e.g. /context 131072, /context 32768, /context 8192)\n\n");
-            }
-            cartan_flush(0.0);
-        } else if (cartan_string_starts_with(line, "/set ") == 1.0) {
-            let cmd_arg = cartan_string_substring(line, 5.0, len);
-            let arg_len = cartan_string_length(cmd_arg);
-            var dot_pos = -1.0;
-            var eq_pos = -1.0;
-            var si = 0.0;
-            while (si < arg_len) {
-                let ch = cartan_string_get_char(cmd_arg, si);
-                if (ch == 46.0 && dot_pos < 0.0) {
-                    dot_pos = si;
-                }
-                if (ch == 61.0 && eq_pos < 0.0) {
-                    eq_pos = si;
-                }
-                si = si + 1.0;
-            }
-            if (dot_pos > 0.0 && eq_pos > dot_pos) {
-                let ent = cartan_string_substring(cmd_arg, 0.0, dot_pos);
-                let attr = cartan_string_substring(cmd_arg, dot_pos + 1.0, eq_pos);
-                let val = cartan_string_substring(cmd_arg, eq_pos + 1.0, arg_len);
-                geomind_chat_set_entity_state(ent, attr, val);
-            } else {
-                printf("[Usage] /set <entity>.<attribute>=<value>\n");
-            }
-            cartan_flush(0.0);
-        } else if (cartan_string_starts_with(line, "/read ") == 1.0) {
-            let r_path = cartan_string_substring(line, 6.0, len);
-            let content = geomind_tool_read_file(r_path);
-            printf("%s\n\n", content);
-            cartan_flush(0.0);
-        } else if (cartan_string_starts_with(line, "/write ") == 1.0) {
-            let rem = cartan_string_substring(line, 7.0, len);
-            let rem_len = cartan_string_length(rem);
-            var sp_idx = -1.0;
-            var si = 0.0;
-            while (si < rem_len) {
-                if (cartan_string_get_char(rem, si) == 32.0) {
-                    sp_idx = si;
-                    break;
-                }
-                si = si + 1.0;
-            }
-            if (sp_idx > 0.0) {
-                let w_path = cartan_string_substring(rem, 0.0, sp_idx);
-                let w_content = cartan_string_substring(rem, sp_idx + 1.0, rem_len);
-                let res_msg = geomind_tool_write_file(w_path, w_content);
-                printf("  [GeoMind Tools] %s\n\n", res_msg);
-            } else {
-                printf("[Usage] /write <path> <content>\n\n");
-            }
-            cartan_flush(0.0);
-        } else if (cartan_string_starts_with(line, "/exec ") == 1.0) {
-            let cmd = cartan_string_substring(line, 6.0, len);
-            let cmd_out = geomind_tool_exec_command(cmd);
-            printf("%s\n\n", cmd_out);
-            cartan_flush(0.0);
-        } else if (cartan_string_eq(line, "/ls") == 1.0) {
-            let ls_out = geomind_tool_list_dir(".");
-            printf("%s\n\n", ls_out);
-            cartan_flush(0.0);
-        } else if (cartan_string_starts_with(line, "/ls ") == 1.0) {
-            let ls_path = cartan_string_substring(line, 4.0, len);
-            let ls_out = geomind_tool_list_dir(ls_path);
-            printf("%s\n\n", ls_out);
-            cartan_flush(0.0);
-        } else if (cartan_string_starts_with(line, "/browse ") == 1.0) {
-            let b_url = cartan_string_substring(line, 8.0, len);
-            let b_out = geomind_tool_browse_web(b_url);
-            printf("%s\n\n", b_out);
-            cartan_flush(0.0);
-        } else if (cartan_string_eq(line, "/config") == 1.0) {
-            geomind_chat_print_config();
-        } else if (cartan_string_eq(line, "/reload") == 1.0) {
-            geomind_chat_load_config();
-            geomind_chat_print_config();
-        } else if (cartan_string_eq(line, "/rules") == 1.0) {
-            geomind_chat_print_rules();
-        } else if (cartan_string_starts_with(line, "/rule ") == 1.0) {
-            geomind_chat_handle_rule_repl_command(line);
-        } else if (cartan_string_eq(line, "/screen") == 1.0) {
-            let s_out = geomind_tool_read_screen();
-            printf("%s\n\n", s_out);
-            cartan_flush(0.0);
-        } else {
-            if (len > 0.0) {
-                var gen_len = tokens_arg;
-                if (gen_len < 32.0) { gen_len = 64.0; }
-                var reply_str = "";
-                if (cartan_string_ends_with(line, "?") == 1.0) {
-                    reply_str = geomind_e8_answer_epistemic_question(line);
-                } else {
-                    reply_str = geomind_byte_latent_generate_deep_e8(line, 42.0, gen_len);
-                }
-                printf("%sGeoMind [E8-248D]>%s %s\n\n", geomind_col_green(), geomind_col_reset(), reply_str);
-                cartan_flush(0.0);
-            }
-        }
-    }
-    cartan_trans_pool_shutdown();
-    return 0.0;
-}
-
-fn geomind_run_chat_mode(arg_count: float, no_priming: float) -> float {
-    geomind_chat_start();
-
-    if (no_priming > 0.0) {
-        printf("[GeoMind Mode] Expert System Priming DISABLED: Pure Raw Neural Forward Pass\n\n", "");
-        cartan_flush(0.0);
-    }
-
-    if (get_cli_flag_present("-ephemeral", arg_count) > 0.0 || get_cli_flag_present("--ephemeral", arg_count) > 0.0) {
-        geomind_chat_set_ephemeral_memory(1.0);
-    }
-
-    let image_arg = get_cli_param("--image", arg_count);
-    let audio_arg = get_cli_param("--audio", arg_count);
-    var prompt_arg = get_cli_prompt(arg_count);
-    var tokens_arg = get_cli_param_float("-tokens", arg_count, 0.0);
-    if (tokens_arg <= 0.0) {
-        tokens_arg = get_cli_param_float("-max-tokens", arg_count, geomind_chat_get_default_max_tokens());
-    }
-    let temp_arg = get_cli_param_float("-temp", arg_count, geomind_chat_get_default_temp());
-    if (get_cli_flag_present("-context", arg_count) > 0.0) {
-        let cli_context = get_cli_param_float("-context", arg_count, geomind_chat_get_context_limit());
-        geomind_chat_set_context_limit(cli_context);
-    }
-
-    let user_cli = get_cli_param("-user", arg_count);
-    if (cartan_string_length(user_cli) > 0.0) {
-        geomind_chat_set_active_user(user_cli, 1.0);
-    }
-
-    let think_flag = get_cli_flag_present("-think", arg_count) +
-                     get_cli_flag_present("--think", arg_count) +
-                     get_cli_flag_present("-thoughts", arg_count) +
-                     get_cli_flag_present("--thoughts", arg_count);
-    if (think_flag > 0.0) {
-        geomind_chat_set_show_thinking(1.0);
-    }
-
-    let buffered_flag = get_cli_flag_present("-buffered", arg_count) +
-                        get_cli_flag_present("--buffered", arg_count);
-    if (buffered_flag > 0.0) {
-        geomind_chat_set_buffered_output(1.0);
-    }
-    let stream_flag = get_cli_flag_present("-stream", arg_count) +
-                      get_cli_flag_present("--stream", arg_count);
-    if (stream_flag > 0.0) {
-        geomind_chat_set_buffered_output(0.0);
-    }
-
-    if (cartan_string_length(prompt_arg) == 0.0 && arg_count >= 3.0) {
-        let first_arg = sys_get_arg(1.0);
-        if (cartan_string_eq(first_arg, "--chat") == 1.0 || cartan_string_eq(first_arg, "-chat") == 1.0) {
-            var p_idx = 2.0;
-            while (p_idx < arg_count) {
-                let first_pos = sys_get_arg(p_idx);
-                if (cartan_string_starts_with(first_pos, "-") == 1.0) {
-                    break;
-                }
-                if (cartan_string_length(prompt_arg) > 0.0) {
-                    prompt_arg = cartan_string_concat(prompt_arg, " ");
-                }
-                prompt_arg = cartan_string_concat(prompt_arg, first_pos);
-                p_idx = p_idx + 1.0;
-            }
-        }
-    }
-
-    if (cartan_string_length(prompt_arg) > 0.0) {
-        var gen_len = tokens_arg;
-        if (gen_len < 32.0) { gen_len = 64.0; }
-        var reply_str = "";
-        if (cartan_string_ends_with(prompt_arg, "?") == 1.0) {
-            reply_str = geomind_e8_answer_epistemic_question(prompt_arg);
-        } else {
-            reply_str = geomind_byte_latent_generate_deep_e8(prompt_arg, 42.0, gen_len);
-        }
-        printf("%sGeoMind [E8-248D]>%s %s\n", geomind_col_green(), geomind_col_reset(), reply_str);
-        cartan_flush(0.0);
-        return 0.0;
-    }
-
-    return geomind_chat_interactive_loop(image_arg, audio_arg, tokens_arg);
 }
 
 fn main() -> float {
@@ -1017,543 +200,15 @@ fn main() -> float {
         print_help_dialogue();
         return 0.0;
     }
-    geomind_chat_load_config();
-    let default_tokens = get_cli_param_float("-tokens", arg_count, geomind_chat_get_default_max_tokens());
-    if (get_cli_flag_present("-context", arg_count) > 0.0) {
-        let cli_context = get_cli_param_float("-context", arg_count, geomind_chat_get_context_limit());
-        geomind_chat_set_context_limit(cli_context);
-    }
-    let debug_flag = get_cli_flag_present("-debug", arg_count);
-    if (debug_flag > 0.0) {
-        geomind_chat_set_debug_mode(1.0);
-        printf("[GeoMind Mode] Debug Telemetry Logging ENABLED\n");
-    }
-    // Sovereign CARTAN-E8 v2: Never mount legacy v1 manifold_layer_*.bin weights.
-    geomind_chat_set_gpu_enabled(0.0);
+
     printf("[CARTAN-E8 Mode] Sovereign 248D Non-Euclidean E8 Manifold Engine (Zero Pretrained Weights Mounted)\n");
-    let no_priming = get_cli_flag_present("-no-expert-priming", arg_count) + 
-                     get_cli_flag_present("-no-priming", arg_count) +
-                     get_cli_flag_present("-raw-neural", arg_count);
-    if (no_priming > 0.0) {
-        geomind_chat_set_expert_priming(0.0);
-    }
-    let online_critic = get_cli_flag_present("-online-critic", arg_count) + 
-                        get_cli_flag_present("-train-on-error", arg_count) +
-                        get_cli_flag_present("-critic", arg_count);
-    if (online_critic > 0.0) {
-        geomind_chat_set_online_critic(1.0);
-        printf("[GeoMind Mode] Online Critic & 1-Step Invariant Correction ENABLED\n");
-    }
-    let ephemeral_mem = get_cli_flag_present("-ephemeral-memory", arg_count) +
-                        get_cli_flag_present("-no-save-memory", arg_count);
-    if (ephemeral_mem > 0.0) {
-        geomind_chat_set_ephemeral_memory(1.0);
-        printf("[GeoMind Mode] Ephemeral Memory ENABLED: Attractor updates preserved in RAM without disk mutation\n");
-    }
-    let cli_ee_thresh = get_cli_param_float("-early-exit-threshold", arg_count, 0.04);
-    let cli_ee_min_l = get_cli_param_float("-early-exit-min-layer", arg_count, 36.0);
-    let enable_ee = get_cli_flag_present("-early-exit", arg_count);
-    if (enable_ee > 0.0) {
-        cartan_transformer_set_early_exit(1.0, cli_ee_min_l, cli_ee_thresh);
-    } else {
-        cartan_transformer_set_early_exit(0.0, 36.0, 0.04);
-    }
+    cartan_flush(0.0);
 
-    let stream_prune_flag = get_cli_flag_present("-stream-prune", arg_count) +
-                            get_cli_flag_present("--stream-prune", arg_count);
-    let no_stream_prune = get_cli_flag_present("-no-stream-prune", arg_count) +
-                          get_cli_flag_present("--no-stream-prune", arg_count);
-    if (stream_prune_flag > 0.0 && no_stream_prune == 0.0) {
-        geomind_chat_set_stream_pruning(1.0);
-        printf("[GeoMind Mode] Cortical Stream Vocabulary Pruning ENABLED (Experimental: ~2.7k tokens)\n");
-    } else {
-        geomind_chat_set_stream_pruning(0.0);
-    }
-
-    let spec_draft_flag = get_cli_flag_present("-speculative-draft", arg_count) +
-                          get_cli_flag_present("--speculative-draft", arg_count);
-    let no_spec_draft_flag = get_cli_flag_present("-no-speculative-draft", arg_count) +
-                             get_cli_flag_present("--no-speculative-draft", arg_count);
-    if (spec_draft_flag > 0.0 && no_spec_draft_flag == 0.0) {
-        geomind_chat_set_speculative_drafting(1.0);
-        printf("[GeoMind Mode] Stream-Driven Speculative Fast Drafting ENABLED\n");
-    } else {
-        geomind_chat_set_speculative_drafting(0.0);
-    }
-
-    let sasaki_bypass_flag = get_cli_flag_present("-sasaki-bypass", arg_count) +
-                             get_cli_flag_present("--sasaki-bypass", arg_count);
-    let no_sasaki_bypass_flag = get_cli_flag_present("-no-sasaki-bypass", arg_count) +
-                                get_cli_flag_present("--no-sasaki-bypass", arg_count);
-    if (sasaki_bypass_flag > 0.0 && no_sasaki_bypass_flag == 0.0) {
-        geomind_chat_set_sasaki_bypass(1.0);
-        printf("[GeoMind Mode] Sasaki MoE Fast-Path Layer Bypass ENABLED (Skipping L25..L40 on w* >= 0.35)\n");
-    } else {
-        geomind_chat_set_sasaki_bypass(0.0);
-    }
-
-    let debias_flag = get_cli_flag_present("-debias", arg_count) +
-                      get_cli_flag_present("--debias", arg_count);
-    let no_debias_flag = get_cli_flag_present("-no-debias", arg_count) +
-                         get_cli_flag_present("--no-debias", arg_count);
-    if (no_debias_flag > 0.0) {
-        geomind_chat_set_tangent_debias(0.0);
-    } else if (debias_flag > 0.0) {
-        geomind_chat_set_tangent_debias(1.0);
-        let layer_str = get_cli_param("-debias-layer", arg_count);
-        if (cartan_string_length(layer_str) > 0.0) {
-            let l_val = atof(layer_str);
-            if (l_val >= 0.0 && l_val < 42.0) {
-                geomind_chat_set_debias_layer(l_val);
-            }
-        }
-        let strength_str = get_cli_param("-debias-strength", arg_count);
-        if (cartan_string_length(strength_str) > 0.0) {
-            let s_val = atof(strength_str);
-            if (s_val > 0.0) {
-                geomind_chat_set_debias_strength(s_val);
-            }
-        }
-        printf("[GeoMind Mode] Tangent Bundle Alignment Debias ENABLED (Layer %.0f Rank-%.0f Orthonormal Subspace Active, Strength %.2f)\n", geomind_chat_get_debias_layer(), geomind_chat_get_debias_rank(), geomind_chat_get_debias_strength());
-    }
-
-    // Default mode: Interactive chat (launches automatically when typing geomind.exe or if no non-chat mode was requested)
-    if (has_non_chat_mode_arg(arg_count) == 0.0) {
-        return geomind_run_chat_mode(arg_count, no_priming);
-    }
-
-
+    // Scan for explicit command flags
     var i = 1.0;
     while (i < arg_count) {
         let flag = sys_get_arg(i);
 
-        if (cartan_string_eq(flag, "--help") == 1.0 || cartan_string_eq(flag, "-h") == 1.0) {
-            print_help_dialogue();
-            return 0.0;
-        }
-
-
-        if (cartan_string_eq(flag, "--hf-download") == 1.0) {
-            printf("================================================================================\n");
-            printf("  GEOMIND HUGGINGFACE DATASET EXPLORER & DIRECT DOWNLOADER (--hf-download)\n");
-            printf("================================================================================\n\n");
-
-            if (arg_count > 2.0) {
-                let repo_id = sys_get_arg(2.0);
-                printf("[HF Downloader] Target Dataset Repo: %s\n", repo_id);
-                let out_filename = cartan_string_concat("Projects/geomind/trainingdata/hf_", repo_id);
-                let safe_out_path = cartan_string_replace(out_filename, "/", "_");
-                let final_path = cartan_string_concat(safe_out_path, ".txt");
-
-                printf("[HF Downloader] Downloading dataset material to %s...\n", final_path);
-                let download_res = hub_download_file(repo_id, "train.txt", final_path);
-                
-                if (cartan_file_exists(final_path) == 1.0) {
-                    let content = cartan_read_file(final_path);
-                    let bytes = cartan_string_length(content);
-                    printf("[HF Downloader] Download Complete! Saved %s bytes to %s\n", cartan_float_to_string(bytes), final_path);
-                    printf("[HF Downloader] Ingesting downloaded dataset into E8 Hopfield Attractor Memory...\n");
-                    printf("[HF Downloader] Ingestion complete. Model training base updated successfully.\n");
-                } else {
-                    printf("[HF Downloader] Dataset downloaded and registered into training pipeline: %s\n", final_path);
-                }
-            } else {
-                printf("[HF Explorer] Available Training Domains:\n");
-                printf("  1. Conversational & Dialogue (Alpaca, OpenAssistant, UltraFeedback, ShareGPT)\n");
-                printf("  2. Children's Stories & Literature (TinyStories, Gutenberg Classics, Fairytales)\n");
-                printf("  3. Mathematics & Logic Reasoning (GSM8K, MATH, MBPP, SVAMP)\n");
-                printf("  4. Code Generation & Software Engineering (The Stack, HumanEval, CodeAlpaca)\n");
-                printf("  5. Science & Textbooks (TinyTextbooks, ScienceQA, BioQA, OpenBookQA)\n");
-                printf("  6. General Knowledge & Instruction Fine-Tuning (Dolly-15k, FLAN, SlimPajama)\n\n");
-
-                printf("[HF Explorer] Top 20 Curated Datasets for GeoMind Language Training:\n");
-                printf("  [1]  roneneldan/TinyStories               (Children's Stories & Simple Reasoning)\n");
-                printf("  [2]  tatsu-lab/alpaca                     (52k Instruction-Following Pairs)\n");
-                printf("  [3]  OpenAssistant/oasst1                 (Crowdsourced Multilingual Dialogue)\n");
-                printf("  [4]  openai/gsm8k                         (8.5k Grade School Math Word Problems)\n");
-                printf("  [5]  sail/code_alpaca                     (20k Code Instruction Dataset)\n");
-                printf("  [6]  nomic-ai/gpt4all_prompt_generations  (Prompt & Response Fine-Tuning)\n");
-                printf("  [7]  Open-Orca/OpenOrca                   (Reasoning & Step-by-Step Logic)\n");
-                printf("  [8]  databricks/databricks-dolly-15k      (High Quality Open Instruction Set)\n");
-                printf("  [9]  bigcode/the-stack                    (6TB Permissively-Licensed Code)\n");
-                printf("  [10] m-a-p/CodeFeedback                   (Multi-Turn Dialogue Coding Dataset)\n");
-                printf("  [11] FLAN-Collection                     (Massive Multi-Task Instruction Collection)\n");
-                printf("  [12] Meta/SlimPajama-627B                (Multi-Domain Clean Pre-Training Text)\n");
-                printf("  [13] AllenAI/ai2_arc                     (Grade School Science Questions)\n");
-                printf("  [14] HuggingFaceH4/ultrafeedback_binarized (DPO/RLHF Preference Dataset)\n");
-                printf("  [15] MBPP/mbpp                           (Mostly Basic Python Problems)\n");
-                printf("  [16] LightEval/MATH                      (Challenging Competition Math Problems)\n");
-                printf("  [17] Project-Gutenberg/classics-text     (Classical Literature & Philosophy)\n");
-                printf("  [18] MedQA/usmle-qa                      (Medical Question Answering Benchmark)\n");
-                printf("  [19] PyTorch/examples                    (Idiomatic Python/PyTorch Repositories)\n");
-                printf("  [20] Stanford/natural_questions          (Open-Domain Factoid Question Answering)\n\n");
-
-                printf("Usage:\n");
-                printf("  .\\Projects\\geomind\\geomind.exe --hf-download <dataset_repo_id>\n");
-                printf("  Example: .\\Projects\\geomind\\geomind.exe --hf-download roneneldan/TinyStories\n");
-                printf("  Example: .\\Projects\\geomind\\geomind.exe --hf-download openai/gsm8k\n");
-            }
-            cartan_flush(0.0);
-            return 0.0;
-        }
-
-        if (cartan_string_eq(flag, "--chat") == 1.0) {
-            return geomind_run_chat_mode(arg_count, no_priming);
-        }
-        if (cartan_string_eq(flag, "--rlaif") == 1.0) {
-            var prompt = "What is the relationship between physical gravity and living organisms?";
-            if (arg_count >= 3.0) {
-                prompt = sys_get_arg(2.0);
-            }
-            printf("================================================================================\n");
-            printf("  GEOMIND RLAIF DUAL CANDIDATE GENERATION ENGINE\n");
-            printf("  Prompt: \"%s\"\n", prompt);
-            printf("================================================================================\n\n");
-            printf("[RLAIF Engine] Candidate A (Focused T=0.35):\n");
-            geomind_chat_generate_reply(prompt, 50.0, 0.35);
-            printf("\n[RLAIF Engine] Candidate B (Exploratory T=0.85):\n");
-            geomind_chat_generate_reply(prompt, 50.0, 0.85);
-            printf("\n[RLAIF Engine] Dual candidate generation complete. Ready for AI Judge evaluation.\n");
-            cartan_flush(0.0);
-            return 0.0;
-        }
-
-        if (cartan_string_eq(flag, "--ingest") == 1.0) {
-            var target_path = "Projects/geomind/trainingdata/gutenberg_classics.txt";
-            if (arg_count >= 3.0) {
-                target_path = sys_get_arg(2.0);
-                if (cartan_string_eq(target_path, "-target") == 1.0 && arg_count >= 4.0) {
-                    target_path = sys_get_arg(3.0);
-                }
-            }
-            printf("[GeoMind Hopfield Ingestion] Ingesting file for Real-Time Hopfield Context Memory: %s\n", target_path);
-            if (cartan_file_exists(target_path) == 1.0) {
-                let attractors = geomind_hopfield_ingest_semantic(target_path);
-                let total_count = cartan_hopfield_attractor_count();
-                let basins_path = "Projects/geomind/trainingdata/hopfield_basins.bin";
-                printf("[GeoMind Hopfield Ingestion] Stored %s new attractor basins into Continuous Hopfield Resonator memory.\n", cartan_float_to_string(attractors));
-                printf("[GeoMind Hopfield Ingestion] Total Active Hopfield Basins: %s. Saved to %s. Zero backprop / Zero epoch learning complete.\n", cartan_float_to_string(total_count), basins_path);
-            } else {
-                printf("[GeoMind Hopfield Ingestion] File not found: %s\n", target_path);
-            }
-            cartan_flush(0.0);
-            return 0.0;
-        }
-
-        if (cartan_string_eq(flag, "--sleep") == 1.0) {
-            let base_pfx = geomind_get_base_prefix();
-            let ckpt_path = cartan_string_concat(base_pfx, "trainingdata/checkpoints/geomind_steady_state_weights.bin");
-            let bak_path = cartan_string_concat(base_pfx, "trainingdata/checkpoints/geomind_steady_state_weights.bin.bak");
-            let basins_path = cartan_string_concat(base_pfx, "trainingdata/hopfield_basins.bin");
-            let nses_graph_path = cartan_string_concat(base_pfx, "trainingdata/nses_knowledge.car_graph");
-
-            var cycles = 1.0;
-            if (arg_count >= 3.0) {
-                cycles = 3.0;
-            }
-            printf("=================================================================================\n");
-            printf("  GEOMIND AUTONOMOUS METACOGNITIVE SLEEP CONSOLIDATION ENGINE (--sleep)\n");
-            printf("  Phase 1: Hippocampal Continuous Hopfield Replay\n");
-            printf("  Phase 2: NSES Subconscious Delta-CSR Compaction & Synaptic Decay Pruning\n");
-            printf("  Phase 3: Axiomatic NSES Rule Replay & Neocortical Gradient Imprinting\n");
-            printf("  Phase 4: Tier 2 Embedded SQLite Metacognitive Consolidation & .car_graph v2 Sync\n");
-            printf("  Phase 5: Metacognitive Void Detection & Epiphany Discovery on S^247\n");
-            printf("=================================================================================\n\n");
-            cartan_flush(0.0);
-
-            // Restore baseline slow cortical weights
-            cartan_init_cortical_weights_if_needed();
-            let total_params = 256.0 * 256.0;
-            if (cartan_file_exists(ckpt_path) == 1.0) {
-                let loaded = cartan_safetensors_load_raw_tensor_f32(ckpt_path, total_params);
-                if (loaded != 0.0 && cartan_vec_len(loaded) == total_params) {
-                    g_cortical_weights = loaded;
-                    printf("[GeoMind Sleep] Restored baseline cortical weights from: %s\n\n", ckpt_path);
-                    cartan_flush(0.0);
-                }
-            }
-
-            // Phase 1: Continuous Hopfield Attractor Replay
-            printf("[GeoMind Sleep] Phase 1: Replaying Episodic Attractor Basins (%s cycles)...\n", cartan_float_to_string(cycles));
-            cartan_flush(0.0);
-            let initial = cartan_hopfield_load_basins(basins_path);
-            printf("[GeoMind Sleep] Active Episodic Attractors: %s\n", cartan_float_to_string(initial));
-            cartan_flush(0.0);
-            var c = 1.0;
-            while (c <= cycles) {
-                let remaining = cartan_sleep_consolidate_cycle(basins_path, 0.001, 0.98);
-                printf("[GeoMind Sleep] Cycle %s complete: Retained %s stable attractors.\n",
-                    cartan_float_to_string(c), cartan_float_to_string(remaining));
-                cartan_flush(0.0);
-                c = c + 1.0;
-            }
-
-            // Phase 2: NSES Subconscious Delta-CSR Compaction & Synaptic Decay Pruning
-            if (cartan_file_exists(nses_graph_path) == 1.0) {
-                printf("\n[GeoMind Sleep] Phase 2: NSES Subconscious Memory Consolidation on '%s'...\n", nses_graph_path);
-                cartan_flush(0.0);
-                let arena = dynamic_arena_create(65536.0, 32.0);
-                let report = cargraph_sleep_consolidate_file(nses_graph_path, arena, 1.001);
-                if (report.is_success != 0.0) {
-                    printf("[GeoMind Sleep] NSES Consolidation complete: %s nodes, %s edges retained, %s decayed pruned.\n",
-                        cartan_float_to_string(report.total_nodes),
-                        cartan_float_to_string(report.retained_edges),
-                        cartan_float_to_string(report.pruned_edges));
-                    printf("[GeoMind Sleep] Compaction latency: %.2f ms\n", report.compaction_time_ms);
-                    cartan_flush(0.0);
-                }
-                dynamic_arena_free(arena);
-            }
-
-            // Phase 3: Axiomatic NSES Rule Replay & Neocortical Gradient Imprinting
-            if (cartan_file_exists(nses_graph_path) == 1.0) {
-                printf("\n[GeoMind Sleep] Phase 3: Axiomatic NSES Rule Replay & Neocortical Gradient Imprinting...\n");
-                cartan_flush(0.0);
-                let ax_count = sleep_run_axiomatic_consolidation(nses_graph_path, basins_path, 256.0, 0.0005);
-                printf("[GeoMind Sleep] Axiomatic Imprinting complete: %s rules consolidated into slow cortical weights.\n",
-                    cartan_float_to_string(ax_count));
-                cartan_flush(0.0);
-            }
-
-            // Phase 4: Tier 2 SQLite Metacognitive Consolidation
-            let db_path = cartan_string_concat(base_pfx, "trainingdata/cognitive_memory.db");
-            if (cartan_file_exists(db_path) == 1.0) {
-                printf("\n[GeoMind Sleep] Phase 4: Tier 2 SQLite Metacognitive Consolidation on '%s'...\n", db_path);
-                cartan_flush(0.0);
-                let db = sqlite_vec_open(db_path);
-                if (db != 0.0) {
-                    let ep_count = sqlite_vec_consolidate_episodes(db, 1.0);
-                    printf("[GeoMind Sleep] Consolidated %s conversational episodes into active rules.\n", cartan_float_to_string(ep_count));
-                    sqlite_vec_apply_ebbinghaus_decay(db, 1.0, 0.20);
-                    printf("[GeoMind Sleep] Applied Ebbinghaus decay to non-strict rules.\n");
-                    let sync_ok = sqlite_vec_materialize_to_cargraph(db, 1.0, nses_graph_path);
-                    if (sync_ok == 1.0) {
-                        printf("[GeoMind Sleep] Synchronized consolidated Tier 2 memory to Tier 1 .car_graph v2.\n");
-                    }
-                    cartan_flush(0.0);
-                    sqlite_vec_close(db);
-                }
-            }
-
-            // Phase 5: Metacognitive Void Detection & Epiphany Discovery on S^247
-            printf("\n[GeoMind Sleep] Phase 5: Metacognitive Void Detection & Epiphany Discovery...\n");
-            cartan_flush(0.0);
-            let epiphanies = sleep_detect_attractor_voids(basins_path, 248.0);
-            printf("[GeoMind Sleep] Void Detection complete: %s SLERP discovery bridge attractors synthesized on S^247.\n",
-                cartan_float_to_string(epiphanies));
-            cartan_flush(0.0);
-
-            // Serialize updated slow cortical weights to disk with backup
-            if (cartan_file_exists(ckpt_path) == 1.0) {
-                cartan_copy_file(ckpt_path, bak_path);
-            }
-            let save_ok = cartan_safetensors_save_tensor_f32(ckpt_path, "model.weights", g_cortical_weights);
-            if (save_ok == 1.0) {
-                printf("\n[GeoMind Sleep] Successfully serialized consolidated slow weights to %s (6,553,600 parameters).\n", ckpt_path);
-                cartan_flush(0.0);
-            } else {
-                printf("\n[GeoMind Sleep] Warning: Failed to serialize weights to %s\n", ckpt_path);
-                cartan_flush(0.0);
-            }
-
-            printf("[GeoMind Sleep] Offline consolidation complete. All memory systems synchronized.\n\n");
-            cartan_flush(0.0);
-            return 0.0;
-        }
-
-        if (is_cloze_mode(flag) == 1.0) {
-            let target = get_cli_train_target(arg_count);
-            check_and_apply_manifest_reset(target, arg_count, "Projects/geomind/trainingdata/cloze_manifest.json");
-            var epochs = 1000000.0;
-            if (has_cli_epochs(arg_count) == 1.0) {
-                epochs = get_cli_epochs(arg_count, 1000000.0);
-            }
-            let lr = get_cli_param_float("-lr", arg_count, 0.0);
-            let target_loss = get_cli_target_loss(arg_count, 2.50);
-            let user_temp = get_cli_param_float("-temp", arg_count, 1.0);
-            if (user_temp > 0.0) {
-                g_train_temperature = user_temp;
-            }
-            let user_val_temp = get_cli_param_float("-val-temp", arg_count, 1.0);
-            if (user_val_temp > 0.0) {
-                g_val_temperature = user_val_temp;
-            }
-            apply_focus_cli_params(arg_count);
-            let res = geomind_train_streaming_steady_state(1.0, target, target_loss, lr, epochs, "logs/stage1_cloze_training.log");
-            cartan_flush(0.0);
-            return 0.0;
-        }
-
-        if (is_ce_mode(flag) == 1.0 || is_pre_mode(flag) == 1.0) {
-            let target = get_cli_train_target(arg_count);
-            check_and_apply_manifest_reset(target, arg_count, "Projects/geomind/trainingdata/corpus.json");
-            let auto_sft_active = has_cli_auto_sft(arg_count);
-            if (auto_sft_active == 1.0) {
-                check_and_apply_manifest_reset("", arg_count, "Projects/geomind/trainingdata/sft_manifest.json");
-            }
-            var epochs = 1000000.0;
-            if (has_cli_epochs(arg_count) == 1.0) {
-                epochs = get_cli_epochs(arg_count, 1000000.0);
-            }
-            let lr = get_cli_param_float("-lr", arg_count, 0.0);
-            let target_loss = get_cli_target_loss(arg_count, 3.00);
-            let user_temp = get_cli_param_float("-temp", arg_count, 1.0);
-            if (user_temp > 0.0) {
-                g_train_temperature = user_temp;
-            }
-            let user_val_temp = get_cli_param_float("-val-temp", arg_count, 1.0);
-            if (user_val_temp > 0.0) {
-                g_val_temperature = user_val_temp;
-            }
-            apply_focus_cli_params(arg_count);
-            let res = geomind_train_streaming_steady_state(2.0, target, target_loss, lr, epochs, "logs/stage2_ce_training.log");
-            cartan_flush(0.0);
-
-            if (auto_sft_active == 1.0 && g_last_train_target_loss_reached == 1.0) {
-                let sft_target_loss = get_cli_auto_sft_target_loss(arg_count, 2.00);
-                printf("\n================================================================================\n");
-                printf("  [AUTO-SFT PIPELINE TRANSITION] Stage 2 CE Target Loss %s Reached!\n", cartan_float_to_string(target_loss));
-                printf("  Automatically transitioning seamlessly to Stage 3 Supervised Fine-Tuning (SFT)...\n");
-                printf("  SFT Target Loss: %s | SFT Manifest: Projects/geomind/trainingdata/sft_manifest.json\n", cartan_float_to_string(sft_target_loss));
-                printf("================================================================================\n\n");
-                cartan_flush(0.0);
-
-                let sft_res = geomind_train_streaming_steady_state(3.0, "", sft_target_loss, 0.0, epochs, "logs/stage3_sft_training.log");
-                cartan_flush(0.0);
-            }
-            return 0.0;
-        }
-
-        if (is_sft_mode(flag) == 1.0) {
-            let target = get_cli_train_target(arg_count);
-            check_and_apply_manifest_reset(target, arg_count, "Projects/geomind/trainingdata/sft_manifest.json");
-            var epochs = 1000000.0;
-            if (has_cli_epochs(arg_count) == 1.0) {
-                epochs = get_cli_epochs(arg_count, 1000000.0);
-            }
-            let lr = get_cli_param_float("-lr", arg_count, 0.0);
-            let target_loss = get_cli_target_loss(arg_count, 2.00);
-            let user_temp = get_cli_param_float("-temp", arg_count, 1.0);
-            if (user_temp > 0.0) {
-                g_train_temperature = user_temp;
-            }
-            let user_val_temp = get_cli_param_float("-val-temp", arg_count, 1.0);
-            if (user_val_temp > 0.0) {
-                g_val_temperature = user_val_temp;
-            }
-            apply_focus_cli_params(arg_count);
-            let res = geomind_train_streaming_steady_state(3.0, target, target_loss, lr, epochs, "logs/stage3_sft_training.log");
-            cartan_flush(0.0);
-            return 0.0;
-        }
-
-        if (cartan_string_eq(flag, "--train-webgpu") == 1.0 || cartan_string_eq(flag, "--train-causal-webgpu") == 1.0) {
-            let target = get_cli_target_path(arg_count);
-            let res = webgpu_run_causal_training_pipeline(target, 5.0);
-            cartan_flush(0.0);
-            return 0.0;
-        }
-
-
-        if (cartan_string_eq(flag, "--train-distill") == 1.0) {
-            geomind_distill_train_run("geomind/manifold-4b", 50.0);
-            return 0.0;
-        }
-        if (cartan_string_eq(flag, "--eval-analogy") == 1.0) {
-            printf("================================================================================\n");
-            printf("  GEOMIND MANIFOLD VECTOR ANALOGY ARITHMETIC VERIFICATION ENGINE\n");
-            printf("  Riemannian Inner Product | Cosine Geometry | WordNet Representation Depth\n");
-            printf("================================================================================\n\n");
-            geomind_load_e8_assets_if_needed();
-            cartan_init_cortical_weights_if_needed();
-            let base_pfx = geomind_get_base_prefix();
-            let ckpt_path = cartan_string_concat(base_pfx, "trainingdata/checkpoints/geomind_steady_state_weights.bin");
-            if (cartan_file_exists(ckpt_path) == 1.0) {
-                let total_params = 256.0 * 256.0;
-                let loaded = cartan_safetensors_load_raw_tensor_f32(ckpt_path, total_params);
-                if (loaded != 0.0 && cartan_vec_len(loaded) == total_params) {
-                    g_cortical_weights = loaded;
-                    printf("[Analogy Engine] Loaded cortical LM head weights from: %s\n", ckpt_path);
-                }
-            }
-            let full_emb = geomind_get_full_embeddings();
-            if (full_emb != 0.0) {
-                printf("[Analogy Engine] Operating on authentic 2,560D full embeddings (262,144 tokens x 2560D).\n\n");
-            } else if (g_e8_embeddings != 0.0) {
-                printf("[Analogy Engine] Operating on continuous E8 Lie algebra manifold coordinates (262,144 tokens x 248D).\n\n");
-            } else {
-                g_embedding_weights = g_cortical_weights;
-                printf("[Analogy Engine] Operating on cortical weights (tied embedding fallback).\n\n");
-            }
-            cartan_flush(0.0);
-
-            // Analogy 1: King (6065) - man (880) + woman (3875) = queen (26476)
-            printf("[Analogy 1] King - man + woman = ? (Expected: ' queen')\n");
-            let r1 = geomind_eval_single_analogy(6065.0, 880.0, 3875.0, 26476.0, "King", "man", "woman", "queen");
-
-            // Analogy 2: he (668) - him (1515) + her (1116) = she (1304)
-            printf("[Analogy 2] he - him + her = ? (Expected: ' she')\n");
-            let r2 = geomind_eval_single_analogy(668.0, 1515.0, 1116.0, 1304.0, "he", "him", "her", "she");
-
-            // Analogy 3: father (6353) - man (880) + woman (3875) = mother (5946)
-            printf("[Analogy 3] father - man + woman = ? (Expected: ' mother')\n");
-            let r3 = geomind_eval_single_analogy(6353.0, 880.0, 3875.0, 5946.0, "father", "man", "woman", "mother");
-
-            // Analogy 4: boy (6938) - man (880) + woman (3875) = girl (3953)
-            printf("[Analogy 4] boy - man + woman = ? (Expected: ' girl')\n");
-            let r4 = geomind_eval_single_analogy(6938.0, 880.0, 3875.0, 3953.0, "boy", "man", "woman", "girl");
-
-            printf("================================================================================\n");
-            printf("  ANALOGY EVALUATION SUMMARY (Zero-Expert Pure Geometric Space)\n");
-            printf("  Analogy 1 (' queen'):  Rank %s\n", cartan_float_to_string(r1));
-            printf("  Analogy 2 (' she'):    Rank %s\n", cartan_float_to_string(r2));
-            printf("  Analogy 3 (' mother'): Rank %s\n", cartan_float_to_string(r3));
-            printf("  Analogy 4 (' girl'):   Rank %s\n", cartan_float_to_string(r4));
-            printf("================================================================================\n");
-            cartan_flush(0.0);
-            return 0.0;
-        }
-        if (cartan_string_eq(flag, "--merge-slerp") == 1.0) {
-            printf("[GeoMind Fusion] Launching Zero-Day SLERP Model Merging & WordNet IC Modulation...\n");
-            cartan_flush(0.0);
-            let res = system("python tools/merge_slerp_weights.py");
-            return 0.0;
-        }
-        if (cartan_string_eq(flag, "--graft") == 1.0) {
-            var sf_path = "cache_geomind_model.safetensors";
-            if (cartan_file_exists(sf_path) == 0.0) {
-                sf_path = "cache_model.safetensors";
-            }
-            if (arg_count >= 3.0) {
-                sf_path = sys_get_arg(2.0);
-            }
-            let out_ckpt = "Projects/geomind/trainingdata/checkpoints/geomind_grafted_multimodal.bin";
-            let res = hub_graft_multimodal_model(sf_path, out_ckpt);
-            cartan_flush(0.0);
-            return 0.0;
-        }
-        if (cartan_string_eq(flag, "--azr-selfplay") == 1.0) {
-            geomind_azr_run_selfplay(3.0);
-            cartan_flush(0.0);
-            return 0.0;
-        }
-        if (cartan_string_eq(flag, "--extract-alignment-vector") == 1.0 || cartan_string_eq(flag, "-extract-alignment-vector") == 1.0) {
-            let layer_str = get_cli_param("-debias-layer", arg_count);
-            if (cartan_string_length(layer_str) > 0.0) {
-                let l_val = atof(layer_str);
-                if (l_val >= 0.0 && l_val < 42.0) {
-                    geomind_chat_set_debias_layer(l_val);
-                }
-            }
-            geomind_extract_alignment_vector_probe();
-            cartan_flush(0.0);
-            return 0.0;
-        }
-        if (cartan_string_eq(flag, "--diagnose-alignment") == 1.0 || cartan_string_eq(flag, "-diagnose-alignment") == 1.0) {
-            geomind_run_alignment_diagnostics();
-            cartan_flush(0.0);
-            return 0.0;
-        }
         if (cartan_string_eq(flag, "--curriculum") == 1.0 || cartan_string_eq(flag, "-curriculum") == 1.0) {
             let layers = get_cli_param_float("-layers", arg_count, 42.0);
             let lr = get_cli_param_float("-lr", arg_count, 0.03);
@@ -1561,17 +216,118 @@ fn main() -> float {
             cartan_flush(0.0);
             return 0.0;
         }
+
         if (cartan_string_eq(flag, "--eval-qa") == 1.0 || cartan_string_eq(flag, "-eval-qa") == 1.0) {
             let layers = get_cli_param_float("-layers", arg_count, 42.0);
             geomind_run_epistemic_eval_suite(layers);
             cartan_flush(0.0);
             return 0.0;
         }
+
         if (cartan_string_eq(flag, "--index-basins") == 1.0 || cartan_string_eq(flag, "-index-basins") == 1.0) {
             geomind_e8_populate_and_save_sentence_basins(g_curriculum_checkpoint_dir);
             cartan_flush(0.0);
             return 0.0;
         }
+
+        if (cartan_string_eq(flag, "--train-strata") == 1.0 || cartan_string_eq(flag, "-train-strata") == 1.0) {
+            geomind_e8_train_relational_strata_all();
+            cartan_flush(0.0);
+            return 0.0;
+        }
+
+        if (cartan_string_eq(flag, "--train-sft") == 1.0 || cartan_string_eq(flag, "-train-sft") == 1.0) {
+            var target = get_cli_target_path(arg_count);
+            if (cartan_string_length(target) == 0.0) { target = "Projects/geomind/trainingdata/sft_manifest.json"; }
+            let layers = get_cli_param_float("-layers", arg_count, 42.0);
+            let epochs = get_cli_epochs(arg_count, 3.0);
+            let lr = get_cli_param_float("-lr", arg_count, 0.02);
+            geomind_sft_train_manifest(target, layers, epochs, lr);
+            cartan_flush(0.0);
+            return 0.0;
+        }
+
+        if (cartan_string_eq(flag, "--train-ce") == 1.0 || cartan_string_eq(flag, "-train-ce") == 1.0) {
+            var target = get_cli_target_path(arg_count);
+            if (cartan_string_length(target) == 0.0) { target = "Projects/geomind/trainingdata/storytelling_chunks/chunk_005_t1_GeoMind_Modern_Narratives.txt"; }
+            let layers = get_cli_param_float("-layers", arg_count, 42.0);
+            let epochs = get_cli_epochs(arg_count, 3.0);
+            let lr = get_cli_param_float("-lr", arg_count, 0.03);
+            if (cartan_file_exists(target) == 1.0) {
+                geomind_pretrain_ce_corpus(cartan_read_file(target), layers, epochs, lr);
+            } else {
+                printf("[Error] Pre-training target file '%s' not found.\n", target);
+            }
+            cartan_flush(0.0);
+            return 0.0;
+        }
+
+        if (cartan_string_eq(flag, "--train-cloze") == 1.0 || cartan_string_eq(flag, "-train-cloze") == 1.0) {
+            var target = get_cli_target_path(arg_count);
+            if (cartan_string_length(target) == 0.0) { target = "Projects/geomind/trainingdata/e8_concept_triples.txt"; }
+            let layers = get_cli_param_float("-layers", arg_count, 42.0);
+            let epochs = get_cli_epochs(arg_count, 3.0);
+            let lr = get_cli_param_float("-lr", arg_count, 0.03);
+            if (cartan_file_exists(target) == 1.0) {
+                geomind_cloze_train_corpus(cartan_read_file(target), layers, epochs, lr);
+            } else {
+                printf("[Error] Cloze target file '%s' not found.\n", target);
+            }
+            cartan_flush(0.0);
+            return 0.0;
+        }
+
+        if (cartan_string_eq(flag, "--streams") == 1.0 || cartan_string_eq(flag, "-streams") == 1.0) {
+            geomind_streams_test_all();
+            cartan_flush(0.0);
+            return 0.0;
+        }
+
+        if (cartan_string_eq(flag, "--sleep") == 1.0 || cartan_string_eq(flag, "-sleep") == 1.0) {
+            let cycles = get_cli_param_float("-cycles", arg_count, 1.0);
+            geomind_sleep_run_full_cycle(cycles);
+            cartan_flush(0.0);
+            return 0.0;
+        }
+
+        if (cartan_string_eq(flag, "--ode-test") == 1.0 || cartan_string_eq(flag, "-ode-test") == 1.0) {
+            geomind_ode_test_all();
+            cartan_flush(0.0);
+            return 0.0;
+        }
+
+        if (cartan_string_eq(flag, "--azr") == 1.0 || cartan_string_eq(flag, "-azr") == 1.0) {
+            let episodes = get_cli_param_float("-episodes", arg_count, 1.0);
+            let lr = get_cli_param_float("-lr", arg_count, 0.01);
+            geomind_azr_run_self_play(episodes, lr);
+            cartan_flush(0.0);
+            return 0.0;
+        }
+
+        if (cartan_string_eq(flag, "--webgpu-test") == 1.0 || cartan_string_eq(flag, "-webgpu-test") == 1.0) {
+            geomind_webgpu_test_all();
+            cartan_flush(0.0);
+            return 0.0;
+        }
+
+        if (cartan_string_eq(flag, "--merge-test") == 1.0 || cartan_string_eq(flag, "-merge-test") == 1.0) {
+            geomind_merge_test_all();
+            cartan_flush(0.0);
+            return 0.0;
+        }
+
+        if (cartan_string_eq(flag, "--ising-test") == 1.0 || cartan_string_eq(flag, "-ising-test") == 1.0) {
+            geomind_ising_test_all();
+            cartan_flush(0.0);
+            return 0.0;
+        }
+
+        if (cartan_string_eq(flag, "--log-test") == 1.0 || cartan_string_eq(flag, "-log-test") == 1.0) {
+            geomind_log_test_all();
+            cartan_flush(0.0);
+            return 0.0;
+        }
+
         if (cartan_string_eq(flag, "--byte-latent") == 1.0 || cartan_string_eq(flag, "-byte-latent") == 1.0) {
             let target = get_cli_target_path(arg_count);
             let prompt = get_cli_prompt(arg_count);
@@ -1610,6 +366,7 @@ fn main() -> float {
             cartan_flush(0.0);
             return 0.0;
         }
+
         if (cartan_string_eq(flag, "--crawl") == 1.0 || cartan_string_eq(flag, "-crawl") == 1.0) {
             let url = get_cli_param("-crawl", arg_count);
             let recurse = get_cli_flag_present("-recurse", arg_count);
@@ -1621,40 +378,26 @@ fn main() -> float {
             cartan_flush(0.0);
             return 0.0;
         }
+
         i = i + 1.0;
     }
 
-    print_help_dialogue();
-    printf("[GeoMind Main] Running E8 Riemannian & Hopfield Physics Solvers Verification...\n");
-    cartan_flush(0.0);
-    let next_y = geomind_ode_step(1.0, 0.001);
-    printf("[GeoMind Main] RKF45 Integration Step Complete. Next Y: ");
-    printf(cartan_float_to_string(next_y));
-    printf("\n");
-    cartan_flush(0.0);
-
-    let spins = cartan_vec_create();
-    cartan_vec_push_f32(spins, 1.0);
-    cartan_vec_push_f32(spins, -1.0);
-    let relaxed_spins = geomind_ising_relax(spins, 2.0, 0.5, 10.0);
-    printf("[GeoMind Main] Hopfield Spin Relaxation Step Complete.\n");
-    cartan_flush(0.0);
-
-    let rlhf_res = geomind_chat_apply_human_feedback("Physics", "GeoMind E8", 1.0);
-    let sft_online_res = geomind_chat_apply_correction("CARTAN", "CARTAN lang");
-
-    // Verify 8-Stream Lie Subgroup Cortical Processing
-    let test_stream_vec = cartan_vec_create();
-    var s_idx = 0.0;
-    while (s_idx < 16.0) {
-        cartan_vec_push_f32(test_stream_vec, 0.5);
-        s_idx = s_idx + 1.0;
+    // Single-turn prompt generation if -prompt is passed
+    let single_prompt = get_cli_prompt(arg_count);
+    if (cartan_string_length(single_prompt) > 0.0) {
+        geomind_wordnet_init_if_needed();
+        geomind_e8_sent_basins_load_if_needed();
+        geomind_markov_init_if_needed();
+        let default_m = "Projects/geomind/trainingdata/checkpoints/geomind_e8_markov_tapestry.bin";
+        if (cartan_file_exists(default_m) == 1.0) {
+            geomind_markov_load_prior(default_m);
+        }
+        let reply = geomind_chat_turn(single_prompt);
+        printf("GeoMind [E8-248D]> %s\n", reply);
+        cartan_flush(0.0);
+        return 0.0;
     }
-    let stream_res = geomind_multistream_forward(test_stream_vec, -1.0);
-    printf("[GeoMind Main] 8-Stream Lie Cortical Submanifold Dispatch Verified Cleanly.\n");
 
-    printf("[GeoMind Main] All GeoMind Subsystems Verified Cleanly.\n");
-    cartan_flush(0.0);
-    return 0.0;
+    // Default mode: Interactive continuous 248-D E8 Chat REPL
+    return geomind_chat_interactive_loop();
 }
-

@@ -12,6 +12,7 @@ include "geometry.cl";
 include "moe.cl";
 include "e8_attention_engine.cl";
 
+var g_e8_stack_initialized: float = 0.0;
 var g_e8_stack_num_layers: float = 0.0;
 var g_e8_stack_w_gauge: ptr = 0.0;     // L * 14,400 floats (120 x 120 per layer)
 var g_e8_stack_w_spinor: ptr = 0.0;    // L * 16,384 floats (128 x 128 per layer)
@@ -151,6 +152,10 @@ fn geomind_e8_stack_init(num_layers: float) {
         }
 
         l = l + 1.0;
+    }
+    g_e8_stack_initialized = 1.0;
+    if (g_byte_e8_skip_disk_autoload == 0.0 && cartan_file_exists("Projects/geomind/trainingdata/checkpoints/geomind_e8_deep_stack.bin") == 1.0) {
+        geomind_e8_stack_load("Projects/geomind/trainingdata/checkpoints/geomind_e8_deep_stack.bin");
     }
 }
 
@@ -854,6 +859,185 @@ fn geomind_e8_stack_forward_seq(
     cartan_vec_free(h_prev);
     cartan_vec_free(h_out);
     return sum_kin / seq_len;
+}
+
+// ============================================================================
+// STAGE 7.0 / SPRINT 561: STRATUM-DIRECT E8 STACK RELATIONAL SUPERVISION
+// ============================================================================
+// Directly trains the 7 layers of stratum `l_start` (k=0..6, layer l=l_start+k) on
+// directed relational concept transition (u_248 -> v_248) under Lie algebra projection
+// on SO(120) x Spin(16). This empowers the 42-layer stack to carry the reasoning
+// weight natively (eta_stack = 0.36 vs eta_rel = 0.12).
+var g_e8_stratum_train_h_cur: ptr = 0.0;
+var g_e8_stratum_train_h_lin: ptr = 0.0;
+var g_e8_stratum_train_h_gated: ptr = 0.0;
+var g_e8_stratum_train_dh_gated: ptr = 0.0;
+var g_e8_stratum_train_dh_lin: ptr = 0.0;
+
+fn geomind_init_e8_stratum_train_scratch_if_needed() {
+    if (g_e8_stratum_train_h_cur != 0.0) { return; }
+    g_e8_stratum_train_h_cur = cartan_vec_create();
+    g_e8_stratum_train_h_lin = cartan_vec_create();
+    g_e8_stratum_train_h_gated = cartan_vec_create();
+    g_e8_stratum_train_dh_gated = cartan_vec_create();
+    g_e8_stratum_train_dh_lin = cartan_vec_create();
+    var d = 0.0;
+    while (d < 248.0) {
+        cartan_vec_push_f32(g_e8_stratum_train_h_cur, 0.0);
+        cartan_vec_push_f32(g_e8_stratum_train_h_lin, 0.0);
+        cartan_vec_push_f32(g_e8_stratum_train_h_gated, 0.0);
+        cartan_vec_push_f32(g_e8_stratum_train_dh_gated, 0.0);
+        cartan_vec_push_f32(g_e8_stratum_train_dh_lin, 0.0);
+        d = d + 1.0;
+    }
+}
+
+fn geomind_e8_stack_train_stratum_transition(
+    l_start: float,
+    u_248: ptr,
+    v_248: ptr,
+    target_w: float,
+    lr: float
+) -> float {
+    if (u_248 == 0.0 || v_248 == 0.0 || g_e8_stack_w_gauge == 0.0 || g_e8_stack_num_layers < 42.0) {
+        return 0.0;
+    }
+    geomind_init_e8_stratum_train_scratch_if_needed();
+
+    // Copy initial concept state u_248 into h_cur
+    var d = 0.0;
+    while (d < 248.0) {
+        cartan_vec_set_f32(g_e8_stratum_train_h_cur, d, cartan_vec_get_f32(u_248, d));
+        d = d + 1.0;
+    }
+
+    let eff_lr = lr / sqrt(7.0);
+
+    var k = 0.0;
+    while (k < 7.0) {
+        let l = l_start + k;
+        // 1. Forward linear gauge (120x120) & spinor (128x128)
+        geomind_e8_stack_apply_gauge_spinor_linear_248(g_e8_stratum_train_h_cur, 0.0, l, g_e8_stratum_train_h_lin, 0.0);
+
+        // 2. Forward Octonion Fano Cross-Gate
+        geomind_e8_gauge_spinor_cross_gate_block248(g_e8_stratum_train_h_lin, 0.0, g_e8_stratum_train_h_gated, 0.0, 0.15);
+
+        // 3. Compute tangent projections on T_{h_cur} S^{247}
+        var dot_hg = 0.0;
+        var dot_hv = 0.0;
+        d = 0.0;
+        while (d < 248.0) {
+            let hc = cartan_vec_get_f32(g_e8_stratum_train_h_cur, d);
+            dot_hg = dot_hg + hc * cartan_vec_get_f32(g_e8_stratum_train_h_gated, d);
+            dot_hv = dot_hv + hc * cartan_vec_get_f32(v_248, d);
+            d = d + 1.0;
+        }
+        let proj_stack = dot_hg / 248.0;
+        let proj_v = dot_hv / 248.0;
+
+        // Tangent error: v_stack - target_w * v_target
+        d = 0.0;
+        while (d < 248.0) {
+            let hc = cartan_vec_get_f32(g_e8_stratum_train_h_cur, d);
+            let gv = cartan_vec_get_f32(g_e8_stratum_train_h_gated, d);
+            let vv = cartan_vec_get_f32(v_248, d);
+            let v_stack = gv - proj_stack * hc;
+            let v_target = vv - proj_v * hc;
+            let err = v_stack - target_w * v_target;
+            cartan_vec_set_f32(g_e8_stratum_train_dh_gated, d, err / 248.0);
+            d = d + 1.0;
+        }
+
+        // 4. Backward through Octonion Fano Cross-Gate
+        geomind_e8_gauge_spinor_cross_gate_backward_block248(
+            g_e8_stratum_train_h_lin, 0.0,
+            g_e8_stratum_train_dh_gated, 0.0,
+            g_e8_stratum_train_dh_lin, 0.0,
+            0.15
+        );
+
+        // 5. Update W_gauge^{(l)} (120x120) with Killing-Cartan dynkin metrics
+        let g_base = l * 14400.0;
+        var r = 0.0;
+        while (r < 120.0) {
+            let d_lin_r = cartan_vec_get_f32(g_e8_stratum_train_dh_lin, r);
+            let sub_idx = floor(r / 15.0);
+            var kw_inv = 1.0 / geom_killing_form_dynkin_weight(sub_idx);
+            let row_off = g_base + r * 120.0;
+            var c = 0.0;
+            while (c < 120.0) {
+                let gw_rc = cartan_vec_get_f32(g_e8_stack_w_gauge, row_off + c);
+                let hc_c = cartan_vec_get_f32(g_e8_stratum_train_h_cur, c);
+                var gw_new = gw_rc - (eff_lr * kw_inv) * (d_lin_r * hc_c);
+                if (gw_new > 2.0) { gw_new = 2.0; }
+                if (gw_new < -2.0) { gw_new = -2.0; }
+                cartan_vec_set_f32(g_e8_stack_w_gauge, row_off + c, gw_new);
+                c = c + 1.0;
+            }
+            r = r + 1.0;
+        }
+
+        // 6. Update W_spinor^{(l)} (128x128) with Killing-Cartan dynkin metrics
+        let s_base = l * 16384.0;
+        var sr = 0.0;
+        while (sr < 128.0) {
+            let d_lin_sr = cartan_vec_get_f32(g_e8_stratum_train_dh_lin, 120.0 + sr);
+            let s_sub_idx = floor((120.0 + sr) / 31.0);
+            var skw_inv = 1.0 / geom_killing_form_dynkin_weight(s_sub_idx);
+            let srow_off = s_base + sr * 128.0;
+            var sc = 0.0;
+            while (sc < 128.0) {
+                let sw_rc = cartan_vec_get_f32(g_e8_stack_w_spinor, srow_off + sc);
+                let hc_sc = cartan_vec_get_f32(g_e8_stratum_train_h_cur, 120.0 + sc);
+                var sw_new = sw_rc - (eff_lr * skw_inv) * (d_lin_sr * hc_sc);
+                if (sw_new > 2.0) { sw_new = 2.0; }
+                if (sw_new < -2.0) { sw_new = -2.0; }
+                cartan_vec_set_f32(g_e8_stack_w_spinor, srow_off + sc, sw_new);
+                sc = sc + 1.0;
+            }
+            sr = sr + 1.0;
+        }
+
+        // 7. Advance state along S^{247} for layer k+1
+        var next_g_sq = 0.0;
+        var next_s_sq = 0.0;
+        d = 0.0;
+        while (d < 248.0) {
+            let hc = cartan_vec_get_f32(g_e8_stratum_train_h_cur, d);
+            let gv = cartan_vec_get_f32(g_e8_stratum_train_h_gated, d);
+            let v_stk = gv - proj_stack * hc;
+            let hn = hc + 0.35 * v_stk;
+            cartan_vec_set_f32(g_e8_stratum_train_h_cur, d, hn);
+            if (d < 120.0) {
+                next_g_sq = next_g_sq + hn * hn;
+            } else {
+                next_s_sq = next_s_sq + hn * hn;
+            }
+            d = d + 1.0;
+        }
+        if (next_g_sq > 0.000001 && next_s_sq > 0.000001) {
+            let g_sc = sqrt(120.0 / next_g_sq);
+            let s_sc = sqrt(128.0 / next_s_sq);
+            d = 0.0;
+            while (d < 120.0) {
+                cartan_vec_set_f32(g_e8_stratum_train_h_cur, d, cartan_vec_get_f32(g_e8_stratum_train_h_cur, d) * g_sc);
+                d = d + 1.0;
+            }
+            while (d < 248.0) {
+                cartan_vec_set_f32(g_e8_stratum_train_h_cur, d, cartan_vec_get_f32(g_e8_stratum_train_h_cur, d) * s_sc);
+                d = d + 1.0;
+            }
+        }
+        k = k + 1.0;
+    }
+
+    var final_dot = 0.0;
+    d = 0.0;
+    while (d < 248.0) {
+        final_dot = final_dot + cartan_vec_get_f32(g_e8_stratum_train_h_cur, d) * cartan_vec_get_f32(v_248, d);
+        d = d + 1.0;
+    }
+    return final_dot / 248.0;
 }
 
 // ============================================================================

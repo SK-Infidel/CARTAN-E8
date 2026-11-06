@@ -10,7 +10,6 @@
 
 include "geometry.cl";
 include "moe.cl";
-include "streams.cl";
 include "../../src/std/autotune.cl";
 include "../../src/std/collections.cl";
 include "../../src/std/math.cl";
@@ -631,42 +630,4 @@ fn cartan_tensor_rmsnorm(v: ptr, eps: float) {
         v[2.0 + i] = v[2.0 + i] * inv_rms;
         i = i + 1.0;
     }
-}
-
-// Non-Euclidean 16-layer E8 Gauge-Spinor & Freudenthal manifold cascade with sphere retraction
-fn e8_attention_forward_step_with_momentum(hidden_ptr: ptr, mom_ptr: ptr, temp: float) -> ptr {
-    if (hidden_ptr == 0.0) { return cartan_vec_create(); }
-    let h_len = hidden_ptr[0];
-    if (h_len == 0.0) { return cartan_vec_create(); }
-    let weights = cartan_sasaki_brainstem_route_vec(hidden_ptr, mom_ptr, temp);
-    let h_cur = geomind_streams_manifold_forward_routed(hidden_ptr, weights);
-    if (weights != 0.0) {
-        cartan_vec_free(weights);
-    }
-
-    cartan_tensor_rmsnorm(h_cur, 0.00001);
-    let dim = h_cur[0];
-    let gated_buf = cartan_tensor_alloc(dim);
-    var l = 0.0;
-    while (l < 16.0) {
-        if (l == 6.0 || l == 12.0) {
-            geomind_e8_stream_herald_inplace(h_cur);
-        }
-        // Apply Non-Euclidean E8 Gauge-Spinor Cross-Gate across 248-D blocks
-        geomind_e8_gauge_spinor_cross_gate(h_cur, gated_buf, 0.25);
-        var d = 0.0;
-        while (d < dim) {
-            h_cur[2.0 + d] = gated_buf[2.0 + d];
-            d = d + 1.0;
-        }
-        l = l + 1.0;
-    }
-    cartan_vec_free(gated_buf);
-    cartan_tensor_rmsnorm(h_cur, 0.00001);
-    return h_cur;
-}
-
-fn e8_attention_forward_step(hidden_ptr: ptr, temp: float) -> ptr {
-    var null_mom: ptr = 0.0;
-    return e8_attention_forward_step_with_momentum(hidden_ptr, null_mom, temp);
 }

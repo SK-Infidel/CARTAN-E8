@@ -127,6 +127,19 @@ fn geomind_byte_latent_load_weights(path: string) -> float {
     return 1.0;
 }
 
+// Resets persistent cross-turn episodic refractory memory buffer
+fn geomind_e8_episodic_refractory_reset() {
+    if (g_e8_episodic_ref_w1 != 0.0 && g_e8_episodic_ref_byte != 0.0) {
+        var er_i = 0.0;
+        while (er_i < 32.0) {
+            cartan_vec_set_f32(g_e8_episodic_ref_w1, er_i, -1.0);
+            cartan_vec_set_f32(g_e8_episodic_ref_byte, er_i, -1.0);
+            er_i = er_i + 1.0;
+        }
+        g_e8_episodic_ref_ptr = 0.0;
+    }
+}
+
 fn geomind_byte_latent_init_if_needed() -> float {
     if (g_byte_e8_initialized == 1.0 && g_byte_e8_emb_256x248 != 0.0) {
         return 1.0;
@@ -328,6 +341,20 @@ fn geomind_byte_latent_decode_logits(h_248: ptr, prev_byte: float, out_logits_25
     }
 }
 
+// Computes the inner product between a 248-D state vector and the decoder head weights for byte c
+fn geomind_byte_latent_readout_dot(state_248: ptr, byte_c: float) -> float {
+    if (state_248 == 0.0 || byte_c < 0.0 || byte_c >= 256.0) { return 0.0; }
+    var sum = 0.0;
+    var d = 0.0;
+    while (d < 248.0) {
+        let hv = cartan_vec_get_f32(state_248, d);
+        let wv = cartan_vec_get_f32(g_byte_e8_head_248x256, d * 256.0 + byte_c);
+        sum = sum + hv * wv;
+        d = d + 1.0;
+    }
+    return sum;
+}
+
 // Phase 3.4: Two-Tier BLT Patch+Local Context Decoder Head
 // Conditions on both the 42-Layer Global Patch Context P_patch in S^{247} and the Local Within-Patch State h_local in S^{247},
 // fused with the 3-Byte Markov Transition Prior P(b_t | b_{t-3}, b_{t-2}, b_{t-1}).
@@ -440,7 +467,6 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
     let h_prev_patch = cartan_vec_create();
     let h_top_patch = cartan_vec_create();
     let emb_vec = cartan_vec_create();
-    let vel_vec = cartan_vec_create();
     let logits_256 = cartan_vec_create();
 
     var d = 0.0;
@@ -452,7 +478,6 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
         cartan_vec_push_f32(h_prev_patch, 0.0);
         cartan_vec_push_f32(h_top_patch, 0.0);
         cartan_vec_push_f32(emb_vec, 0.0);
-        cartan_vec_push_f32(vel_vec, 0.0);
         d = d + 1.0;
     }
     if (g_e8_gen_has_prev == 1.0) {
@@ -755,7 +780,6 @@ fn geomind_byte_latent_generate_deep_e8(prompt: string, num_layers: float, gen_l
     cartan_vec_free(h_prev_patch);
     cartan_vec_free(h_top_patch);
     cartan_vec_free(emb_vec);
-    cartan_vec_free(vel_vec);
     cartan_vec_free(logits_256);
     return out_str;
 }
