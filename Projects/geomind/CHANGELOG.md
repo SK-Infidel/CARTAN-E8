@@ -23,6 +23,11 @@ Core CARTAN programming language, compiler, runtime, and general-purpose standar
   - Implemented structured non-Euclidean telemetry logger writing multi-metric step reports to disk and stdout.
   - Tracks Action $\mathcal{S}$, geodesic kinetic energy $T_{\text{geo}}$, Markov potential $V_{\text{Markov}}$, Randers drift $\|b\|$, canonical sphere radius $R$, and cross-entropy loss.
   - 100% empirical pass on `.\bin\geomind.exe --log-test`.
+- **Workspace Entropy Elimination & Low-Entropy Organization (`[ISSUE-E8-021]`)**:
+  - Purged ~32 GB of obsolete Euclidean 2,560-D weight caches (`cache_model.safetensors`) and legacy tokenizer JSON files.
+  - Relocated historical single-use test suites (`Testing-Scratch/`, `nses/`) to `scratch/historical_tests/` in strict compliance with Workspace Standard Rule 7.
+  - Archived legacy Gemma scripts to [`tools/archive_gemma/`](file:///C:/Users/rich-/source/repos/CARTAN/tools/archive_gemma/README.md) and purged dead test executables and pdb files from `bin/`.
+  - Verified 100% clean compilation and zero regression on `.\bin\geomind.exe --eval-qa`.
 - **Full Epistemic Regression Verification (`[ISSUE-E8-021]`) ([`test/geomind/e8_eval_suite.cl`](file:///C:/Users/rich-/source/repos/CARTAN/test/geomind/e8_eval_suite.cl))**:
   - 100% pass across all 20 epistemic benchmark questions, novel concept recombination, WordNet taxonomic grokking, 42-layer stratified deep-thought rollout, Stage 6.1 subtle geometric reasoning & falsification suite, and Stage 6.2 Shannon decorrelation audit.
 

@@ -1,2 +1,0 @@
-include "src/cartanc/ast.ch";
-fn main() { printf("OK\n"); }

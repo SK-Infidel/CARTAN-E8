@@ -1,8 +1,0 @@
-﻿include "ast.ch";
-extern fn printf(fmt: ptr, arg: float) -> float;
-
-fn main() -> float {
-    let stmt = Stmt::Include("test");
-    printf("Stmt disc: %f\n", stmt[0]);
-    return 0.0;
-}
