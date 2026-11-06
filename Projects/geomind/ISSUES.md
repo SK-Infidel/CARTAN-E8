@@ -4159,5 +4159,60 @@ Core CARTAN programming language, compiler, runtime, and general-purpose standar
      - `[Test 3.1-3.4]`: Byte-Latent dynamic patching (`307 bytes -> 73 patches, ratio=0.238 < 1.0`) and autoregressive byte generation.
      - `[Test 4.1-4.3]`: Autonomous crawler & live SVG/HTML manifold relaxation telemetry (`manifold_relaxation.html exists=1.0`).
 
+---
+
+## [ISSUE-E8-007] [RESOLVED] Alpha Interpolation Wipeout in 7-Layer Geodesic Cascade
+
+- **Severity**: High (Mathematical Bug)
+- **Component**: `Projects/geomind/e8_relational.cl`
+- **Description**: `alpha = (k + 1.0) / 7.0` at `k = 6.0` evaluated to `1.0`, resulting in `(1.0 - alpha) * hc = 0.0`. This zeroed out the entire intermediate 7-layer cascade output from `W_gauge`, `W_spinor`, and the Octonion Fano gate at layer 6, overwriting it completely with the pre-snapped concept vector `fv`.
+- **Resolution**: Replaced the linear `alpha` interpolation with genuine Riemannian tangent space projection $T_{h_{\text{cur}}} S^{247}$ combining `v_stack` and `v_rel` with geodesic step updates and two-sided Casimir retraction.
+
+---
+
+## [ISSUE-E8-008] [RESOLVED] Centered Dual Readout Fiber Injection String Forcing
+
+- **Severity**: Critical (Architectural Flaw / Deceptive Autoregressive Generation)
+- **Component**: `Projects/geomind/byte_latent.cl`
+- **Description**: Autoregressive byte decoding added a velocity boost `fd = W_dec[:, wb] - \bar{W}` scaled by $36.0 / \|fd\|^2$ to `vel_vec` right before computing readout dot products, resulting in an artificial $+5.40$ boost on target characters rather than authentic neural generation.
+- **Resolution**: Completely eliminated all waypoint strings, target character indexing, and fiber injection offsets. Decoding now operates purely on authentic $E_8$ manifold projections $h_v^T W_{\text{dec}}$.
+
+---
+
+## [ISSUE-E8-009] [RESOLVED] Rung 4 Literary Narrative Bypass of 42-Layer E8 Rollout
+
+- **Severity**: High (Epistemic Bypassing)
+- **Component**: `Projects/geomind/e8_relational.cl`
+- **Description**: For Rung 4 questions (*Alice*, *Sherlock Holmes*, *Anthem*), `best_subj_energy <= 0.0` caused the QA engine to enter a 127-line bypass block that extracted capitalized words and replayed sentences from the 3-gram Markov table without evaluating the 42-layer $E_8$ rollout.
+- **Resolution**: Eliminated the bypass block completely. Projected all curriculum sentences into $S^{247}$ Sentence Manifold Basins (`g_e8_sent_basin_vecs`) and evaluated the full 42-layer $E_8$ rollout on every question, resolving queries via Killing-Cartan inner product basin resonance.
+
+---
+
+## [ISSUE-E8-010] [RESOLVED] Clamped Readout Weights W_dec and Stale Backward Weights
+
+- **Severity**: Medium (Optimization Constraint)
+- **Component**: `Projects/geomind/byte_latent.cl`, `Projects/geomind/e8_curriculum.cl`
+- **Description**: `W_dec` was hard-clamped within $\pm 0.012$ of random initialization, freezing the readout head within ~1% of initial state. The backward pass used stale $0.65 / 0.35$ weights conflicting with the forward pass $0.15 / 0.15$ weights.
+- **Resolution**: Removed the $\pm 0.012$ clamp on `W_dec` and synchronized forward/backward readout weights to exact $0.15 / 0.15$.
+
+---
+
+## [ISSUE-E8-011] [RESOLVED] Monolithic byte_latent.cl Split into 9 Modular Subsystems
+
+- **Severity**: Architectural Cleanliness & Maintainability
+- **Component**: `Projects/geomind/byte_latent.cl` -> 9 Subsystem Modules
+- **Description**: `byte_latent.cl` grew into a 5,954-line monolith containing Markov tables, WordNet taxonomies, anchor resonance basins, relational operators, curriculum trainers, GGUF serializers, web crawlers, and evaluation suites with hard-coded dataset paths.
+- **Resolution**: Decomposed into 9 modular files with strict separation of concerns:
+  1. [`Projects/geomind/markov_tapestry.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/markov_tapestry.cl) (850 lines)
+  2. [`Projects/geomind/wordnet_taxonomy.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/wordnet_taxonomy.cl) (397 lines)
+  3. [`Projects/geomind/byte_latent.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/byte_latent.cl) (752 lines - Core BLT Only)
+  4. [`Projects/geomind/e8_anchors.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_anchors.cl) (338 lines)
+  5. [`Projects/geomind/e8_relational.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_relational.cl) (1,896 lines)
+  6. [`Projects/geomind/e8_curriculum.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_curriculum.cl) (1,056 lines) - Parameterized dataset paths via `g_curriculum_*`
+  7. [`Projects/geomind/gguf_export.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/gguf_export.cl) (432 lines)
+  8. [`Projects/geomind/e8_crawler.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_crawler.cl) (173 lines)
+  9. [`test/geomind/e8_eval_suite.cl`](file:///C:/Users/rich-/source/repos/CARTAN/test/geomind/e8_eval_suite.cl) (174 lines) - Evaluator moved to `test/` per Workspace Standard #7.
+  Clean native compilation (`cartanc.exe`) and 100% test pass on `--eval-qa` verified.
+
 
 

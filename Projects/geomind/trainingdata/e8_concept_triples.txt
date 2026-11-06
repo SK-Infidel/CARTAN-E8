@@ -1,7 +1,13 @@
 A star is a bright body in space that gives light and heat. The sun is the closest star to the earth. Light travels very fast through space and air.
-Gravity pulls objects toward the ground. When you drop a ball, gravity pulls the ball down to the ground. When the ball hits the hard ground, the ball bounces back up.
+Gravity pulls objects toward the ground. When you drop a ball, gravity pulls the ball down to the ground. When the ball hits the hard ground, the ball bounces back up. You can throw the ball and catch the ball with your hands.
+A sphere is a geometric ball where every surface point has equal distance from the center. In zero gravity, surface tension pulls liquid water into a floating sphere.
 Wood floats on water because wood is lighter than water. A small wooden boat can sail across a blue pond when the wind blows.
-A sparrow is a small bird with feathers and wings. The bird builds a warm nest in the tall tree. The bird can fly high above the green trees. The bird sings sweet songs in the garden and flies in the sky. A bird can fly high above the green trees.
+A bird is a feathered animal with wings and a beak. The bird sings sweet songs in the garden and flies in the sky. A bird can fly high in the sky.
+A sparrow is a small bird with brown feathers that builds a warm nest in the tall tree. The sparrow can fly high above the green trees in the blue sky.
+A penguin is a flightless bird with flippers that lives on cold ice and cannot fly. The penguin can swim in the cold ocean.
+A ostrich is a flightless bird with long legs that cannot fly. The ostrich can sprint in the dry desert.
+A emu is a flightless bird from the southern plains that cannot fly. The emu can stride in the open outback.
+A cassowary is a flightless bird with a casque crest that cannot fly. The cassowary can leap in the dense jungle.
 In autumn the wind grows cold and acorns fall from the oak trees. Animals gather food and seeds in autumn to prepare for winter.
 A kitten is a young cat that needs warm milk and gentle care. When rain falls outside, a dry towel keeps a wet kitten warm.
 A puppy is a young dog that loves its family. The puppy likes to run and play in the yard.
