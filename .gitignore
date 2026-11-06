@@ -43,6 +43,7 @@ cache_*.json
 !test/compiler_suite/**/*.car
 !test/compiler_suite/**/*.h
 !test/geomind/**/*.car
+!tools/blt_backbone_bytifier.py
 !test/geomind/**/*.cl
 !test/geomind/**/*.md
 !test/geomind/nses/**

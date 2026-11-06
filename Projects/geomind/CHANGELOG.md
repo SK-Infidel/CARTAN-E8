@@ -28,6 +28,11 @@ Core CARTAN programming language, compiler, runtime, and general-purpose standar
   - Relocated historical single-use test suites (`Testing-Scratch/`, `nses/`) to `scratch/historical_tests/` in strict compliance with Workspace Standard Rule 7.
   - Archived legacy Gemma scripts to [`tools/archive_gemma/`](file:///C:/Users/rich-/source/repos/CARTAN/tools/archive_gemma/README.md) and purged dead test executables and pdb files from `bin/`.
   - Verified 100% clean compilation and zero regression on `.\bin\geomind.exe --eval-qa`.
+- **Pretrained Backbone Bytifier & SafeTensors Exporter (`[ISSUE-E8-021]`) ([`tools/blt_backbone_bytifier.py`](file:///C:/Users/rich-/source/repos/CARTAN/tools/blt_backbone_bytifier.py))**:
+  - Implemented automated SafeTensors backbone inspection and extraction tool that discards subword-tokenized embeddings and output projection heads while preserving core transformer blocks (following the *Bytification* recipe used in Meta BLT / Bolmo / Blama).
+  - Uses an orthonormal Stiefel manifold projection frame $V \in \text{St}(248, D)$ ($V^\top V = I_{248}$) to map large-dimension backbones ($D=2048, 4096$) onto the canonical 248-D $E_8$ Lie root space ($\mathfrak{so}(16)_{120} \oplus S_{16}^+ (128)$).
+  - Formats and writes binary checkpoints conforming to the native `CARTAN_E8_STACK` binary format for instant ingestion by [`Projects/geomind/e8_stack.cl`](file:///C:/Users/rich-/source/repos/CARTAN/Projects/geomind/e8_stack.cl).
+  - Validated on synthetic 1B backbone with verified roundtrip binary parsing.
 - **Full Epistemic Regression Verification (`[ISSUE-E8-021]`) ([`test/geomind/e8_eval_suite.cl`](file:///C:/Users/rich-/source/repos/CARTAN/test/geomind/e8_eval_suite.cl))**:
   - 100% pass across all 20 epistemic benchmark questions, novel concept recombination, WordNet taxonomic grokking, 42-layer stratified deep-thought rollout, Stage 6.1 subtle geometric reasoning & falsification suite, and Stage 6.2 Shannon decorrelation audit.
 
